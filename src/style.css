@@ -1,0 +1,62 @@
+@import "tailwindcss";
+@import 'primeicons/primeicons.css';
+
+:root {
+  font-family: Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #ffffff;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.p-select-label {
+  font-size: 14px !important;
+  color: black !important;
+  font-weight: lighter !important;
+}
+
+.p-select-label.p-placeholder {
+  color: #7f858b !important;
+  font-weight: lighter !important;
+}
+
+.p-focus {
+  border-color: black !important;
+}
+
+.p-select-option {
+  font-size: 14px !important;
+}
+
+.p-select-option.p-select-option-selected {
+  background-color: #206DBA !important;
+  color: #ffffff !important;
+}
+
+.p-select-list-container {
+  max-height: 150px !important;
+}
+
+input.p-inputtext.p-component.p-select-filter {
+  font-size: 13px !important;
+  height: 35px !important;
+}
+
+input.p-inputtext.p-component.p-select-filter:focus {
+  border-color: black !important;
+}
+
+input[type="number"] {
+    text-align: right;
+}
+
+.p-select-empty-message {
+  font-size: 13px !important;
+}
