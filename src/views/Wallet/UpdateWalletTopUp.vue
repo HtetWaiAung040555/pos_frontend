@@ -24,9 +24,16 @@
       pay_date: '',
     });
     const userData = ref({});
-    const selectedCustomer = ref('');
-    const selectedPaymentMethod = ref('');
+    const selectedCustomer = ref(null);
+    const selectedPaymentMethod = ref(null);
     const currency = "Ks. "
+
+    const beforeBalance= ref(0);
+
+    const oldTopUpAmount = ref(0);
+    const oldCustomerId = ref(null);
+    const errorMessage = ref('');
+    const updateAllowed = ref(true);
 
     // Change route function
     function changeRoute(pathname) {
@@ -39,6 +46,10 @@
         await useCustomer.fetchAllCustomer();
         
         data.value = useWallet.walletList;
+
+        oldTopUpAmount.value = Number(useWallet.walletList.amount);
+        oldCustomerId.value = useWallet.walletList.customer.id;
+
         data.value.pay_date = moment(useWallet.walletList.pay_date).format('YYYY-MM-DD HH:mm:ss');
         userData.value = JSON.parse(localStorage.getItem('user'));
         selectedPaymentMethod.value = usePaymentMethod.paymentMethodList.filter(el => el.id === data.value.payment_method.id)[0];
@@ -46,13 +57,27 @@
     });
 
     //WALLET BALANCE AMOUNT SLIP
-    const beforeBalance= ref(0);
     watch(selectedCustomer, async (newCustomer) => {
         beforeBalance.value = 0;
+        errorMessage.value = "";        
+        updateAllowed.value = true; 
 
         if (newCustomer?.id) {
             const customer = await useCustomer.fetchSingleCustomer(newCustomer.id);
-            beforeBalance.value = Number(customer?.balance || 0);
+
+            // Check Customer Changes (same cus = substract, new cus = original)
+            if (oldCustomerId.value === newCustomer.id){
+              beforeBalance.value = Number(customer.balance || 0) - Number(oldTopUpAmount.value);
+              
+               //For case - when the customer already used the wrong top-up amount
+              if (customer.balance < oldTopUpAmount.value) {
+                  errorMessage.value = "Disclaimer: NOT SAFE. Customer already used the top up amount!";
+                  //updateAllowed.value = false;
+              }
+
+            }else {
+              beforeBalance.value = Number(customer?.balance || 0);
+            }
         }
     });
 
@@ -65,6 +90,7 @@
 
     // Update function
     async function formSubmit() {
+      
         let updatedData = {
             customer_id: selectedCustomer.value.id,
             amount: Number(data.value.amount),
@@ -84,6 +110,7 @@
             })
             return
         }
+
         if (useWallet.walletList) {
             toast.add({ severity: 'success', summary: 'Success Message', detail: 'Wallet top up updated successfully.', life: 3000 });
             router.push('/wallet');
@@ -98,7 +125,6 @@
       }
       printSlip();
     }
-
 
     function printSlip() {
         const slip = document.getElementById('slip-section');
@@ -236,9 +262,15 @@
             class="w-full text-black"
           />
         </div>
+      
+        <!-- Error for case - when the customer already used the wrong top-up amount -->
+        <!-- <div v-if="errorMessage" class="col-span-2 text-red-500 text-sm font-semibold">
+          {{ errorMessage }}
+        </div> -->
+
         <div class="flex gap-3 mt-5 col-span-2">
-          <BaseButton label="Submit" @click="formSubmit" />
-          <BaseButton label="Submit & Print" @click="formSubmitAndPrint" />
+          <BaseButton label="Submit" @click="formSubmit"/>
+          <BaseButton label="Submit & Print" @click="formSubmitAndPrint"/>
         </div>
       </div>
 
@@ -284,7 +316,7 @@
           </div>
           <!-- top up -->
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>Top Up Amount {{ selectedPaymentMethod.name }} :</span>
+            <span>Top Up Amount {{ selectedPaymentMethod?.name }} :</span>
             <span style="font-weight: bold;">{{ currency + Number(data.amount).toLocaleString() }}</span>
           </div>
           <!-- after -->

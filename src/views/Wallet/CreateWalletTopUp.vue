@@ -301,7 +301,7 @@
           </div>
           <!-- top up -->
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>Top Up Amount ({{ selectedPaymentMethod.name }}) :</span>
+            <span>Top Up Amount ({{ selectedPaymentMethod?.name }}) :</span>
             <span style="font-weight: bold;">{{ data.currency + Number(data.amount).toLocaleString() }}</span>
           </div>
           <!-- after -->
