@@ -52,6 +52,9 @@ import UpdateCustomer from './views/Customer/UpdateCustomer.vue';
 import Wallet from './views/Wallet/Wallet.vue';
 import CreateWalletTopUp from './views/Wallet/CreateWalletTopUp.vue';
 import UpdateWalletTopUp from './views/Wallet/UpdateWalletTopUp.vue';
+import Promotion from './views/promotion/Promotion.vue';
+import CreatePromotion from './views/promotion/CreatePromotion.vue';
+import UpdatePromotion from './views/promotion/UpdatePromotion.vue';
 
 
 
@@ -101,6 +104,9 @@ const router = createRouter({
         {path: '/wallet', name: 'Wallet', component: Wallet, meta: { requiresAuth: true, permission: { resource: 'Wallet', action: 'View' } }},
         {path: '/wallet/createTopUp', name: 'Create Wallet Top Up', component: CreateWalletTopUp, meta: { requiresAuth: true, permission: { resource: 'Wallet', action: 'Create' } }},
         {path: '/wallet/updateTopUp', name: 'Update Wallet Top Up', component: UpdateWalletTopUp, meta: { requiresAuth: true, permission: { resource: 'Wallet', action: 'Update' } }},
+        {path: '/promotion', name: 'Promotion', component: Promotion, meta: { requiresAuth: true, permission: { resource: 'Promotion', action: 'View' } }},
+        {path: '/promotion/create', name: 'Create Promotion', component: CreatePromotion, meta: { requiresAuth: true, permission: { resource: 'Promotion', action: 'Create' } }},
+        {path: '/promotion/update', name: 'Update Promotion', component: UpdatePromotion, meta: { requiresAuth: true, permission: { resource: 'Promotion', action: 'Update' } }},
         { path: '/', redirect: '/login' }
     ]
 });

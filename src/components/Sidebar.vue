@@ -39,6 +39,12 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             pathname: "/customer",
             permission: {name: 'Customer', action: "View"}
           },
+          { 
+            name: 'Promotions', 
+            icon: 'fa fa-tags',
+            pathname: "/promotion",
+            permission: {name: 'Promotion', action: "View"}
+          },
         ],
       },
       { 
