@@ -11,10 +11,12 @@ const props = defineProps({
   isAction: {type: Boolean, default: true},
   editPath: {type: String, default: ""},
   deletePath: {type: String, default: ""},
+  adjustPath: {type: String, default: ""},
   isLoading: {type: Boolean, default: false},
   defaultSort: {type: Object, default: () => ({key: null, order: 'desc'})},
   isEdit: {type: Boolean, default: true},
   isDelete: {type: Boolean, default: true},
+  isAdjust: {type: Boolean, default: false},
 });
 
 const emit = defineEmits(['delete']);
@@ -130,7 +132,7 @@ function confirmDelete() {
 
       <!-- Table -->
       <div class="flex-1 overflow-y-auto">
-        <table class="w-full resize">
+        <table class="w-full">
           <thead class="sticky top-0 z-10">
             <tr class="bg-gray-100">
               <th
@@ -177,6 +179,13 @@ function confirmDelete() {
               >
               </td>
               <td class="p-2 text-center w-[120px]" v-if="props.isAction">
+                <router-link v-if="isAdjust" :to="{name: props.adjustPath, query: {id: row.id}}">
+                  <BaseButton 
+                    icon="pi pi-sliders-h" 
+                    variant="text" 
+                    size="sm" 
+                  />
+                </router-link>
                 <router-link :to="{name: props.editPath, query: {id: row.id}}">
                   <BaseButton 
                     icon="pi pi-pen-to-square" 

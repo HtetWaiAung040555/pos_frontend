@@ -45,6 +45,12 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             pathname: "/promotion",
             permission: {name: 'Promotion', action: "View"}
           },
+          { 
+            name: 'Sales Return', 
+            icon: 'fa fa-undo',
+            pathname: "/sales_return",
+            permission: {name: 'Sales return', action: "View"}
+          },
         ],
       },
       { 
@@ -62,6 +68,12 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             icon: 'fa fa-cart-flatbed',
             pathname: "/inventory",
             permission: {name: 'Inventory', action: "View"}
+          },
+          { 
+            name: 'Stocks Adjustment', 
+            icon: 'fa fa-sliders',
+            pathname: "/stock_adjustment",
+            permission: {name: 'Stock adjustment', action: "View"}
           },
           { 
             name: 'Warehouse', 

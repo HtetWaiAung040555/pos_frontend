@@ -33,6 +33,7 @@
         product: "",
         qty: ""
     });
+    const oldQty = ref(0);
 
     // Change route function
     function changeRoute(pathname) {
@@ -45,6 +46,7 @@
         await useProduct.fetchAllProduct();
         await useWarehouse.fetchAllWarehouse();
         formData.value = useInventory.stockList;
+        oldQty.value = useInventory.stockList.qty;
         selectedProduct.value = useProduct.productList.filter(el => el.id === formData.value.product.id)[0];
         selectedWarehouse.value = useWarehouse.warehouseList.filter(el => el.id === formData.value.warehouse.id)[0];
     });
@@ -86,11 +88,11 @@
             return
         }
         let updatedData = {
-            name: formData.value.name,
-            qty: formData.value.qty,
             product_id: selectedProduct.value.id,
             warehouse_id: selectedWarehouse.value.id,
-            updated_by: userData.value.id
+            expired_date: formData.value.expired_date,
+            updated_by: userData.value.id,
+            ...(formData.value.qty !== oldQty.value && { qty: formData.value.qty })
         }
         await useInventory.editStock(updatedData, route.query.id);
         if(useInventory.error) {
@@ -126,7 +128,7 @@
                 <SubTitle label="Basic Info" />
                 <div class="flex gap-x-4 mt-6">
                     <!-- User Name Input -->
-                    <BaseInput
+                    <!-- <BaseInput
                         size="sm"
                         v-model="formData.name"
                         label="Name"
@@ -135,21 +137,7 @@
                         height="h-[35px]"
                         :isRequire="true"
                         :error="errorMsg.name"
-                    />
-                    <!-- Qty input -->
-                    <BaseInput
-                        size="sm"
-                        v-model="formData.qty"
-                        label="Qty"
-                        placeholder="Stock Qty"
-                        width="300px"
-                        height="h-[35px]"
-                        type="number"
-                        :isRequire="true"
-                        :error="errorMsg.qty"
-                    />
-                </div>
-                <div class="flex gap-x-4 mt-4">
+                    /> -->
                     <!-- Product Select -->
                     <div class="flex flex-col gap-y-1">
                         <BaseLabel 
@@ -184,6 +172,29 @@
                         />
                         <BaseErrorLabel v-if="errorMsg.warehouse" :label="errorMsg.warehouse" />
                     </div>
+                </div>
+                <div class="flex gap-x-4 mt-4">
+                    <!-- Qty input -->
+                    <BaseInput
+                        size="sm"
+                        v-model="formData.qty"
+                        label="Qty"
+                        placeholder="Stock Qty"
+                        width="300px"
+                        height="h-[35px]"
+                        type="number"
+                        :isRequire="true"
+                        :error="errorMsg.qty"
+                    />
+                    <!-- Expired date input -->
+                    <BaseInput 
+                        size="sm" 
+                        v-model="formData.expired_date"
+                        label="Expired Date"
+                        width="300px"
+                        height="h-[35px]" 
+                        type="date"
+                    />
                 </div>
                 <div class="flex justify-end mt-4">
                     <!-- Save Button -->

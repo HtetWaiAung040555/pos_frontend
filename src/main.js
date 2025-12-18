@@ -55,6 +55,11 @@ import UpdateWalletTopUp from './views/Wallet/UpdateWalletTopUp.vue';
 import Promotion from './views/promotion/Promotion.vue';
 import CreatePromotion from './views/promotion/CreatePromotion.vue';
 import UpdatePromotion from './views/promotion/UpdatePromotion.vue';
+import StockAdjustment from './views/Adjustment/StockAdjustment.vue';
+import CreateStockAdjustment from './views/Adjustment/CreateStockAdjustment.vue';
+import SalesReturn from './views/Sales_Return/SalesReturn.vue';
+import CreateSalesReturn from './views/Sales_Return/CreateSalesReturn.vue';
+import UpdateSalesReturn from './views/Sales_Return/UpdateSalesReturn.vue';
 
 
 
@@ -86,6 +91,8 @@ const router = createRouter({
         {path: '/inventory', name: 'Inventory', component: Inventory, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'View' } }},
         {path: '/inventory/create', name: 'Create Inventory', component: CreateInventory, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'Create' } }},
         {path: '/inventory/update', name: 'Update Inventory', component: UpdateInventory, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'Update' } }},
+        {path: '/stock_adjustment', name: 'Adjustment', component: StockAdjustment, meta: { requiresAuth: true, permission: { resource: 'Stock adjustment', action: 'View' } }},
+        {path: '/stock_adjustment/create', name: 'Create Adjustment', component: CreateStockAdjustment, meta: { requiresAuth: true, permission: { resource: 'Stock adjustment', action: 'Create' } }},
         {path: '/customer', name: 'Customer', component: Customer, meta: { requiresAuth: true, permission: { resource: 'Customer', action: 'View' } }},
         {path: '/customer/create', name: 'Create Customer', component: CreateCustomer, meta: { requiresAuth: true, permission: { resource: 'Customer', action: 'Create' } }},
         {path: '/customer/update', name: 'Update Customer', component: UpdateCustomer, meta: { requiresAuth: true, permission: { resource: 'Customer', action: 'Update' } }},
@@ -107,6 +114,9 @@ const router = createRouter({
         {path: '/promotion', name: 'Promotion', component: Promotion, meta: { requiresAuth: true, permission: { resource: 'Promotion', action: 'View' } }},
         {path: '/promotion/create', name: 'Create Promotion', component: CreatePromotion, meta: { requiresAuth: true, permission: { resource: 'Promotion', action: 'Create' } }},
         {path: '/promotion/update', name: 'Update Promotion', component: UpdatePromotion, meta: { requiresAuth: true, permission: { resource: 'Promotion', action: 'Update' } }},
+        {path: '/sales_return', name: 'Sales Return', component: SalesReturn, meta: { requiresAuth: true, permission: { resource: 'Sales return', action: 'View' } }},
+        {path: '/sales_return/create', name: 'Create Sales Return', component: CreateSalesReturn, meta: { requiresAuth: true, permission: { resource: 'Sales return', action: 'Create' } }},
+        {path: '/sales_return/update', name: 'Update Sales Return', component: UpdateSalesReturn, meta: { requiresAuth: true, permission: { resource: 'Sales return', action: 'Update' } }},
         { path: '/', redirect: '/login' }
     ]
 });

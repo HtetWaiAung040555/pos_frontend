@@ -38,6 +38,7 @@
         { key: 'product.name', label: 'Product', formatter: (row) => row.product.name },
         { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.warehouse.name },
         { key: 'qty', label: 'Qty' },
+        { key: 'expired_date', label: 'Expire', formatter: (row) => row.expired_date? moment(row.expired_date).format('DD-MM-YY') : "N/A" },
         { key: 'created_by', label: 'Created By', formatter: (row) => row.created_by },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
         { key: 'updated_by', label: 'Updated By', formatter: (row) => row.updated_by },
@@ -95,10 +96,12 @@
             :rows="filteredRows"
             :pageSize="5"
             :editPath="'Update Inventory'"
+            :adjustPath="'Adjust Inventory'"
             :isLoading="useInventory.loading"
             :defaultSort="{key: 'created_at', order: 'desc'}"
             :isEdit="!usePermission.can('Inventory', 'Update')"
             :isDelete="!usePermission.can('Inventory', 'Delete')"
+            :isAdjust="true"
             @delete="deleteHandle"
         >
             <!-- Filter Section -->
