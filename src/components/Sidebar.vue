@@ -76,6 +76,12 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             permission: {name: 'Stock adjustment', action: "View"}
           },
           { 
+            name: 'Stocks Transaction', 
+            icon: 'fa fa-right-left',
+            pathname: "/stock_transaction",
+            permission: {name: 'Stock transaction', action: "View"}
+          },
+          { 
             name: 'Warehouse', 
             icon: 'fa fa-boxes-stacked',
             pathname: "/warehouse",

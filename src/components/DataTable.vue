@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import BaseButton from './BaseButton.vue';
 import Loading from './Loading.vue';
 import Dialog from 'primevue/dialog';
+import * as XLSX from 'xlsx';
 
 const props = defineProps({
   columns: { type: Array, required: true }, // [{ key: 'name', label: 'Name' }]
@@ -111,24 +112,64 @@ function confirmDelete() {
   visible.value = !visible.value;
 }
 
+function exportToExcel() {
+  try {
+    const headers = props.columns.map(c => (c.label || c.key));
+
+    const data = [headers];
+    props.rows.forEach(r => {
+      const rowArr = props.columns.map(col => {
+        const dataPath = col.key.split('.');
+        const val = dataPath.reduce((acc, key) => acc?.[key], r);
+        console.log(col.key+": "+val);
+        return val === undefined || val === null ? '' : val;
+      });
+      data.push(rowArr);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+
+    const filename = `export_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'_')}.xlsx`;
+    XLSX.writeFile(wb, filename);
+  } catch (err) {
+    console.error('Export to excel failed', err);
+  }
+}
+
 </script>
 
 <template>
   <div class="bg-white text-black rounded-lg shadow p-4 mt-3">
     <!-- Search -->
     <div class="mb-3">
-      <slot name="filters">
-        <!-- Default fallback: search input -->
-        <input
-          type="text"
-          v-model="searchQuery"
-          placeholder="Search..."
-          class="w-full border rounded px-3 py-2 text-sm"
-        />
-      </slot>
+      <div class="flex items-center gap-2">
+        <div class="flex-1">
+          <slot name="filters">
+            <!-- Default fallback: search input -->
+            <input
+              type="text"
+              v-model="searchQuery"
+              placeholder="Search..."
+              class="w-full border rounded px-3 py-2 text-sm"
+            />
+          </slot>
+        </div>
+        <div class="">
+          <BaseButton
+            label="Export"
+            icon="fa fa-file-excel"
+            size="sm"
+            variant="solid"
+            severity="success"
+            @click="exportToExcel"
+          />
+        </div>
+      </div>
     </div>
 
-    <div class="flex flex-col max-h-[300px] overflow-hidden">
+    <div class="flex flex-col max-h-[450px] overflow-hidden">
 
       <!-- Table -->
       <div class="flex-1 overflow-y-auto">

@@ -61,6 +61,7 @@ import SalesReturn from './views/Sales_Return/SalesReturn.vue';
 import CreateSalesReturn from './views/Sales_Return/CreateSalesReturn.vue';
 import UpdateSalesReturn from './views/Sales_Return/UpdateSalesReturn.vue';
 import UpdateSales from './views/Sales/UpdateSales.vue';
+import StockTransaction from './views/Stock_Transaction/StockTransaction.vue';
 
 
 
@@ -94,6 +95,7 @@ const router = createRouter({
         {path: '/inventory/update', name: 'Update Inventory', component: UpdateInventory, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'Update' } }},
         {path: '/stock_adjustment', name: 'Adjustment', component: StockAdjustment, meta: { requiresAuth: true, permission: { resource: 'Stock adjustment', action: 'View' } }},
         {path: '/stock_adjustment/create', name: 'Create Adjustment', component: CreateStockAdjustment, meta: { requiresAuth: true, permission: { resource: 'Stock adjustment', action: 'Create' } }},
+        {path: '/stock_transaction', name: 'Stock Transaction', component: StockTransaction, meta: { requiresAuth: true, permission: { resource: 'Stock transaction', action: 'View' } }},
         {path: '/customer', name: 'Customer', component: Customer, meta: { requiresAuth: true, permission: { resource: 'Customer', action: 'View' } }},
         {path: '/customer/create', name: 'Create Customer', component: CreateCustomer, meta: { requiresAuth: true, permission: { resource: 'Customer', action: 'Create' } }},
         {path: '/customer/update', name: 'Update Customer', component: UpdateCustomer, meta: { requiresAuth: true, permission: { resource: 'Customer', action: 'Update' } }},
