@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import axios from "axios";
+import { normalizeApiError } from "@/utils/NormalizeApiError";
 
 
 
@@ -12,7 +13,7 @@ export const useUserStore = defineStore('user', {
         token: localStorage.getItem("token") || null,
         loading: false,
         deleteLoading: false,
-        error: null,
+        error: [],
     }),
 
     getters: {
@@ -26,7 +27,7 @@ export const useUserStore = defineStore('user', {
                 const response = await axios.get(`/users`);
                 this.users = response.data.data;
             } catch (err) {
-                this.error = err.message;
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
@@ -37,7 +38,7 @@ export const useUserStore = defineStore('user', {
                 const response = await axios.get(`/users/${userId}`);
                 this.users = response.data.data;
             } catch (err) {
-                this.error = err.message
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
@@ -48,9 +49,7 @@ export const useUserStore = defineStore('user', {
                 const response = await axios.post(`/users`, formData);
                 this.users = response.data.data;
             } catch (err) {
-                if (err.response && err.response.status === 422) {
-                    this.error = err.response.data.errors;
-                }
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
@@ -63,9 +62,7 @@ export const useUserStore = defineStore('user', {
                 const response = await axios.put(`/users/${userId}`, formData);
                 this.users = response.data.data;
             } catch (err) {
-                if (err.response && err.response.status === 422) {
-                    this.error = err.response.data.errors;
-                }
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
@@ -76,11 +73,7 @@ export const useUserStore = defineStore('user', {
                 const response = await axios.delete(`/users/${userId}`);
                 this.data = response;
             } catch (err) {
-                if (err.response && err.response.status === 422) {
-                    this.error = err.response.data;
-                } else if (err.response && err.response.status === 400) {
-                    this.error = err.response.data.error;
-                } 
+                this.error = normalizeApiError(err);
             } finally {
                 this.deleteLoading = false;
             }
@@ -105,7 +98,7 @@ export const useUserStore = defineStore('user', {
                 }
             } catch (err) {
                 if (err.response && err.response.status === 401) {
-                    this.error = "Email or password incorrect.";
+                    this.error = ["Email or password incorrect."];
                 }
             } finally {
                 this.loading = false;

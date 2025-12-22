@@ -60,6 +60,7 @@ import CreateStockAdjustment from './views/Adjustment/CreateStockAdjustment.vue'
 import SalesReturn from './views/Sales_Return/SalesReturn.vue';
 import CreateSalesReturn from './views/Sales_Return/CreateSalesReturn.vue';
 import UpdateSalesReturn from './views/Sales_Return/UpdateSalesReturn.vue';
+import UpdateSales from './views/Sales/UpdateSales.vue';
 
 
 
@@ -104,7 +105,7 @@ const router = createRouter({
         {path: '/warehouse/create', name: 'Create Warehouse', component: CreateWarehouse, meta: { requiresAuth: true, permission: { resource: 'Warehouse', action: 'Create' } }},
         {path: '/warehouse/update', name: 'Update Warehouse', component: UpdateWarehouse, meta: { requiresAuth: true, permission: { resource: 'Warehouse', action: 'Update' } }},
         {path: '/sales', name: 'Sales', component: Sales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'View' } }},
-        {path: '/sales', name: 'Update Sales', component: Sales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'View' } }},
+        {path: '/sales/update', name: 'Update Sales', component: UpdateSales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'Update' } }},
         {path: '/category', name: 'Category', component: Category, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'View' } }},
         {path: '/category/create', name: 'Create Category', component: CreateCategory, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'Create' } }},
         {path: '/category/update', name: 'Update Category', component: UpdateCategory, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'Update' } }},

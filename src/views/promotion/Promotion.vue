@@ -61,9 +61,15 @@
     async function deleteHandle(id) {
 
         await usePromo.deletePromo({void_by: JSON.parse(localStorage.getItem('user')).id}, id);
-        if(usePromo.error) {
-            toast.add({ severity: 'error', summary: 'Error Message', detail: usePromo.error, life: 3000 });
-            return
+        if(usePromo.error.length) {
+            usePromo.error.forEach((msg) => {
+                toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+                });
+            });
         }
         if (usePromo.data.status === 200) {
             toast.add({ severity: 'success', summary: 'Success Message', detail: 'Promotion deleted successfully.', life: 3000 });

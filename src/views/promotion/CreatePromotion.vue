@@ -244,10 +244,13 @@ async function formSubmit() {
 
     await usePromo.addPromo(payload);
 
-    if (usePromo.error) {
-        Object.values(usePromo.error).forEach((err) => {
-            err.forEach((msg) => {
-                toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
+    if (usePromo.error.length) {
+        usePromo.error.forEach((msg) => {
+            toast.add({
+            severity: 'error',
+            summary: 'Error Message',
+            detail: msg,
+            life: 3000
             });
         });
         return;

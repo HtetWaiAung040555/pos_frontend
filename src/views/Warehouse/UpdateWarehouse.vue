@@ -6,14 +6,10 @@
     import { onMounted, ref } from 'vue';
     import BaseCard from '@/components/BaseCard.vue';
     import BaseInput from '@/components/BaseInput.vue';
-    import BaseTextarea from '@/components/BaseTextarea.vue';
-    import BaseLabel from '@/components/BaseLabel.vue';
-    import BaseSwitch from '@/components/BaseSwitch.vue';
     import SubTitle from '@/components/SubTitle.vue';
-    import { Select, useToast } from 'primevue';
+    import { useToast } from 'primevue';
     import { errMsgList } from '@/utils/const';
     import { useWarehouseStore } from '@/stores/useWarehouseStore';
-    import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
 
     const router = useRouter();
     const route = useRoute();
@@ -60,12 +56,15 @@
             updated_by: userData.value.id
         }
         await useWarehouse.editWarehouse(updatedData, route.query.id);
-        if(useWarehouse.error) {
-            Object.values(useWarehouse.error).forEach((err) => {
-                err.forEach((msg) => {
-                    toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-                })
-            })
+        if(useWarehouse.error.length) {
+            useWarehouse.error.forEach((msg) => {
+                toast.add({
+                    severity: 'error',
+                    summary: 'Error Message',
+                    detail: msg,
+                    life: 3000
+                });
+            });
             return
         }
         if (useWarehouse.warehouseList) {

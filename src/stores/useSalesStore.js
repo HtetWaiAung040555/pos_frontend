@@ -1,3 +1,4 @@
+import { normalizeApiError } from "@/utils/NormalizeApiError";
 import axios from "axios";
 import { defineStore } from "pinia";
 
@@ -6,7 +7,7 @@ export const useSaleStore = defineStore('sales', {
         salesList: [],
         loading: false,
         deleteLoading: false,
-        error: null,
+        error: [],
         data: null
 
     }),
@@ -24,7 +25,7 @@ export const useSaleStore = defineStore('sales', {
                 }
                 
             } catch (err) {
-                this.error = err.message;
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
@@ -35,7 +36,7 @@ export const useSaleStore = defineStore('sales', {
                 const response = await axios.get(`/sales/${id}`);
                 this.salesList = response.data.data;
             } catch (err) {
-                this.error = err.message;
+               this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
@@ -46,7 +47,7 @@ export const useSaleStore = defineStore('sales', {
                 const response = await axios.get(`/sales?status_id=${status}`);
                 this.salesList = response.data.data;
             } catch (err) {
-                this.error = err.message;
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
@@ -57,23 +58,19 @@ export const useSaleStore = defineStore('sales', {
                 const response = await axios.post(`/sales`, formData);
                 this.salesList = response.data.data;
             } catch(err) {
-                if (err.response && err.response.status === 422) {
-                    this.error = err.response.data.errors;
-                }
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
         },
-        async editSales(id, formData) {
+        async editSales(formData, id) {
             this.loading = true;
             try {
                 const response = await axios.put(`/sales/${id}`, formData)
-                this.salesList = response.data.data
+                this.salesList = response.data.data;
+                console.log(response);
             } catch (err) {
-                if (err.response && err.response.status === 422) {
-                    this.error = err.response.data.errors;
-                }
-                
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
@@ -84,11 +81,7 @@ export const useSaleStore = defineStore('sales', {
                 const response = await axios.delete(`/sales/${id}`, { data: data });
                 this.data = response;
             } catch (err) {
-                if (err.response && err.response.status === 422) {
-                    this.error = err.response.data;
-                } else if (err.response && err.response.status === 400) {
-                    this.error = err.response.data.error;
-                } 
+                this.error = normalizeApiError(err);
             } finally {
                 this.deleteLoading = false;
             }

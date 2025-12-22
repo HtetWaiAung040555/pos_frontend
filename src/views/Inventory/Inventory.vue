@@ -60,12 +60,19 @@
 
     //Branch delete function
     async function deleteHandle(id) {
-        await useUser.deleteUser(id);
-        if(useUser.error) {
-            toast.add({ severity: 'error', summary: 'Error Message', detail: useUser.error, life: 3000 });
+        await useInventory.deleteUser(id);
+        if(useInventory.error.length) {
+            useInventory.error.forEach((msg) => {
+            toast.add({
+              severity: 'error',
+              summary: 'Error Message',
+              detail: msg,
+              life: 3000
+            });
+        });
             return
         }
-        if (useUser.data.status === 200) {
+        if (useInventory.stockList.status === 200) {
             toast.add({ severity: 'success', summary: 'Success Message', detail: 'Inventory deleted successfully.', life: 3000 });
             await useUser.fetchAllUsers();
             dataList.value = useUser.users;
@@ -96,7 +103,6 @@
             :rows="filteredRows"
             :pageSize="5"
             :editPath="'Update Inventory'"
-            :adjustPath="'Adjust Inventory'"
             :isLoading="useInventory.loading"
             :defaultSort="{key: 'created_at', order: 'desc'}"
             :isEdit="!usePermission.can('Inventory', 'Update')"

@@ -64,10 +64,10 @@ export const useSalesReturnStore = defineStore('Sales Return', {
                 this.loading = false;
             }
         },
-        async deleteSalesReturn(id) {
+        async deleteSalesReturn(data, id) {
             this.deleteLoading = true;
             try {
-                const response = await axios.delete(`/sale_returns/${id}`);
+                const response = await axios.delete(`/sale_returns/${id}`, { data: data});
                 this.data = response;
             } catch (err) {
                 this.error = normalizeApiError(err);

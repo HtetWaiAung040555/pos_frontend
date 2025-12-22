@@ -1,121 +1,190 @@
 <script setup>
 
-    import PageTitle from '@/components/PageTitle.vue';
-    import DataTable from '@/components/DataTable.vue';
-    import BaseButton from '@/components/BaseButton.vue';
-    import { useRouter } from 'vue-router';
-    import { onMounted, ref, computed } from 'vue';
-    import { useToast } from 'primevue';
-    import moment from 'moment'
-    import { useFilterStore } from '@/stores/filterStore';
-    import BaseInput from '@/components/BaseInput.vue';
-    import { usePermissionStore } from '@/stores/usePermissionStore';
-    import { useSaleStore } from '@/stores/useSalesStore';
+import PageTitle from '@/components/PageTitle.vue';
+import BaseButton from '@/components/BaseButton.vue';
+import BaseCard from '@/components/BaseCard.vue';
+import SubTitle from '@/components/SubTitle.vue';
+import { useRoute, useRouter } from 'vue-router';
+import BaseInput from '@/components/BaseInput.vue';
+import { onMounted, ref, warn, watch } from 'vue';
+import { useToast } from 'primevue/usetoast';
+import BaseLabel from '@/components/BaseLabel.vue';
+import { useSaleStore } from '@/stores/useSalesStore';
+import moment from 'moment';
+import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
 
-    const router = useRouter();
-    const useSales = useSaleStore();
-    const toast = useToast();
-    const usePermission = usePermissionStore();
-    const salesList = ref([]);
-    const filterData = ref({
-        startDate: '',
-        endDate: ''
-    });
+const router = useRouter();
+const route = useRoute();
+const toast = useToast();
+const useSales = useSaleStore();
+const usePaymentMethod = usePaymentMethodStore();
 
-    onMounted(async () => {
-      await useSales.fetchAllSales();
-      salesList.value = useSales.salesList;
-    });
+const userData = ref({});
+const selectedProducts = ref([]);
+const formData = ref({
+    salesId: '',
+    warehouseId: '',
+    customerId: '',
+    paymentId: '1',
+    remark: '',
+    salesDate: moment().format('YYYY-MM-DDTHH:mm'),
+    products: [],
+})
 
-    const columns = [
-        { key: 'id', label: 'Invoice No.' },
-        { key: 'sale_date', label: 'Date', formatter: (row) => moment(row.sale_date).format('dd-mm-yy hh:mm') },
-        { key: 'customer.name', label: 'Customer Name', formatter: (row) => row.customer.name },
-        { key: 'total_amount', label: 'Total' },
-        { key: 'payment_method.name', label: 'Payment', formatter: (row) => row.payment_method.name },
-        { key: 'status.name', label: 'Status', formatter: (row) => row.status.name },
-        { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
-        { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
-        { key: 'updated_by.name', label: 'Updated By', formatter: (row) => row.updated_by.name },
-        { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
-    ];
+// Change route function
+function changeRoute(pathname) {
+    router.push(pathname);
+}
 
-    function changeRoute(pathname) {
-        router.push(pathname);
+onMounted(async () => {
+    userData.value = JSON.parse(localStorage.getItem('user'));
+    await useSales.fetchSales(route.query.id);
+    console.log(useSales.salesList);
+    formData.value = {
+        salesId: useSales.salesList.id,
+        warehouseId: useSales.salesList.warehouse.id,
+        warehouseName: useSales.salesList.warehouse.name,
+        customerName: useSales.salesList.customer.name,
+        customerId: useSales.salesList.customer.id,
+        paymentId: useSales.salesList.payment_method.id,
+        totalAmount: useSales.salesList.total_amount,
+        paidAmount: useSales.salesList.paid_amount,
+        changeAmount: useSales.salesList.due_amount,
+        statusId: useSales.salesList.status.id,
+        remark: useSales.salesList.remark,
+        salesDate: moment(useSales.salesList.sale_date).format('YYYY-MM-DDTHH:mm'),
+    };
+    selectedProducts.value = useSales.salesList.details;
+    await usePaymentMethod.fetchAllPaymentMethod();
+});
+
+// Form Submit function
+async function formSubmit() {
+    let payload = {
+        remark: formData.value.remark,
+        sale_date: formData.value.salesDate,
+        updated_by: userData.value.id,
+        payment_id: formData.value.paymentId,
+        status_id: formData.value.statusId,
+        paid_amount: formData.value.paidAmount,
     }
-
-
-    // Sales delete function
-    async function deleteHandle(id) {
-        await useSales.deleteSales(id);
-        if(useSales.error) {
-            toast.add({ severity: 'error', summary: 'Error Message', detail: useSales.error, life: 3000 });
-            return
-        }
-        if (useSales.data.status === 200) {
-            toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales deleted successfully.', life: 3000 });
-            await useSales.fetchAllSales();
-            salesList.value = useSales.salesList
-        }
+    console.log(payload);
+    await useSales.editSales(payload, route.query.id);
+    if (useSales.error.length) {
+        useSales.error.forEach((msg) => {
+            toast.add({
+              severity: 'error',
+              summary: 'Error Message',
+              detail: msg,
+              life: 3000
+            });
+        });
+        return;
     }
+    toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales update successfully.', life: 3000 });
+    router.push('/sales');
+}
 
 </script>
 
-
-
 <template>
     <div class="p-4">
-        <PageTitle title="Sales List">
+        <!-- Page Title -->
+        <PageTitle title="Update Sales">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
-                    <BaseButton 
-                        v-if="usePermission.can('Sales', 'Create')"
-                        icon="fa fa-circle-plus" 
-                        label="Create" 
-                        severity="primary" 
-                        @click="changeRoute('/sales/create')"  />
+                    <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary"
+                        @click="changeRoute('/sales_return')" />
                 </div>
             </template>
         </PageTitle>
-        <DataTable 
-            :columns="columns" 
-            :rows="salesList" 
-            :pageSize="5" 
-            :editPath="'Update Sales'" 
-            :isLoading="useSales.loading" 
-            @delete="deleteHandle"
-            :defaultSort="{key: 'created_at', order: 'desc'}"
-            :isEdit="!usePermission.can('Sales', 'Update')"
-            :isDelete="!usePermission.can('Sales', 'Delete')"
-        >
-            <template #filters>
-                <div class="flex gap-2">
-                    <BaseInput 
-                        size="sm"
-                        v-model="startDate"
-                        type="date"
-                        placeholder="Start Date"
-                        width="200px"
-                        height="h-[35px]"
+        <!-- Form Section -->
+        <BaseCard class="mt-3 w-full">
+            <template #cardElements>
+                <!-- Form section subtitle -->
+                <SubTitle label="Basic Info" />
+                <div class="grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
+                    <!-- Sales Id Select -->
+                    <BaseInput size="sm" v-model="formData.salesId" label="Sales ID"
+                        placeholder="Sales ID" height="h-[35px]" disabled />
+                    <!-- Customer -->
+                    <BaseInput size="sm" v-model="formData.customerName" label="Customer"
+                        placeholder="Customer" height="h-[35px]" disabled />
+                    <!-- Warehouse -->
+                    <BaseInput size="sm" v-model="formData.warehouseName" label="Warehouse"
+                        placeholder="Warehouse" height="h-[35px]" disabled />
+                    <!-- Expired date input -->
+                    <BaseInput size="sm" v-model="formData.salesDate" label="Sales Date"
+                        height="h-[35px]" type="datetime-local"
                     />
-                    <BaseInput 
-                        size="sm"
-                        v-model="endDate"
-                        type="date"
-                        placeholder="End Date"
-                        width="200px"
-                        height="h-[35px]"
-                    />
-                    <BaseInput 
-                        size="sm"
-                        v-model="searchValue"
-                        placeholder="Search..."
-                        icon="pi pi-search"
-                        width="200px"
-                        height="h-[35px]"
-                    />
+                    <div class="flex flex-col gap-1">
+                        <BaseLabel label="Payment Method:" />
+                        <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
+                            v-model="formData.paymentId">
+                            <option v-for="payment in usePaymentMethod.paymentMethodList" :value="payment.id">{{ payment.name }}</option>
+                        </select>
+                    </div>
+                    <!-- Remark input -->
+                    <BaseInput class="col-span-2" size="sm" v-model="formData.remark" label="Remark"
+                        placeholder="Reason for adjustment" height="h-[35px]" type="text" />
+                </div>
+                <div class="flex justify-end mt-4">
+                    <!-- Save Button -->
+                    <BaseButton label="Save" :isLoading="useSales.loading"
+                        :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary"
+                        @click="formSubmit" :disabled="useSales.loading" />
                 </div>
             </template>
-        </DataTable>
+        </BaseCard>
+        <div class="mt-3 max-h-[250px] overflow-y-auto">
+            <table class="text-black w-full border-collapse border border-gray-200">
+                <thead class="sticky top-0">
+                    <tr class="bg-gray-100 text-right">
+                        <th class="px-2 py-2 text-center">Product Name</th>
+                        <th class="px-2 py-2">Unit Price</th>
+                        <th class="px-2 py-2">Discount Amt</th>
+                        <th class="px-2 py-2">Sales Price</th>
+                        <th class="px-2 py-2">Sales Qty</th>
+                        <th class="px-2 py-2">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr 
+                        class="cursor-pointer hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.id"
+                    >
+                        <td class="border-b border-gray-200 px-2 py-2 text-center">{{ product.product.name }}</td>
+                        <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.price).toLocaleString('en-us') }}</td>
+                        <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.discount_amount).toLocaleString('en-us') }}</td>
+                        <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.discount_price).toLocaleString('en-us') }}</td>
+                        <td class="border-b border-gray-200 px-2 py-2">{{ product.quantity }}</td>
+                        <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.total).toLocaleString('en-us') }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <!-- Total Amounts -->
+        <div class="mt-3 text-black font-semibold flex justify-end">
+            <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
+                <span class="whitespace-nowrap">Total Amount</span>
+                <span class="text-right">:</span>
+                <span class="font-bold text-right">{{ Number(formData.totalAmount).toLocaleString('en-us') }}</span>
+            </div>
+        </div>
+        <!-- Paid Amount -->
+        <div class="mt-3 text-black font-semibold flex justify-end">
+            <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
+                <span class="whitespace-nowrap">Paid Amount</span>
+                <span class="text-right">:</span>
+                <span class="font-bold text-right">{{ Number(formData.paidAmount).toLocaleString('en-us') }}</span>
+            </div>
+        </div>
+        <!-- Change Amount -->
+        <div class="mt-3 text-black font-semibold flex justify-end">
+            <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
+                <span class="whitespace-nowrap">Change Amount</span>
+                <span class="text-right">:</span>
+                <span class="font-bold text-right">{{ Number(formData.changeAmount).toLocaleString('en-us') }}</span>
+            </div>
+        </div>
     </div>
 </template>

@@ -117,9 +117,16 @@ function changeRoute(pathname) {
 
 // Sales delete function
 async function deleteHandle(id) {
-    await useSalesReturn.deleteSalesReturn(id);
-    if (useSalesReturn.error) {
-        toast.add({ severity: 'error', summary: 'Error Message', detail: useSalesReturn.error, life: 3000 });
+    await useSalesReturn.deleteSalesReturn({void_by: JSON.parse(localStorage.getItem('user')).id}, id);
+    if (useSalesReturn.error.length) {
+        useSalesReturn.error.forEach((msg) => {
+            toast.add({
+              severity: 'error',
+              summary: 'Error Message',
+              detail: msg,
+              life: 3000
+            });
+        });
         return
     }
     if (useSalesReturn.data.status === 200) {

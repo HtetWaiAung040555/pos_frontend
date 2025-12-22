@@ -126,8 +126,8 @@
 
     // Sales delete function
     async function deleteHandle(id) {
-        await useSales.deleteSales(id);
-        if(useSales.error) {
+        await useSales.deleteSales({void_by: JSON.parse(localStorage.getItem('user')).id}, id);
+        if(useSales.error.length) {
             toast.add({ severity: 'error', summary: 'Error Message', detail: useSales.error, life: 3000 });
             return
         }
@@ -152,7 +152,7 @@
                         icon="fa fa-circle-plus" 
                         label="Create" 
                         severity="primary" 
-                        @click="changeRoute('/sales/create')"  />
+                        @click="changeRoute('/pos')"  />
                 </div>
             </template>
         </PageTitle>

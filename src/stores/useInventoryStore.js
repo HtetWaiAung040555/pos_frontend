@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import axios from "axios";
+import { normalizeApiError } from "@/utils/NormalizeApiError";
 
 export const useInventoryStore = defineStore('Inventory', {
     state: () => ({
@@ -17,7 +18,7 @@ export const useInventoryStore = defineStore('Inventory', {
                 const response = await axios.get(`/inventories`);
                 this.stockList = response.data.data;
             } catch (err) {
-                this.error = err.message;
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
@@ -28,7 +29,7 @@ export const useInventoryStore = defineStore('Inventory', {
                 const response = await axios.get(`/inventories/${id}`);
                 this.stockList = response.data.data;
             } catch (err) {
-                this.error = err.message
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
@@ -37,11 +38,11 @@ export const useInventoryStore = defineStore('Inventory', {
             this.loading = true;
             try {
                 const response = await axios.post(`/inventories`, formData);
+                console.log(response);
                 this.stockList = response.data.data;
+                console.log(response);
             } catch (err) {
-                if (err.response && err.response.status === 422) {
-                    this.error = err.response.data.errors;
-                }
+               this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
@@ -49,14 +50,12 @@ export const useInventoryStore = defineStore('Inventory', {
         async editStock(formData, id) {
             this.loading = true;
             try {
+                console.log(formData);
                 const response = await axios.put(`/inventories/${id}`, formData);
                 this.stockList = response.data.data;
                 console.log(response);
             } catch (err) {
-                if (err.response && err.response.status === 422) {
-                    // Custom error message
-                    this.error = err.response.data.error;
-                }
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
@@ -64,26 +63,9 @@ export const useInventoryStore = defineStore('Inventory', {
         async adjustStock(formData) {
             this.loading = true;
             try {
-                console.log(formData);
                 const response = await axios.post(`/inventories/adjust`, formData);
             } catch (err) {
-                console.log(err.response);
-                const res = err.response;
-                if (!res) {
-                    this.error = ['Network error'];
-                }
-                // 422 → validation / business errors
-                else if (res.status === 422 && res.data.errors) {
-                    this.error = Object.values(res.data.errors).flat();
-                }
-                // 500 → server error
-                else if (res.status === 500) {
-                    this.error = [res.data.errors.message || 'Server error'];
-                }
-                // fallback
-                else {
-                    this.error = ['Unexpected error occurred'];
-                }
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }

@@ -81,13 +81,16 @@ async function formSubmit() {
     status_id: data.value.statusId,
     updated_by: userData.value.id
   }
-  await useSales.editSales(salesData.value.id, payload);
-  if (useSales.error) {
-    Object.values(useSales.error).forEach((err) => {
-      err.forEach((msg) => {
-        toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-      })
-    })
+  await useSales.editSales(payload, salesData.value.id);
+  if (useSales.error.length) {
+    useSales.error.forEach((msg) => {
+      toast.add({
+        severity: 'error',
+        summary: 'Error Message',
+        detail: msg,
+        life: 3000
+      });
+    });
     return
   }
   if (useSales.salesList) {

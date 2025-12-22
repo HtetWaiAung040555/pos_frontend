@@ -68,8 +68,15 @@
     // Branch delete function
     async function deleteHandle(id) {
         await useProduct.deleteProduct(id);
-        if(useProduct.error) {
-            toast.add({ severity: 'error', summary: 'Error Message', detail: useProduct.error, life: 3000 });
+        if(useProduct.error.length) {
+            useProduct.error.forEach((msg) => {
+                toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+                });
+            });
             return
         }
         if (useProduct.data.status === 200) {

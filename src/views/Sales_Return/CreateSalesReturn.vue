@@ -98,7 +98,7 @@ async function formSubmit() {
         payment_id: formData.value.paymentId,
         remark: formData.value.remark,
         return_date: formData.value.returnDate,
-        status_id: 4,
+        status_id: 7, // set complete status
         created_by: userData.value.id,
         products: selectedProducts.value.map((product) => ({
             sale_detail_id: product.id,
@@ -214,7 +214,7 @@ function onReturnQtyChange(product) {
                 </thead>
                 <tbody>
                     <tr 
-                        class="cursor-pointer hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.id"
+                        class="hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.id"
                     >
                         <td class="border-b border-gray-200 px-2 py-2 text-center">{{ product.product.name }}</td>
                         <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.discount_price) === 0? product.price : product.discount_price }}</td>
@@ -225,6 +225,28 @@ function onReturnQtyChange(product) {
                         <td class="border-b border-gray-200 px-2 py-2">{{ product.returnQty * (Number(product.discount_price) === 0? product.price : product.discount_price) }}</td>
                         <td class="border-b border-gray-200 px-2 py-2 text-center">
                             <BaseButton severity="danger" icon="pi pi-trash" variant="text" @click="removeProduct(index)">Delete</BaseButton>
+                        </td>
+                    </tr>
+                    <tr 
+                        class="text-right"
+                    >
+                        <td colspan="2" class="border-b border-gray-200 px-2 py-2 text-center">
+                            <strong>Total:</strong>
+                        </td>
+                        <td class="border-b border-gray-200 px-2 py-2">
+                            <strong>
+                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity)), 0).toLocaleString('en-us') }}
+                            </strong>
+                        </td>
+                        <td class="border-b border-gray-200 px-2 py-2">
+                            <strong>
+                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.returnQty)), 0).toLocaleString('en-us') }}
+                            </strong>
+                        </td>
+                        <td class="border-b border-gray-200 px-2 py-2">
+                            <strong>
+                                {{ selectedProducts.reduce((sum, product) => sum + (product.returnQty * (Number(product.discount_price) === 0? product.price : product.discount_price)), 0).toLocaleString('en-us') }}
+                            </strong>
                         </td>
                     </tr>
                 </tbody>

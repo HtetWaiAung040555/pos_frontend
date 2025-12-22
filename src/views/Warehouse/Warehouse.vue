@@ -59,8 +59,15 @@
     // Warehouse delete function
     async function deleteHandle(id) {
         await useWarehouse.deleteWarehouse(id);
-        if(useWarehouse.error) {
-            toast.add({ severity: 'error', summary: 'Error Message', detail: useWarehouse.error, life: 3000 });
+        if(useWarehouse.error.length) {
+            useWarehouse.error.forEach((msg) => {
+                toast.add({
+                    severity: 'error',
+                    summary: 'Error Message',
+                    detail: msg,
+                    life: 3000
+                });
+            });
             return
         }
         if (useWarehouse.data.status === 200) {

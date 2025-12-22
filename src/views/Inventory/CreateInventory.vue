@@ -88,12 +88,15 @@ import moment from 'moment';
             created_by: userData.value.id,
         };
         await useInventory.addStock(formData.value);
-        if(useInventory.error) {
-            Object.values(useInventory.error).forEach((err) => {
-                err.forEach((msg) => {
-                    toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-                })
-            })
+        if(useInventory.error.length) {
+            useInventory.error.forEach((msg) => {
+                toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+                });
+            });
             return
         }
         if (useInventory.stockList) {

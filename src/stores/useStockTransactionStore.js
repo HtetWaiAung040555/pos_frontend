@@ -1,3 +1,4 @@
+import { normalizeApiError } from "@/utils/NormalizeApiError";
 import axios from "axios";
 import { defineStore } from "pinia";
 
@@ -6,7 +7,7 @@ export const useStockTransactionStore = defineStore('Stock Transaction', {
         list: [],
         loading: false,
         deleteLoading: false,
-        error: null,
+        error: [],
         data: null
 
     }),
@@ -19,7 +20,7 @@ export const useStockTransactionStore = defineStore('Stock Transaction', {
                 console.log(response.data.data);
                 this.list = response.data.data;
             } catch (err) {
-                this.error = err.message;
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }

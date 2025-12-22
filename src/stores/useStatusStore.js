@@ -1,11 +1,12 @@
 import { defineStore } from "pinia";
 import axios from "axios";
+import { normalizeApiError } from "@/utils/NormalizeApiError";
 
 export const useStatusStore = defineStore('status', {
     state: () => ({
         statusList: [],
         loading: false,
-        error: null,
+        error: [],
     }),
 
     actions: {
@@ -15,7 +16,7 @@ export const useStatusStore = defineStore('status', {
                 const response = await axios.get(`/statuses`);
                 this.statusList = response.data.data;
             } catch (err) {
-                this.error = err.message;
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }

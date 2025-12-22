@@ -117,7 +117,7 @@ async function addProduct(product) {
     ];
     selectedPId.value = product.id;
   }
-  
+
 }
 
 function openDialog(product) {
@@ -202,20 +202,26 @@ async function holdSale() {
     products: selectedProducts.value.map(p => ({
       product_id: p.id,
       quantity: p.qty,
-      price: p.price
+      price: p.price,
+      discount_amount: Number(p.discount_amount) || 0,
+      discount_price: p.discount_price || 0,
+      promotion_id: p.promotion_id || null,
     })),
-    payment_id: 1,
+    payment_id: selectedCustomer.value?.is_default ? 1 : 3,
     sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
     status_id: useStatus.statusList.find(el => el.name === 'Hold').id,
     created_by: JSON.parse(localStorage.getItem('user')).id,
   };
   await useSales.addSales(payload);
-  if (useSales.error) {
-    Object.values(useSales.error).forEach((err) => {
-      err.forEach((msg) => {
-        toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-      })
-    })
+  if (useSales.error.length) {
+    useSales.error.forEach((msg) => {
+      toast.add({
+        severity: 'error',
+        summary: 'Error Message',
+        detail: msg,
+        life: 3000
+      });
+    });
     return
   }
   if (useSales.salesList) {
@@ -311,12 +317,15 @@ async function onPayClick() {
       updated_by: JSON.parse(localStorage.getItem('user')).id
     }
     await useSales.editSales(selectedHold.value.id, payload);
-    if (useSales.error) {
-      Object.values(useSales.error).forEach((err) => {
-        err.forEach((msg) => {
-          toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-        })
-      })
+    if (useSales.error.length) {
+      useSales.error.forEach((msg) => {
+      toast.add({
+        severity: 'error',
+        summary: 'Error Message',
+        detail: msg,
+        life: 3000
+      });
+    });
       return
     }
     if (useSales.salesList) {
@@ -338,17 +347,20 @@ async function onPayClick() {
       })),
       payment_id: selectedCustomer.value?.is_default ? 1 : 3,
       sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
-      status_id: useStatus.statusList.find(el => el.name === 'Pending').id,
+      status_id: useStatus.statusList.find(el => el.name === 'Hold').id,
       created_by: JSON.parse(localStorage.getItem('user')).id,
     };
     console.log(payload);
     await useSales.addSales(payload);
-    if (useSales.error) {
-      Object.values(useSales.error).forEach((err) => {
-        err.forEach((msg) => {
-          toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-        })
-      })
+    if (useSales.error.length) {
+      useSales.error.forEach((msg) => {
+        toast.add({
+          severity: 'error',
+          summary: 'Error Message',
+          detail: msg,
+          life: 3000
+        });
+      });
       return
     }
     if (useSales.salesList) {
@@ -428,14 +440,17 @@ async function onPayClick() {
                         <span class="font-semibold">{{ Number(item.price).toLocaleString() }}</span>
                       </div>
                       <div>
-                        <span v-if="item.promotion_id" class="font-semibold">Discount: [ - {{ item.discount_type === 'AMOUNT' ? Number(item.discount_value).toLocaleString()+" Ks." : item.discount_value+'%' }} ]</span>
+                        <span v-if="item.promotion_id" class="font-semibold">Discount: [ - {{ item.discount_type ===
+                          'AMOUNT' ?
+                          Number(item.discount_value).toLocaleString()+" Ks." : item.discount_value+'%' }} ]</span>
                       </div>
                     </div>
                   </td>
                   <td class="border-b p-2 border-gray-200 text-end font-semibold">
                     <div class="flex flex-col justify-between">
                       <span class="font-semibold">{{ (item.qty * item.price).toLocaleString('en-us') }}</span>
-                      <span v-if="item.promotion_id" class="font-semibold">- {{ (item.qty * item.discount_amount).toLocaleString('en-us') }}</span>
+                      <span v-if="item.promotion_id" class="font-semibold">- {{ (item.qty *
+                        item.discount_amount).toLocaleString('en-us') }}</span>
                     </div>
                   </td>
                   <td class="border-b p-2 border-gray-200">
@@ -449,7 +464,8 @@ async function onPayClick() {
           <div class="flex justify-end items-center">
             <span colspan="2" class="p-2 font-semibold text-end">Total :</span>
             <span colspan="2" class="p-2 text-end font-semibold">
-              Ks. {{selectedProducts.reduce((sum, item) => sum + (item.qty * (item.promotion_id? item.discount_price : item.price)), 0).toLocaleString('en-us')}}
+              Ks. {{selectedProducts.reduce((sum, item) => sum + (item.qty * (item.promotion_id ? item.discount_price :
+                item.price)), 0).toLocaleString('en-us')}}
             </span>
           </div>
 

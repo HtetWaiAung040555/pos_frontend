@@ -1,146 +1,149 @@
 <script setup>
-    import { watch, onMounted, ref, computed } from 'vue';
-    import BaseButton from '@/components/BaseButton.vue';
-    import { useRoute, useRouter } from 'vue-router';
-    import BaseInput from '@/components/BaseInput.vue';
-    import BaseTextarea from '@/components/BaseTextarea.vue';
-    import BaseLabel from '@/components/BaseLabel.vue';
-    import { KnobStyle, useToast } from 'primevue';
-    import { Select } from 'primevue';
-    import moment from 'moment';
-    import { useWalletStore } from '@/stores/useWalletStore';
-    import { useCustomerStore } from '@/stores/useCustomerStore';
-    import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
+import { watch, onMounted, ref, computed } from 'vue';
+import BaseButton from '@/components/BaseButton.vue';
+import { useRoute, useRouter } from 'vue-router';
+import BaseInput from '@/components/BaseInput.vue';
+import BaseTextarea from '@/components/BaseTextarea.vue';
+import BaseLabel from '@/components/BaseLabel.vue';
+import { KnobStyle, useToast } from 'primevue';
+import { Select } from 'primevue';
+import moment from 'moment';
+import { useWalletStore } from '@/stores/useWalletStore';
+import { useCustomerStore } from '@/stores/useCustomerStore';
+import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
 
-    const router = useRouter();
-    const route = useRoute();
-    const toast = useToast();
+const router = useRouter();
+const route = useRoute();
+const toast = useToast();
 
-    const useWallet = useWalletStore();
-    const useCustomer = useCustomerStore();
-    const usePaymentMethod = usePaymentMethodStore();
+const useWallet = useWalletStore();
+const useCustomer = useCustomerStore();
+const usePaymentMethod = usePaymentMethodStore();
 
-    const data = ref({
-      pay_date: '',
-    });
-    const userData = ref({});
-    const selectedCustomer = ref(null);
-    const selectedPaymentMethod = ref(null);
-    const currency = "Ks. "
+const data = ref({
+  pay_date: '',
+});
+const userData = ref({});
+const selectedCustomer = ref(null);
+const selectedPaymentMethod = ref(null);
+const currency = "Ks. "
 
-    const beforeBalance= ref(0);
+const beforeBalance = ref(0);
 
-    const oldTopUpAmount = ref(0);
-    const oldCustomerId = ref(null);
-    const errorMessage = ref('');
-    const updateAllowed = ref(true);
+const oldTopUpAmount = ref(0);
+const oldCustomerId = ref(null);
+const errorMessage = ref('');
+const updateAllowed = ref(true);
 
-    // Change route function
-    function changeRoute(pathname) {
-        router.push(pathname);
-    }
+// Change route function
+function changeRoute(pathname) {
+  router.push(pathname);
+}
 
-    onMounted(async () => {
-        await useWallet.fetchWallet(route.query.id);
-        await usePaymentMethod.fetchAllPaymentMethod();
-        await useCustomer.fetchAllCustomer();
-        
-        data.value = useWallet.walletList;
+onMounted(async () => {
+  await useWallet.fetchWallet(route.query.id);
+  await usePaymentMethod.fetchAllPaymentMethod();
+  await useCustomer.fetchAllCustomer();
 
-        oldTopUpAmount.value = Number(useWallet.walletList.amount);
-        oldCustomerId.value = useWallet.walletList.customer.id;
+  data.value = useWallet.walletList;
 
-        data.value.pay_date = moment(useWallet.walletList.pay_date).format('YYYY-MM-DD HH:mm:ss');
-        userData.value = JSON.parse(localStorage.getItem('user'));
-        selectedPaymentMethod.value = usePaymentMethod.paymentMethodList.filter(el => el.id === data.value.payment_method.id)[0];
-        selectedCustomer.value = useCustomer.customerList.filter(el => el.id === data.value.customer.id)[0];
-    });
+  oldTopUpAmount.value = Number(useWallet.walletList.amount);
+  oldCustomerId.value = useWallet.walletList.customer.id;
 
-    //WALLET BALANCE AMOUNT SLIP
-    watch(selectedCustomer, async (newCustomer) => {
-        beforeBalance.value = 0;
-        errorMessage.value = "";        
-        updateAllowed.value = true; 
+  data.value.pay_date = moment(useWallet.walletList.pay_date).format('YYYY-MM-DD HH:mm:ss');
+  userData.value = JSON.parse(localStorage.getItem('user'));
+  selectedPaymentMethod.value = usePaymentMethod.paymentMethodList.filter(el => el.id === data.value.payment_method.id)[0];
+  selectedCustomer.value = useCustomer.customerList.filter(el => el.id === data.value.customer.id)[0];
+});
 
-        if (newCustomer?.id) {
-            const customer = await useCustomer.fetchSingleCustomer(newCustomer.id);
+//WALLET BALANCE AMOUNT SLIP
+watch(selectedCustomer, async (newCustomer) => {
+  beforeBalance.value = 0;
+  errorMessage.value = "";
+  updateAllowed.value = true;
 
-            // Check Customer Changes (same cus = substract, new cus = original)
-            if (oldCustomerId.value === newCustomer.id){
-              beforeBalance.value = Number(customer.balance || 0) - Number(oldTopUpAmount.value);
-              
-               //For case - when the customer already used the wrong top-up amount
-              if (customer.balance < oldTopUpAmount.value) {
-                  errorMessage.value = "Disclaimer: NOT SAFE. Customer already used the top up amount!";
-                  //updateAllowed.value = false;
-              }
+  if (newCustomer?.id) {
+    const customer = await useCustomer.fetchSingleCustomer(newCustomer.id);
 
-            }else {
-              beforeBalance.value = Number(customer?.balance || 0);
-            }
-        }
-    });
+    // Check Customer Changes (same cus = substract, new cus = original)
+    if (oldCustomerId.value === newCustomer.id) {
+      beforeBalance.value = Number(customer.balance || 0) - Number(oldTopUpAmount.value);
 
-    const topUpAmount = computed(() => Number(data.value.amount) || 0);
-
-    const afterBalance = computed(() => {
-        return (Number(beforeBalance.value) || 0) + (Number(topUpAmount.value) || 0);
-    });
-
-
-    // Update function
-    async function formSubmit() {
-      
-        let updatedData = {
-            customer_id: selectedCustomer.value.id,
-            amount: Number(data.value.amount),
-            remark: data.value.remark,
-            pay_date: data.value.pay_date,
-            payment_id: selectedPaymentMethod.value.id,
-            updated_by: userData.value.id
-        }
-
-        await useWallet.editWallet(updatedData, route.query.id);
-
-        if(useWallet.error) {
-            Object.values(useWallet.error).forEach((err) => {
-                err.forEach((msg) => {
-                    toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-                })
-            })
-            return
-        }
-
-        if (useWallet.walletList) {
-            toast.add({ severity: 'success', summary: 'Success Message', detail: 'Wallet top up updated successfully.', life: 3000 });
-            router.push('/wallet');
-        }
-    }
-
-    async function formSubmitAndPrint() {
-      try {
-        await formSubmit();
-      } catch (err) {
-        console.error('Error submitting before print', err);
+      //For case - when the customer already used the wrong top-up amount
+      if (customer.balance < oldTopUpAmount.value) {
+        errorMessage.value = "Disclaimer: NOT SAFE. Customer already used the top up amount!";
+        //updateAllowed.value = false;
       }
-      printSlip();
+
+    } else {
+      beforeBalance.value = Number(customer?.balance || 0);
     }
+  }
+});
 
-    function printSlip() {
-        const slip = document.getElementById('slip-section');
-        if (!slip) {
-        alert('Slip section not found');
-        return;
-        }
+const topUpAmount = computed(() => Number(data.value.amount) || 0);
 
-        const printWindow = window.open('', '', 'width=400,height=600')
-        if (!printWindow) {
-        alert('Unable to open print window. Please allow popups.');
-        return;
-        }
+const afterBalance = computed(() => {
+  return (Number(beforeBalance.value) || 0) + (Number(topUpAmount.value) || 0);
+});
 
-        const doc = printWindow.document;
-        const html = `
+
+// Update function
+async function formSubmit() {
+
+  let updatedData = {
+    customer_id: selectedCustomer.value.id,
+    amount: Number(data.value.amount),
+    remark: data.value.remark,
+    pay_date: data.value.pay_date,
+    payment_id: selectedPaymentMethod.value.id,
+    updated_by: userData.value.id
+  }
+
+  await useWallet.editWallet(updatedData, route.query.id);
+
+  if (useWallet.error.length) {
+    useWallet.error.forEach((msg) => {
+      toast.add({
+        severity: 'error',
+        summary: 'Error Message',
+        detail: msg,
+        life: 3000
+      });
+    });
+    return
+  }
+
+  if (useWallet.walletList) {
+    toast.add({ severity: 'success', summary: 'Success Message', detail: 'Wallet top up updated successfully.', life: 3000 });
+    router.push('/wallet');
+  }
+}
+
+async function formSubmitAndPrint() {
+  try {
+    await formSubmit();
+  } catch (err) {
+    console.error('Error submitting before print', err);
+  }
+  printSlip();
+}
+
+function printSlip() {
+  const slip = document.getElementById('slip-section');
+  if (!slip) {
+    alert('Slip section not found');
+    return;
+  }
+
+  const printWindow = window.open('', '', 'width=400,height=600')
+  if (!printWindow) {
+    alert('Unable to open print window. Please allow popups.');
+    return;
+  }
+
+  const doc = printWindow.document;
+  const html = `
         <!doctype html>
         <html>
             <head>
@@ -177,27 +180,22 @@
         </html>
         `;
 
-        doc.open();
-        doc.write(html);
-        doc.close();
+  doc.open();
+  doc.write(html);
+  doc.close();
 
-        printWindow.focus();
-        setTimeout(() => {
-        printWindow.print();
-        }, 500);
-    }
+  printWindow.focus();
+  setTimeout(() => {
+    printWindow.print();
+  }, 500);
+}
 </script>
 
 <template>
   <div class="p-4">
     <div class="flex justify-between items-center pb-2 mb-4">
       <h3 class="text-black text-xl font-bold">Update Top Up Wallet</h3>
-      <BaseButton 
-        icon="fa fa-chevron-left" 
-        label="Back" 
-        severity="secondary" 
-        @click="changeRoute('/wallet')"
-      />
+      <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary" @click="changeRoute('/wallet')" />
     </div>
     <div class="flex gap-4 items-start">
       <!-- FORM -->
@@ -205,82 +203,46 @@
         <!-- Customer -->
         <div class="flex flex-col">
           <BaseLabel label="Customer" :isRequire="true" />
-          <Select 
-            v-model="selectedCustomer" 
-            :options="useCustomer.customerList" 
-            showClear
-            filter
-            optionLabel="name"
-            placeholder="Select a customer"
-            class="w-[350px] h-[35px]" />
+          <Select v-model="selectedCustomer" :options="useCustomer.customerList" showClear filter optionLabel="name"
+            placeholder="Select a customer" class="w-[350px] h-[35px]" />
         </div>
         <!-- Pay date Input -->
-        <BaseInput
-            size="sm"
-            v-model="data.pay_date"
-            label="Pay Date"
-            placeholder="Pay Date"
-            width="300px"
-            height="h-[35px]"
-            type="datetime-local"
-        />
+        <BaseInput size="sm" v-model="data.pay_date" label="Pay Date" placeholder="Pay Date" width="300px"
+          height="h-[35px]" type="datetime-local" />
         <!-- Amount -->
         <div class="flex flex-col">
           <BaseLabel label="Top Up Amount :" />
-          <BaseInput
-            size="sm"
-            v-model="data.amount"
-            type="number"
-            width="350px"
-            height="h-[35px]"
-          />
+          <BaseInput size="sm" v-model="data.amount" type="number" width="350px" height="h-[35px]" />
         </div>
         <!-- Payment Method Select -->
         <div class="flex flex-col gap-y-1">
-            <BaseLabel 
-                label="Payment Method"
-                :isRequire="true"
-            />
-            <Select 
-                v-model="selectedPaymentMethod" 
-                :options="usePaymentMethod.paymentMethodList" 
-                showClear
-                filter
-                optionLabel="name"
-                placeholder="Select a payment method"
-                class="w-[300px] h-[35px] items-center" 
-            />
+          <BaseLabel label="Payment Method" :isRequire="true" />
+          <Select v-model="selectedPaymentMethod" :options="usePaymentMethod.paymentMethodList" showClear filter
+            optionLabel="name" placeholder="Select a payment method" class="w-[300px] h-[35px] items-center" />
         </div>
 
         <!-- Remark -->
         <div class="flex flex-col col-span-2">
           <BaseLabel label="Remark:" />
-          <BaseTextarea
-            v-model="data.remark"
-            placeholder="Write Remark"
-            autoResize
-            class="w-full text-black"
-          />
+          <BaseTextarea v-model="data.remark" placeholder="Write Remark" autoResize class="w-full text-black" />
         </div>
-      
+
         <!-- Error for case - when the customer already used the wrong top-up amount -->
         <!-- <div v-if="errorMessage" class="col-span-2 text-red-500 text-sm font-semibold">
           {{ errorMessage }}
         </div> -->
 
         <div class="flex gap-3 mt-5 col-span-2">
-          <BaseButton label="Submit" @click="formSubmit"/>
-          <BaseButton label="Submit & Print" @click="formSubmitAndPrint"/>
+          <BaseButton label="Submit" @click="formSubmit" />
+          <BaseButton label="Submit & Print" @click="formSubmitAndPrint" />
         </div>
       </div>
 
       <!-- SLIP  -->
-      <div 
-        id="slip-section"
+      <div id="slip-section"
         class="flex-[1.8] max-w-md w-full mx-auto p-6 bg-white shadow-lg border border-gray-300 rounded-sm text-sm font-mono text-black">
         <!-- Header -->
-        <header 
-          style="
+        <header style="
             text-align: center;
             padding-bottom: 6px;
             margin-bottom: 6px;
@@ -291,16 +253,14 @@
         </header>
 
         <!-- Info -->
-        <div
-          style="
+        <div style="
             display: flex;
             justify-content: space-between;
             font-size: 12px;
             margin-bottom: 8px;
             padding-bottom: 4px;
             border-bottom: 1px dashed black;
-          "
-        >
+          ">
           <div>
             <div><strong>Customer:</strong> {{ selectedCustomer?.name }}</div>
             <div><strong>Date:</strong> {{ moment(data.pay_date).format('DD/MM/YY HH:mm') }}</div>
@@ -320,8 +280,7 @@
             <span style="font-weight: bold;">{{ currency + Number(data.amount).toLocaleString() }}</span>
           </div>
           <!-- after -->
-          <div
-            style="
+          <div style="
               display: flex;
               justify-content: space-between;
               font-size: large;
@@ -333,8 +292,7 @@
         </div>
 
         <!-- Footer -->
-        <footer
-          style="
+        <footer style="
             text-align: center;
             border-top: 1px dashed black;
             padding-top: 8px;

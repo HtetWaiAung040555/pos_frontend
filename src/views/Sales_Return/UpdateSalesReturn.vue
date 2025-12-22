@@ -9,9 +9,6 @@ import BaseInput from '@/components/BaseInput.vue';
 import { onMounted, ref, warn, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import BaseLabel from '@/components/BaseLabel.vue';
-import { Select } from 'primevue';
-import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
-import { errMsgList } from '@/utils/const';
 import { useSaleStore } from '@/stores/useSalesStore';
 import { useSalesReturnStore } from '@/stores/useSalesReturnStore';
 import moment from 'moment';
@@ -25,21 +22,7 @@ const useSalesReturn = useSalesReturnStore();
 const usePaymentMethod = usePaymentMethodStore();
 
 const userData = ref({});
-const salesList = ref([]);
-const selectedSales = ref({
-    customer: {
-        id: '',
-        name: '',
-    },
-    warehouse: {
-        id: '',
-        name: '',
-    }
-});
 const selectedProducts = ref([]);
-const errorMsg = ref({
-    qty: ""
-});
 const formData = ref({
     salesId: '',
     warehouseId: '',
@@ -193,7 +176,7 @@ function onReturnQtyChange(product) {
                 </thead>
                 <tbody>
                     <tr 
-                        class="cursor-pointer hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.id"
+                        class="hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.id"
                     >
                         <td class="border-b border-gray-200 px-2 py-2 text-center">{{ product.product.name }}</td>
                         <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.price).toLocaleString('en-us') }}</td>
@@ -204,6 +187,28 @@ function onReturnQtyChange(product) {
                         <td class="border-b border-gray-200 px-2 py-2">{{ (product.quantity * Number(product.price)).toLocaleString('en-us') }}</td>
                         <td class="border-b border-gray-200 px-2 py-2 text-center">
                             <BaseButton severity="danger" icon="pi pi-trash" variant="text" @click="removeProduct(index)">Delete</BaseButton>
+                        </td>
+                    </tr>
+                    <tr 
+                        class="text-right"
+                    >
+                        <td colspan="2" class="border-b border-gray-200 px-2 py-2 text-center">
+                            <strong>Total:</strong>
+                        </td>
+                        <td class="border-b border-gray-200 px-2 py-2">
+                            <strong>
+                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.sales_detail.quantity)), 0).toLocaleString('en-us') }}
+                            </strong>
+                        </td>
+                        <td class="border-b border-gray-200 px-2 py-2">
+                            <strong>
+                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity)), 0).toLocaleString('en-us') }}
+                            </strong>
+                        </td>
+                        <td class="border-b border-gray-200 px-2 py-2">
+                            <strong>
+                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity) * product.price), 0).toLocaleString('en-us') }}
+                            </strong>
                         </td>
                     </tr>
                 </tbody>

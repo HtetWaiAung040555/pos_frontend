@@ -226,9 +226,14 @@ async function formSubmit() {
 
     await usePromo.editPromo(payload, promoId.value);
 
-    if (usePromo.error) {
-        Object.values(usePromo.error).forEach((err) => {
-            err.forEach((msg) => toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 }));
+    if (usePromo.error.length) {
+        usePromo.error.forEach((msg) => {
+            toast.add({
+            severity: 'error',
+            summary: 'Error Message',
+            detail: msg,
+            life: 3000
+            });
         });
         return;
     }
@@ -323,7 +328,7 @@ async function formSubmit() {
                 </div>
 
                 <div class="flex justify-end mt-4">
-                    <BaseButton label="Save" :isLoading="usePromo.loading" :icon="usePromo.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary" @click="formSubmit" :disabled="usePromo.loading" />
+                    <BaseButton label="Update" :isLoading="usePromo.loading" :icon="usePromo.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary" @click="formSubmit" :disabled="usePromo.loading" />
                 </div>
             </template>
         </BaseCard>

@@ -103,12 +103,15 @@
         //     status_id: status.value? '1' : '2'
         // };
         await useProduct.addProduct(fd);
-        if(useProduct.error) {
-            Object.values(useProduct.error).forEach((err) => {
-                err.forEach((msg) => {
-                    toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-                })
-            })
+        if(useProduct.error.length) {
+            useProduct.error.forEach((msg) => {
+                toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+                });
+            });
             return
         }
         if (useProduct.productList) {
