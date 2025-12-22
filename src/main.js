@@ -62,7 +62,9 @@ import CreateSalesReturn from './views/Sales_Return/CreateSalesReturn.vue';
 import UpdateSalesReturn from './views/Sales_Return/UpdateSalesReturn.vue';
 import UpdateSales from './views/Sales/UpdateSales.vue';
 import StockTransaction from './views/Stock_Transaction/StockTransaction.vue';
-
+import Supplier from './views/Supplier/Supplier.vue';
+import CreateSupplier from './views/Supplier/CreateSupplier.vue';
+import UpdateSupplier from './views/Supplier/UpdateSupplier.vue';
 
 
 
@@ -120,6 +122,9 @@ const router = createRouter({
         {path: '/sales_return', name: 'Sales Return', component: SalesReturn, meta: { requiresAuth: true, permission: { resource: 'Sales return', action: 'View' } }},
         {path: '/sales_return/create', name: 'Create Sales Return', component: CreateSalesReturn, meta: { requiresAuth: true, permission: { resource: 'Sales return', action: 'Create' } }},
         {path: '/sales_return/update', name: 'Update Sales Return', component: UpdateSalesReturn, meta: { requiresAuth: true, permission: { resource: 'Sales return', action: 'Update' } }},
+        {path: '/supplier', name: 'Supplier', component: Supplier, meta: { requiresAuth: true, permission: { resource: 'Supplier', action: 'View' } }},
+        {path: '/supplier/create', name: 'Create Supplier', component: CreateSupplier, meta: { requiresAuth: true, permission: { resource: 'Supplier', action: 'Create' } }},
+        {path: '/supplier/update', name: 'Update Supplier', component: UpdateSupplier, meta: { requiresAuth: true, permission: { resource: 'Supplier', action: 'Update' } }},
         { path: '/', redirect: '/login' }
     ]
 });

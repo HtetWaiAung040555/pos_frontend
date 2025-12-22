@@ -152,6 +152,12 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
         icon: 'fas fa-solid fa-wallet',
         pathname: "/wallet",
         permission: {name: 'Wallet', action: "View"}
+      },
+      { 
+        name: 'Supplier', 
+        icon: 'fas fa-solid fa-truck-arrow-right ', 
+        pathname: "/supplier",
+        permission: {name: 'Supplier', action: "View"}
       }
   ];
 
