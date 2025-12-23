@@ -9,13 +9,13 @@ import { useToast } from 'primevue';
 import moment from 'moment';
 import BaseInput from '@/components/BaseInput.vue';
 import { usePermissionStore } from '@/stores/usePermissionStore';
-import { useSalesReturnStore } from '@/stores/useSalesReturnStore';
+import { usePurchaseStore } from '@/stores/usePurchaseStore';
 
 const router = useRouter();
-const useSalesReturn = useSalesReturnStore();
+const usePurchase = usePurchaseStore();
 const toast = useToast();
 const usePermission = usePermissionStore();
-const returnList = ref([]);
+const purchaseList = ref([]);
 // Date range for API fetch
 const filteredData = ref({
     // Local values bound to datetime-local inputs (format: YYYY-MM-DDTHH:mm)
@@ -29,10 +29,11 @@ const selectedPayment = ref('');
 const searchValue = ref('');
 
 onMounted(async () => {
-    await fetchSalesReturn();
+
+    await fetchPurchaseByDate();
 });
 
-async function fetchSalesReturn() {
+async function fetchPurchaseByDate() {
     // convert local datetime-local strings to backend friendly format (YYYY-MM-DD HH:mm:ss)
     const start = filteredData.value.startedDate
         ? moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss')
@@ -41,34 +42,39 @@ async function fetchSalesReturn() {
         ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss')
         : null;
 
-    await useSalesReturn.fetchAllSalesReturn({
+    // pass plain object to store method (server should accept datetime strings)
+    console.log({
+        start_date: start,
+        end_date: end
+    })
+    await usePurchase.fetchAllPurchase({
         start_date: start,
         end_date: end
     });
-    returnList.value = useSalesReturn.returnList || [];
+    purchaseList.value = usePurchase.purchaseList || [];
     selectedStatus.value = '';
     selectedPayment.value = '';
     searchValue.value = '';
 }
 
 const columns = [
-    { key: 'id', label: 'Return No.' },
-    { key: 'return_date', label: 'Date', formatter: (row) => moment(row.return_date).format('DD-MM-YY hh:mm') },
-    { key: 'customer.name', label: 'Customer Name', formatter: (row) => row.customer.name },
+    { key: 'id', label: 'Purchase No.' },
+    { key: 'purchase_date', label: 'Date', formatter: (row) => moment(row.purchase_date).format('DD-MM-YY hh:mm') },
+    { key: 'supplier.name', label: 'Supplier Name', formatter: (row) => row.supplier.name },
     { key: 'total_amount', label: 'Total' },
-    { key: 'payment_method.name', label: 'Payment', formatter: (row) => row.payment_method.name },
     { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.warehouse.name },
+    { key: 'payment.name', label: 'Payment', formatter: (row) => row.payment.name },
     { key: 'status.name', label: 'Status', formatter: (row) => row.status.name },
-    { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
+    { key: 'created_by', label: 'Created By' },
     { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
-    { key: 'updated_by.name', label: 'Updated By', formatter: (row) => row.updated_by.name },
+    { key: 'updated_by', label: 'Updated By' },
     { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
 ];
 
 // Derived options from fetched data for client-side filters
 const statusOptions = computed(() => {
     const map = new Map();
-    (returnList.value || []).forEach(s => {
+    (purchaseList.value || []).forEach(s => {
         if (s.status && s.status.id) map.set(s.status.id, s.status.name);
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
@@ -76,15 +82,15 @@ const statusOptions = computed(() => {
 
 const paymentOptions = computed(() => {
     const map = new Map();
-    (returnList.value || []).forEach(s => {
-        if (s.payment_method && s.payment_method.id) map.set(s.payment_method.id, s.payment_method.name);
+    (purchaseList.value || []).forEach(s => {
+        if (s.payment && s.payment.id) map.set(s.payment.id, s.payment.name);
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
 });
 
 // Final list shown in table after client-side filtering
-const displayedSalesReturn = computed(() => {
-    let list = (returnList.value || []).slice();
+const displayedSales = computed(() => {
+    let list = (purchaseList.value || []).slice();
 
     // filter by status
     if (selectedStatus.value) {
@@ -106,8 +112,6 @@ const displayedSalesReturn = computed(() => {
         });
     }
 
-    console.log(list);
-
     return list;
 });
 
@@ -117,22 +121,15 @@ function changeRoute(pathname) {
 
 // Sales delete function
 async function deleteHandle(id) {
-    await useSalesReturn.deleteSalesReturn({void_by: JSON.parse(localStorage.getItem('user')).id}, id);
-    if (useSalesReturn.error.length) {
-        useSalesReturn.error.forEach((msg) => {
-            toast.add({
-              severity: 'error',
-              summary: 'Error Message',
-              detail: msg,
-              life: 3000
-            });
-        });
+    await usePurchase.deletePurchase({ void_by: JSON.parse(localStorage.getItem('user')).id }, id);
+    if (usePurchase.error.length) {
+        toast.add({ severity: 'error', summary: 'Error Message', detail: usePurchase.error, life: 3000 });
         return
     }
-    if (useSalesReturn.data.status === 200) {
-        toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales deleted successfully.', life: 3000 });
+    if (usePurchase.data.status === 200) {
+        toast.add({ severity: 'success', summary: 'Success Message', detail: 'Purchase deleted successfully.', life: 3000 });
         // refetch with current date range
-        await fetchSalesReturn();
+        await fetchPurchaseByDate();
     }
 }
 
@@ -142,24 +139,24 @@ async function deleteHandle(id) {
 
 <template>
     <div class="p-4">
-        <PageTitle title="Sales Return List">
+        <PageTitle title="Purchase List">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
-                    <BaseButton v-if="usePermission.can('Sales return', 'Create')" icon="fa fa-circle-plus" label="Create"
-                        severity="primary" @click="changeRoute('/sales_return/create')" />
+                    <BaseButton v-if="usePermission.can('Purchase', 'Create')" icon="fa fa-circle-plus" label="Create"
+                        severity="primary" @click="changeRoute('/purchase/create')" />
                 </div>
             </template>
         </PageTitle>
-        <DataTable :columns="columns" :rows="displayedSalesReturn" :pageSize="5" :editPath="'Update Sales Return'"
-            :isLoading="useSalesReturn.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
-            :isEdit="!usePermission.can('Sales return', 'Update')" :isDelete="!usePermission.can('Sales return', 'Delete')">
+        <DataTable :columns="columns" :rows="displayedSales" :pageSize="5" :editPath="'Update Purchase'"
+            :isLoading="usePurchase.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
+            :isEdit="!usePermission.can('Purchase', 'Update')" :isDelete="!usePermission.can('Purchase', 'Delete')">
             <template #filters>
                 <div class="flex gap-2 items-center">
                     <BaseInput size="sm" v-model="filteredData.startedDate" type="datetime-local"
                         placeholder="Start DateTime" width="240px" height="h-[35px]" />
                     <BaseInput size="sm" v-model="filteredData.endedDate" type="datetime-local"
                         placeholder="End DateTime" width="240px" height="h-[35px]" />
-                    <BaseButton label="Fetch" severity="primary" @click="fetchSalesReturn" />
+                    <BaseButton label="Fetch" severity="primary" @click="fetchPurchaseByDate" />
 
                     <select v-model="selectedStatus" class="border p-2 rounded text-sm">
                         <option value="">All Status</option>

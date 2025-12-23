@@ -9,22 +9,41 @@ import BaseInput from '@/components/BaseInput.vue';
 import { onMounted, ref, warn, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import BaseLabel from '@/components/BaseLabel.vue';
-import { useSalesReturnStore } from '@/stores/useSalesReturnStore';
+import { Select } from 'primevue';
+import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
+import { errMsgList } from '@/utils/const';
 import moment from 'moment';
 import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
+import { usePurchaseReturnStore } from '@/stores/usePurchaseReturn';
+import { usePurchaseStore } from '@/stores/usePurchaseStore';
 
 const router = useRouter();
 const route = useRoute();
 const toast = useToast();
-const useSalesReturn = useSalesReturnStore();
+const usePurchase = usePurchaseStore();
+const usePurchaseReturn = usePurchaseReturnStore();
 const usePaymentMethod = usePaymentMethodStore();
 
 const userData = ref({});
+const purchaseList = ref([]);
+const selectedPurchase = ref({
+    supplier: {
+        id: '',
+        name: '',
+    },
+    warehouse: {
+        id: '',
+        name: '',
+    }
+});
 const selectedProducts = ref([]);
+const errorMsg = ref({
+    qty: ""
+});
 const formData = ref({
-    salesId: '',
+    purchaseId: '',
     warehouseId: '',
-    customerId: '',
+    supplierId: '',
     paymentId: '1',
     remark: '',
     returnDate: moment().format('YYYY-MM-DDTHH:mm'),
@@ -38,20 +57,25 @@ function changeRoute(pathname) {
 
 onMounted(async () => {
     userData.value = JSON.parse(localStorage.getItem('user'));
-    await useSalesReturn.fetchSalesReturn(route.query.id);
-    console.log(useSalesReturn.returnList);
-    formData.value = {
-        salesId: useSalesReturn.returnList.sales.id,
-        warehouseId: useSalesReturn.returnList.warehouse.id,
-        warehouseName: useSalesReturn.returnList.warehouse.name,
-        customerName: useSalesReturn.returnList.customer.name,
-        customerId: useSalesReturn.returnList.customer.id,
-        paymentId: useSalesReturn.returnList.payment_method.id,
-        remark: useSalesReturn.returnList.remark,
-        returnDate: moment(useSalesReturn.returnList.return_date).format('YYYY-MM-DDTHH:mm'),
-    };
-    selectedProducts.value = useSalesReturn.returnList.details;
+    if (route.query.id) {
+        await usePurchase.fetchPurchase(route.query.id);
+        selectedPurchase.value = usePurchase.purchaseList;
+        selectedProducts.value = usePurchase.purchaseList.details;
+        formData.value.paymentId = usePurchase.purchaseList.payment_method.id;
+    }
+    await usePurchase.fetchAllPurchase();
+    purchaseList.value = usePurchase.purchaseList;
     await usePaymentMethod.fetchAllPaymentMethod();
+});
+
+watch(selectedPurchase, (newPurchase) => {
+    if (newPurchase) {
+        selectedProducts.value = newPurchase.details.map((detail) => ({
+            ...detail,
+            returnQty: 0,
+        }));
+        formData.value.paymentId = newPurchase.payment.id;
+    }
 });
 
 // Form Submit function
@@ -61,26 +85,30 @@ async function formSubmit() {
         toast.add({ severity: 'error', summary: 'Validation', detail: 'No products to return.', life: 3000 });
         return;
     }
-    const invalid = selectedProducts.value.some(p => !p.quantity || Number(p.quantity) <= 0);
+    const invalid = selectedProducts.value.some(p => !p.returnQty || Number(p.returnQty) <= 0);
     if (invalid) {
         toast.add({ severity: 'error', summary: 'Validation', detail: 'Return qty must be greater than zero for all products.', life: 3000 });
         return;
     }
 
     let payload = {
+        purchase_id: selectedPurchase.value.id,
+        warehouse_id: selectedPurchase.value.warehouse.id,
+        supplier_id: selectedPurchase.value.supplier.id,
+        payment_id: formData.value.paymentId,
         remark: formData.value.remark,
         return_date: formData.value.returnDate,
-        updated_by: userData.value.id,
-        payment_id: formData.value.paymentId,
+        status_id: 7, // set complete status
+        created_by: userData.value.id,
         products: selectedProducts.value.map((product) => ({
-            sale_detail_id: product.sales_detail.id,
-            quantity: product.quantity,
+            purchase_detail_id: product.id,
+            quantity: product.returnQty,
         })),
     }
     console.log(payload);
-    await useSalesReturn.editSalesReturn(payload, route.query.id);
-    if (useSalesReturn.error.length) {
-        useSalesReturn.error.forEach((msg) => {
+    await usePurchaseReturn.addPurchaseReturn(payload);
+    if (usePurchaseReturn.error.length) {
+        usePurchaseReturn.error.forEach((msg) => {
             toast.add({
               severity: 'error',
               summary: 'Error Message',
@@ -91,7 +119,7 @@ async function formSubmit() {
         return;
     }
     toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales return successfully.', life: 3000 });
-    router.push('/sales_return');
+    router.push('/purchase_return');
 }
 
 // Remove a product row from selectedProducts
@@ -102,11 +130,11 @@ function removeProduct(index) {
 
 // Keep returnQty sane (no negatives) when user types
 function onReturnQtyChange(product) {
-    product.quantity = Number(product.quantity) || 0;
-    if (product.quantity < 0) product.quantity = 0;
+    product.returnQty = Number(product.returnQty) || 0;
+    if (product.returnQty < 0) product.returnQty = 0;
     // If returnQty exceeds the original sold quantity, cap it
-    const soldQty = Number(product.sales_detail.quantity) || 0;
-    if (product.quantity > soldQty) product.quantity = soldQty;
+    const soldQty = Number(product.quantity) || 0;
+    if (product.returnQty > soldQty) product.returnQty = soldQty;
 }
 
 </script>
@@ -114,11 +142,11 @@ function onReturnQtyChange(product) {
 <template>
     <div class="p-4">
         <!-- Page Title -->
-        <PageTitle title="Update Sales Return">
+        <PageTitle title="Create Purchase Return">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary"
-                        @click="changeRoute('/sales_return')" />
+                        @click="changeRoute('/purchase_return')" />
                 </div>
             </template>
         </PageTitle>
@@ -128,19 +156,31 @@ function onReturnQtyChange(product) {
                 <!-- Form section subtitle -->
                 <SubTitle label="Basic Info" />
                 <div class="grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
+                    <!-- Sales Id -->
                     <!-- Sales Id Select -->
-                    <BaseInput size="sm" v-model="formData.salesId" label="Sales ID"
-                        placeholder="Sales ID" height="h-[35px]" disabled />
+                    <div class="flex flex-col gap-y-1">
+                        <BaseLabel 
+                            label="Purchase Invoice ID"
+                        />
+                        <Select 
+                            v-model="selectedPurchase" 
+                            :options="purchaseList" 
+                            showClear
+                            filter
+                            optionLabel="id"
+                            placeholder="Select Purchase Invoice ID"
+                            class="w-[300px] h-[35px] items-center" 
+                        />
+                    </div>
                     <!-- Customer -->
-                    <BaseInput size="sm" v-model="formData.customerName" label="Customer"
+                    <BaseInput size="sm" v-model="selectedPurchase.supplier.name" label="Customer"
                         placeholder="Customer" height="h-[35px]" disabled />
                     <!-- Warehouse -->
-                    <BaseInput size="sm" v-model="formData.warehouseName" label="Warehouse"
+                    <BaseInput size="sm" v-model="selectedPurchase.warehouse.name" label="Warehouse"
                         placeholder="Warehouse" height="h-[35px]" disabled />
                     <!-- Expired date input -->
                     <BaseInput size="sm" v-model="formData.returnDate" label="Expired Date"
-                        height="h-[35px]" type="datetime-local"
-                    />
+                        height="h-[35px]" type="datetime-local" />
                     <div class="flex flex-col gap-1">
                         <BaseLabel label="Payment Method:" />
                         <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
@@ -154,9 +194,9 @@ function onReturnQtyChange(product) {
                 </div>
                 <div class="flex justify-end mt-4">
                     <!-- Save Button -->
-                    <BaseButton label="Update" :isLoading="useSalesReturn.loading"
-                        :icon="useSalesReturn.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary"
-                        @click="formSubmit" :disabled="useSalesReturn.loading" />
+                    <BaseButton label="Save" :isLoading="usePurchase.loading"
+                        :icon="usePurchase.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary"
+                        @click="formSubmit" :disabled="usePurchase.loading" />
                 </div>
             </template>
         </BaseCard>
@@ -178,11 +218,11 @@ function onReturnQtyChange(product) {
                     >
                         <td class="border-b border-gray-200 px-2 py-2 text-center">{{ product.product.name }}</td>
                         <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.price).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ product.sales_detail.quantity }}</td>
+                        <td class="border-b border-gray-200 px-2 py-2">{{ product.quantity }}</td>
                         <td class="border-b border-gray-200 px-2 py-2 text-right">
-                            <input type="number" min="0" :max="product.quantity" class="w-20 text-right px-1 py-1 border rounded" v-model.number="product.quantity" @input="onReturnQtyChange(product)" />
+                            <input type="number" min="0" :max="product.quantity" class="w-20 text-right px-1 py-1 border rounded" v-model.number="product.returnQty" @input="onReturnQtyChange(product)" />
                         </td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ (product.quantity * Number(product.price)).toLocaleString('en-us') }}</td>
+                        <td class="border-b border-gray-200 px-2 py-2">{{ product.returnQty * Number(product.price)}}</td>
                         <td class="border-b border-gray-200 px-2 py-2 text-center">
                             <BaseButton severity="danger" icon="pi pi-trash" variant="text" @click="removeProduct(index)">Delete</BaseButton>
                         </td>
@@ -195,17 +235,17 @@ function onReturnQtyChange(product) {
                         </td>
                         <td class="border-b border-gray-200 px-2 py-2">
                             <strong>
-                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.sales_detail.quantity)), 0).toLocaleString('en-us') }}
-                            </strong>
-                        </td>
-                        <td class="border-b border-gray-200 px-2 py-2">
-                            <strong>
                                 {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity)), 0).toLocaleString('en-us') }}
                             </strong>
                         </td>
                         <td class="border-b border-gray-200 px-2 py-2">
                             <strong>
-                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity) * product.price), 0).toLocaleString('en-us') }}
+                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.returnQty)), 0).toLocaleString('en-us') }}
+                            </strong>
+                        </td>
+                        <td class="border-b border-gray-200 px-2 py-2">
+                            <strong>
+                                {{ selectedProducts.reduce((sum, product) => sum + (product.returnQty * product.price), 0).toLocaleString('en-us') }}
                             </strong>
                         </td>
                     </tr>

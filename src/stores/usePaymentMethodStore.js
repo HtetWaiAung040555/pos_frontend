@@ -16,7 +16,8 @@ export const usePaymentMethodStore = defineStore('payment_method', {
 
     actions: {
         async fetchAllPaymentMethod() {
-            this.loading = true
+            this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/payment_methods`);
                 this.paymentMethodList = response.data.data;
@@ -28,6 +29,7 @@ export const usePaymentMethodStore = defineStore('payment_method', {
         },
         async fetchPaymentMethod(paymentMethodId) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/payment_methods/${paymentMethodId}`);
                 this.paymentMethodList = response.data.data;
@@ -39,6 +41,7 @@ export const usePaymentMethodStore = defineStore('payment_method', {
         },
         async addPaymentMethod(formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/payment_methods`, formData);
                 this.paymentMethodList = response.data.data;
@@ -50,6 +53,7 @@ export const usePaymentMethodStore = defineStore('payment_method', {
         },
         async editPaymentMethod(formData, paymentMethodId) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.put(`/payment_methods/${paymentMethodId}`, formData);
                 this.paymentMethodList = response.data.data;
@@ -61,6 +65,7 @@ export const usePaymentMethodStore = defineStore('payment_method', {
         },
         async deletePaymentMethod(paymentMethodId) {
             this.deleteLoading = true;
+            this.error = [];
             try {
                 const response = await axios.delete(`/payment_methods/${paymentMethodId}`);
                 this.data = response;

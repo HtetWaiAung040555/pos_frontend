@@ -14,6 +14,7 @@ export const useProductStore = defineStore('product', {
     actions: {
         async fetchAllProduct() {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/products`);
                 this.productList = response.data.data;
@@ -25,6 +26,7 @@ export const useProductStore = defineStore('product', {
         },
         async fetchProduct(productId) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/products/${productId}`);
                 this.productList = response.data.data;
@@ -36,6 +38,7 @@ export const useProductStore = defineStore('product', {
         },
         async addProduct(formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/products`, formData);
                 this.productList = response.data.data;
@@ -47,6 +50,7 @@ export const useProductStore = defineStore('product', {
         },
         async editProduct(productId, formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/products/${productId}`, formData)
                 this.productList = response.data.data
@@ -58,6 +62,7 @@ export const useProductStore = defineStore('product', {
         },
         async deleteProduct(productId) {
             this.deleteLoading = true;
+            this.error = [];
             try {
                 const response = await axios.delete(`/products/${productId}`);
                 this.data = response;

@@ -10,9 +10,14 @@ export function normalizeApiError(err) {
         return Object.values(res.data.errors).flat();
     }
 
+    // 401 -> login error
+    if(res.status === 401) {
+        return [res.data?.message || 'Email or password incorrect.']
+    }
+
     // 500 → server error
     if (res.status === 500) {
-        return [res.data?.message || 'Server error'];
+        return [res.data?.details || 'Server error'];
     }
 
     // fallback

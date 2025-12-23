@@ -18,6 +18,7 @@ const props = defineProps({
   isEdit: {type: Boolean, default: true},
   isDelete: {type: Boolean, default: true},
   isAdjust: {type: Boolean, default: false},
+  filename: {type: String, default: 'export'}
 });
 
 const emit = defineEmits(['delete']);
@@ -131,7 +132,7 @@ function exportToExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
 
-    const filename = `export_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'_')}.xlsx`;
+    const filename = `${props.filename}_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'_')}.xlsx`;
     XLSX.writeFile(wb, filename);
   } catch (err) {
     console.error('Export to excel failed', err);

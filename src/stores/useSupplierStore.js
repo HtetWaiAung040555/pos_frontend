@@ -15,6 +15,7 @@ export const useSupplierStore = defineStore('supplier', {
     actions: {
         async fetchAllSupplier() {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/suppliers`);
                 this.supplierList = response.data.data;
@@ -26,6 +27,7 @@ export const useSupplierStore = defineStore('supplier', {
         },
         async fetchSupplier(id) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/suppliers/${id}`);
                 this.supplierList = response.data.data;
@@ -37,6 +39,7 @@ export const useSupplierStore = defineStore('supplier', {
         },
         async fetchLastSupplierId() {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/suppliers/last-id`);
                 this.lastId = response.data.last_id;
@@ -48,6 +51,7 @@ export const useSupplierStore = defineStore('supplier', {
         },
         async addSupplier(formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/suppliers`, formData);
                 this.supplierList = response.data.data;
@@ -59,6 +63,7 @@ export const useSupplierStore = defineStore('supplier', {
         },
         async editSupplier(id, formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.put(`/suppliers/${id}`, formData)
                 this.supplierList = response.data.data
@@ -70,6 +75,7 @@ export const useSupplierStore = defineStore('supplier', {
         },
         async deleteSupplier(id) {
             this.deleteLoading = true;
+            this.error = [];
             try {
                 const response = await axios.delete(`/suppliers/${id}`);
                 this.data = response;
@@ -81,6 +87,7 @@ export const useSupplierStore = defineStore('supplier', {
         },
         async fetchSingleSupplier(id) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/suppliers/${id}`);
                 this.singleSupplier = response.data.data; 

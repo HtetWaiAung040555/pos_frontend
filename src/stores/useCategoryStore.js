@@ -16,7 +16,8 @@ export const useCategoryStore = defineStore('category', {
 
     actions: {
         async fetchAllCategory() {
-            this.loading = true
+            this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/categories`);
                 this.categoryList = response.data.data;
@@ -28,6 +29,7 @@ export const useCategoryStore = defineStore('category', {
         },
         async fetchCategory(categoryId) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/categories/${categoryId}`);
                 this.categoryList = response.data.data;
@@ -39,6 +41,7 @@ export const useCategoryStore = defineStore('category', {
         },
         async addCategory(formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/categories`, formData);
                 this.categoryList = response.data.data;
@@ -50,6 +53,7 @@ export const useCategoryStore = defineStore('category', {
         },
         async editCategory(formData, categoryId) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.put(`/categories/${categoryId}`, formData);
                 this.categoryList = response.data.data;
@@ -61,6 +65,7 @@ export const useCategoryStore = defineStore('category', {
         },
         async deleteCategory(categoryId) {
             this.deleteLoading = true;
+            this.error = [];
             try {
                 const response = await axios.delete(`/categories/${categoryId}`);
                 this.data = response;

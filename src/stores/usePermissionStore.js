@@ -22,6 +22,7 @@ export const usePermissionStore = defineStore('permission', {
         },
         async fetchAllPermission() {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/permissions`);
                 this.permissionList = response.data.data;

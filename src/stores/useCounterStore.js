@@ -17,6 +17,7 @@ export const useCounterStore = defineStore('counter', {
     actions: {
         async fetchAllCounter() {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/counters`);
                 this.counterList = response.data.data;
@@ -28,6 +29,7 @@ export const useCounterStore = defineStore('counter', {
         },
         async fetchCounter(counterId) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/counters/${counterId}`);
                 this.counterList = response.data.data;
@@ -39,6 +41,7 @@ export const useCounterStore = defineStore('counter', {
         },
         async addCounter(formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/counters`, formData);
                 this.counterList = response.data.data;
@@ -50,6 +53,7 @@ export const useCounterStore = defineStore('counter', {
         },
         async editCounter(formData, counterId) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.put(`/counters/${counterId}`, formData)
                 this.counterList = response.data.data
@@ -61,6 +65,7 @@ export const useCounterStore = defineStore('counter', {
         },
         async deleteCounter(counterId) {
             this.deleteLoading = true;
+            this.error = [];
             try {
                 const response = await axios.delete(`/counters/${counterId}`);
                 this.data = response;

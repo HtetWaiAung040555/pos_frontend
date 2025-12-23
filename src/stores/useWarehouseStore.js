@@ -15,10 +15,10 @@ export const useWarehouseStore = defineStore('warehouse', {
     actions: {
         async fetchAllWarehouse() {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/warehouses`);
                 this.warehouseList = response.data.data;
-                
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {
@@ -27,6 +27,7 @@ export const useWarehouseStore = defineStore('warehouse', {
         },      
         async fetchWarehouse(warehouseId) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/warehouses/${warehouseId}`);
                 this.warehouseList = response.data.data;
@@ -38,6 +39,7 @@ export const useWarehouseStore = defineStore('warehouse', {
         },
         async addWarehouse(formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/warehouses`, formData);
                 this.warehouseList = response.data.data;
@@ -49,6 +51,7 @@ export const useWarehouseStore = defineStore('warehouse', {
         },
         async editWarehouse(formData, warehouseId) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.put(`/warehouses/${warehouseId}`, formData);
                 this.warehouseList = response.data.data;
@@ -60,6 +63,7 @@ export const useWarehouseStore = defineStore('warehouse', {
         },
         async deleteWarehouse(warehouseId) {
             this.deleteLoading = true;
+            this.error = [];
             try {
                 const response = await axios.delete(`/warehouses/${warehouseId}`);
                 this.data = response;

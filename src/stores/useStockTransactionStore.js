@@ -14,6 +14,7 @@ export const useStockTransactionStore = defineStore('Stock Transaction', {
     actions: {
         async fetchStockTransactions(filteredData) {
             this.loading = true;
+            this.error = [];
             try {
                 console.log(filteredData);
                 const response = await axios.get(`/stock_transactions?start_date=${filteredData.start_date}&end_date=${filteredData.end_date}&${filteredData.reference_type? reference_type = filteredData.reference_type: ""}`);

@@ -12,6 +12,7 @@ export const useStatusStore = defineStore('status', {
     actions: {
         async fetchAllStatus() {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/statuses`);
                 this.statusList = response.data.data;

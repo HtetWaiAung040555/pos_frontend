@@ -145,7 +145,8 @@ async function deleteHandle(id) {
         <!-- DataTable -->
         <DataTable 
             :columns="columns" :rows="filteredRows" :pageSize="20" :isAction="false"
-            :isLoading="useStockTransaction.loading" :defaultSort="{ key: 'created_at', order: 'desc' }" @delete="deleteHandle">
+            :isLoading="useStockTransaction.loading" :defaultSort="{ key: 'id', order: 'desc' }" @delete="deleteHandle"
+            :filename="'Stock_Transaction'">
             <!-- Filter Section -->
             <template #filters>
                 <div class="flex gap-2 items-center">

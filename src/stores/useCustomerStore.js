@@ -15,6 +15,7 @@ export const useCustomerStore = defineStore('customer', {
     actions: {
         async fetchAllCustomer() {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/customers`);
                 this.customerList = response.data.data;
@@ -26,6 +27,7 @@ export const useCustomerStore = defineStore('customer', {
         },
         async fetchCustomer(id) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/customers/${id}`);
                 this.customerList = response.data.data;
@@ -37,6 +39,7 @@ export const useCustomerStore = defineStore('customer', {
         },
         async fetchLastCustomerId() {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/customers/last-id`);
                 this.lastId = response.data.last_id;
@@ -48,6 +51,7 @@ export const useCustomerStore = defineStore('customer', {
         },
         async addCustomer(formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/customers`, formData);
                 this.customerList = response.data.data;
@@ -59,6 +63,7 @@ export const useCustomerStore = defineStore('customer', {
         },
         async editCustomer(id, formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.put(`/customers/${id}`, formData)
                 this.customerList = response.data.data
@@ -70,6 +75,7 @@ export const useCustomerStore = defineStore('customer', {
         },
         async deleteCustomer(id) {
             this.deleteLoading = true;
+            this.error = [];
             try {
                 const response = await axios.delete(`/customers/${id}`);
                 this.data = response;
@@ -81,6 +87,7 @@ export const useCustomerStore = defineStore('customer', {
         },
         async fetchSingleCustomer(id) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/customers/${id}`);
                 this.singleCustomer = response.data.data; 

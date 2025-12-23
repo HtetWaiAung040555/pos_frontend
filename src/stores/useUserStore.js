@@ -23,6 +23,7 @@ export const useUserStore = defineStore('user', {
     actions: {
         async fetchAllUsers() {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/users`);
                 this.users = response.data.data;
@@ -35,6 +36,7 @@ export const useUserStore = defineStore('user', {
         },
         async fetchUser(userId) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/users/${userId}`);
                 this.users = response.data.data;
@@ -46,6 +48,7 @@ export const useUserStore = defineStore('user', {
         },
         async addUser(formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/users`, formData);
                 this.users = response.data.data;
@@ -57,8 +60,7 @@ export const useUserStore = defineStore('user', {
         },
         async editUser(formData, userId) {
             this.loading = true;
-            console.log(formData);
-            console.log(userId);
+            this.error = [];
             try {
                 const response = await axios.put(`/users/${userId}`, formData);
                 this.users = response.data.data;
@@ -70,6 +72,7 @@ export const useUserStore = defineStore('user', {
         },
         async deleteUser(userId) {
             this.deleteLoading = true;
+            this.error = [];
             try {
                 const response = await axios.delete(`/users/${userId}`);
                 this.data = response;
@@ -81,7 +84,7 @@ export const useUserStore = defineStore('user', {
         },
         async loginUser(formData) {
             this.loading = true;
-            this.error = null;
+            this.error = [];
             try {
                 const response = await axios.post(`/login`, formData);
                 this.userData = JSON.stringify(response.data);
@@ -98,9 +101,7 @@ export const useUserStore = defineStore('user', {
                     }));
                 }
             } catch (err) {
-                if (err.response && err.response.status === 401) {
-                    this.error = ["Email or password incorrect."];
-                }
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }

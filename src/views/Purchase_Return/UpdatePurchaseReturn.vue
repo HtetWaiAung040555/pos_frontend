@@ -6,25 +6,25 @@ import BaseCard from '@/components/BaseCard.vue';
 import SubTitle from '@/components/SubTitle.vue';
 import { useRoute, useRouter } from 'vue-router';
 import BaseInput from '@/components/BaseInput.vue';
-import { onMounted, ref, warn, watch } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import BaseLabel from '@/components/BaseLabel.vue';
-import { useSalesReturnStore } from '@/stores/useSalesReturnStore';
 import moment from 'moment';
 import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
+import { usePurchaseReturnStore } from '@/stores/usePurchaseReturn';
 
 const router = useRouter();
 const route = useRoute();
 const toast = useToast();
-const useSalesReturn = useSalesReturnStore();
+const usePurchaseReturn = usePurchaseReturnStore();
 const usePaymentMethod = usePaymentMethodStore();
 
 const userData = ref({});
 const selectedProducts = ref([]);
 const formData = ref({
-    salesId: '',
+    purchaseId: '',
     warehouseId: '',
-    customerId: '',
+    supplierId: '',
     paymentId: '1',
     remark: '',
     returnDate: moment().format('YYYY-MM-DDTHH:mm'),
@@ -38,19 +38,19 @@ function changeRoute(pathname) {
 
 onMounted(async () => {
     userData.value = JSON.parse(localStorage.getItem('user'));
-    await useSalesReturn.fetchSalesReturn(route.query.id);
-    console.log(useSalesReturn.returnList);
+    await usePurchaseReturn.fetchPurchaseReturn(route.query.id);
+    console.log(usePurchaseReturn.returnList);
     formData.value = {
-        salesId: useSalesReturn.returnList.sales.id,
-        warehouseId: useSalesReturn.returnList.warehouse.id,
-        warehouseName: useSalesReturn.returnList.warehouse.name,
-        customerName: useSalesReturn.returnList.customer.name,
-        customerId: useSalesReturn.returnList.customer.id,
-        paymentId: useSalesReturn.returnList.payment_method.id,
-        remark: useSalesReturn.returnList.remark,
-        returnDate: moment(useSalesReturn.returnList.return_date).format('YYYY-MM-DDTHH:mm'),
+        purchaseId: usePurchaseReturn.returnList.purchases.id,
+        warehouseId: usePurchaseReturn.returnList.warehouse.id,
+        warehouseName: usePurchaseReturn.returnList.warehouse.name,
+        supplierName: usePurchaseReturn.returnList.supplier.name,
+        supplierId: usePurchaseReturn.returnList.supplier.id,
+        paymentId: usePurchaseReturn.returnList.payment_method.id,
+        remark: usePurchaseReturn.returnList.remark,
+        returnDate: moment(usePurchaseReturn.returnList.return_date).format('YYYY-MM-DDTHH:mm'),
     };
-    selectedProducts.value = useSalesReturn.returnList.details;
+    selectedProducts.value = usePurchaseReturn.returnList.details;
     await usePaymentMethod.fetchAllPaymentMethod();
 });
 
@@ -73,14 +73,14 @@ async function formSubmit() {
         updated_by: userData.value.id,
         payment_id: formData.value.paymentId,
         products: selectedProducts.value.map((product) => ({
-            sale_detail_id: product.sales_detail.id,
+            purchase_detail_id: product.purchases_detail.id,
             quantity: product.quantity,
         })),
     }
     console.log(payload);
-    await useSalesReturn.editSalesReturn(payload, route.query.id);
-    if (useSalesReturn.error.length) {
-        useSalesReturn.error.forEach((msg) => {
+    await usePurchaseReturn.editPurchaseReturn(payload, route.query.id);
+    if (usePurchaseReturn.error.length) {
+        usePurchaseReturn.error.forEach((msg) => {
             toast.add({
               severity: 'error',
               summary: 'Error Message',
@@ -91,7 +91,7 @@ async function formSubmit() {
         return;
     }
     toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales return successfully.', life: 3000 });
-    router.push('/sales_return');
+    router.push('/purchase_return');
 }
 
 // Remove a product row from selectedProducts
@@ -114,11 +114,11 @@ function onReturnQtyChange(product) {
 <template>
     <div class="p-4">
         <!-- Page Title -->
-        <PageTitle title="Update Sales Return">
+        <PageTitle title="Update Purchase Return">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary"
-                        @click="changeRoute('/sales_return')" />
+                        @click="changeRoute('/purchase_return')" />
                 </div>
             </template>
         </PageTitle>
@@ -128,12 +128,12 @@ function onReturnQtyChange(product) {
                 <!-- Form section subtitle -->
                 <SubTitle label="Basic Info" />
                 <div class="grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
-                    <!-- Sales Id Select -->
-                    <BaseInput size="sm" v-model="formData.salesId" label="Sales ID"
+                    <!-- Purchase Id -->
+                    <BaseInput size="sm" v-model="formData.purchaseId" label="Sales ID"
                         placeholder="Sales ID" height="h-[35px]" disabled />
-                    <!-- Customer -->
-                    <BaseInput size="sm" v-model="formData.customerName" label="Customer"
-                        placeholder="Customer" height="h-[35px]" disabled />
+                    <!-- Supplier -->
+                    <BaseInput size="sm" v-model="formData.supplierName" label="Supplier"
+                        placeholder="Supplier" height="h-[35px]" disabled />
                     <!-- Warehouse -->
                     <BaseInput size="sm" v-model="formData.warehouseName" label="Warehouse"
                         placeholder="Warehouse" height="h-[35px]" disabled />
@@ -154,9 +154,9 @@ function onReturnQtyChange(product) {
                 </div>
                 <div class="flex justify-end mt-4">
                     <!-- Save Button -->
-                    <BaseButton label="Update" :isLoading="useSalesReturn.loading"
-                        :icon="useSalesReturn.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary"
-                        @click="formSubmit" :disabled="useSalesReturn.loading" />
+                    <BaseButton label="Update" :isLoading="usePurchaseReturn.loading"
+                        :icon="usePurchaseReturn.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary"
+                        @click="formSubmit" :disabled="usePurchaseReturn.loading" />
                 </div>
             </template>
         </BaseCard>
@@ -165,8 +165,8 @@ function onReturnQtyChange(product) {
                 <thead class="sticky top-0">
                     <tr class="bg-gray-100 text-right">
                         <th class="px-2 py-2 text-center">Product Name</th>
-                        <th class="px-2 py-2">Sales Price</th>
-                        <th class="px-2 py-2">Sales Qty</th>
+                        <th class="px-2 py-2">Purchase Price</th>
+                        <th class="px-2 py-2">Purchase Qty</th>
                         <th class="px-2 py-2">Return Qty</th>
                         <th class="px-2 py-2">Subtotal</th>
                         <th class="px-2 py-2 text-center">Action</th>
@@ -178,7 +178,7 @@ function onReturnQtyChange(product) {
                     >
                         <td class="border-b border-gray-200 px-2 py-2 text-center">{{ product.product.name }}</td>
                         <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.price).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ product.sales_detail.quantity }}</td>
+                        <td class="border-b border-gray-200 px-2 py-2">{{ product.purchases_detail.quantity }}</td>
                         <td class="border-b border-gray-200 px-2 py-2 text-right">
                             <input type="number" min="0" :max="product.quantity" class="w-20 text-right px-1 py-1 border rounded" v-model.number="product.quantity" @input="onReturnQtyChange(product)" />
                         </td>
@@ -195,7 +195,7 @@ function onReturnQtyChange(product) {
                         </td>
                         <td class="border-b border-gray-200 px-2 py-2">
                             <strong>
-                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.sales_detail.quantity)), 0).toLocaleString('en-us') }}
+                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.purchases_detail.quantity)), 0).toLocaleString('en-us') }}
                             </strong>
                         </td>
                         <td class="border-b border-gray-200 px-2 py-2">

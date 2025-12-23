@@ -36,12 +36,12 @@ const columns = [
     { key: 'phone', label: 'Phone' },
     { key: 'address', label: 'Address' },
     {
-        key: 'status', label: 'Status', formatter: (row) => {
+        key: 'status.name', label: 'Status', formatter: (row) => {
             const color = row.status.name === 'Active' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';
             return `<span class="text-white px-2 py-1 rounded ${color}">${row.status.name}</span>`;
         }
     },
-    { key: 'created_by', label: 'Created By', formatter: (row) => row.created_by.name },
+    { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
     { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
     { key: 'updated_by', label: 'Updated By', formatter: (row) => row.updated_by.name },
     { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },

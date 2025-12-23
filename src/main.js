@@ -65,6 +65,12 @@ import StockTransaction from './views/Stock_Transaction/StockTransaction.vue';
 import Supplier from './views/Supplier/Supplier.vue';
 import CreateSupplier from './views/Supplier/CreateSupplier.vue';
 import UpdateSupplier from './views/Supplier/UpdateSupplier.vue';
+import Purchase from './views/Purchase/Purchase.vue';
+import CreatePurchase from './views/Purchase/CreatePurchase.vue';
+import UpdatePurchase from './views/Purchase/UpdatePurchase.vue';
+import PurchaseReturn from './views/Purchase_Return/PurchaseReturn.vue';
+import CreatePurchaseReturn from './views/Purchase_Return/CreatePurchaseReturn.vue';
+import UpdatePurchaseReturn from './views/Purchase_Return/UpdatePurchaseReturn.vue';
 
 
 
@@ -125,6 +131,12 @@ const router = createRouter({
         {path: '/supplier', name: 'Supplier', component: Supplier, meta: { requiresAuth: true, permission: { resource: 'Supplier', action: 'View' } }},
         {path: '/supplier/create', name: 'Create Supplier', component: CreateSupplier, meta: { requiresAuth: true, permission: { resource: 'Supplier', action: 'Create' } }},
         {path: '/supplier/update', name: 'Update Supplier', component: UpdateSupplier, meta: { requiresAuth: true, permission: { resource: 'Supplier', action: 'Update' } }},
+        {path: '/purchase', name: 'Purchase', component: Purchase, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'View' } }},
+        {path: '/purchase/create', name: 'Create Purchase', component: CreatePurchase, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'Create' } }},
+        {path: '/purchase', name: 'Update Purchase', component: UpdatePurchase, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'Update' } }},
+        {path: '/purchase_return', name: 'Purchase Return', component: PurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'View' } }},
+        {path: '/purchase_return/create', name: 'Create Purchase Return', component: CreatePurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'Create' } }},
+        {path: '/purchase_return/update', name: 'Update Purchase Return', component: UpdatePurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'Update' } }},
         { path: '/', redirect: '/login' }
     ]
 });

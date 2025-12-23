@@ -14,6 +14,7 @@ export const useInventoryStore = defineStore('Inventory', {
     actions: {
         async fetchAllStock() {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/inventories`);
                 this.stockList = response.data.data;
@@ -25,6 +26,7 @@ export const useInventoryStore = defineStore('Inventory', {
         },
         async fetchStock(id) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/inventories/${id}`);
                 this.stockList = response.data.data;
@@ -36,6 +38,7 @@ export const useInventoryStore = defineStore('Inventory', {
         },
         async addStock(formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/inventories`, formData);
                 console.log(response);
@@ -49,6 +52,7 @@ export const useInventoryStore = defineStore('Inventory', {
         },
         async editStock(formData, id) {
             this.loading = true;
+            this.error = [];
             try {
                 console.log(formData);
                 const response = await axios.put(`/inventories/${id}`, formData);
@@ -62,6 +66,7 @@ export const useInventoryStore = defineStore('Inventory', {
         },
         async adjustStock(formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/inventories/adjust`, formData);
             } catch (err) {
@@ -72,6 +77,7 @@ export const useInventoryStore = defineStore('Inventory', {
         },
         async deleteStock(id) {
             this.deleteLoading = true;
+            this.error = [];
             try {
                 const response = await axios.delete(`/inventories/${id}`);
                 this.data = response;

@@ -9,25 +9,25 @@ import BaseInput from '@/components/BaseInput.vue';
 import { onMounted, ref, warn, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import BaseLabel from '@/components/BaseLabel.vue';
-import { useSaleStore } from '@/stores/useSalesStore';
 import moment from 'moment';
 import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
+import { usePurchaseStore } from '@/stores/usePurchaseStore';
 
 const router = useRouter();
 const route = useRoute();
 const toast = useToast();
-const useSales = useSaleStore();
+const usePurchase = usePurchaseStore();
 const usePaymentMethod = usePaymentMethodStore();
 
 const userData = ref({});
 const selectedProducts = ref([]);
 const formData = ref({
-    salesId: '',
+    purchaseId: '',
     warehouseId: '',
-    customerId: '',
+    supplierId: '',
     paymentId: '1',
     remark: '',
-    salesDate: moment().format('YYYY-MM-DDTHH:mm'),
+    purchaseDate: moment().format('YYYY-MM-DDTHH:mm'),
     products: [],
 })
 
@@ -38,40 +38,39 @@ function changeRoute(pathname) {
 
 onMounted(async () => {
     userData.value = JSON.parse(localStorage.getItem('user'));
-    await useSales.fetchSales(route.query.id);
-    console.log(useSales.salesList);
+    await usePurchase.fetchPurchase(route.query.id);
+    console.log(usePurchase.purchaseList);
     formData.value = {
-        salesId: useSales.salesList.id,
-        warehouseId: useSales.salesList.warehouse.id,
-        warehouseName: useSales.salesList.warehouse.name,
-        customerName: useSales.salesList.customer.name,
-        customerId: useSales.salesList.customer.id,
-        paymentId: useSales.salesList.payment_method.id,
-        totalAmount: useSales.salesList.total_amount,
-        paidAmount: useSales.salesList.paid_amount,
-        changeAmount: useSales.salesList.due_amount,
-        statusId: useSales.salesList.status.id,
-        remark: useSales.salesList.remark,
-        salesDate: moment(useSales.salesList.sale_date).format('YYYY-MM-DDTHH:mm'),
+        purchaseId: usePurchase.purchaseList.id,
+        warehouseId: usePurchase.purchaseList.warehouse.id,
+        warehouseName: usePurchase.purchaseList.warehouse.name,
+        supplierName: usePurchase.purchaseList.supplier.name,
+        supplierId: usePurchase.purchaseList.supplier.id,
+        paymentId: usePurchase.purchaseList.payment.id,
+        totalAmount: usePurchase.purchaseList.total_amount,
+        paidAmount: usePurchase.purchaseList.paid_amount,
+        statusId: usePurchase.purchaseList.status.id,
+        remark: usePurchase.purchaseList.remark,
+        purchaseDate: moment(usePurchase.purchaseList.purchase_date).format('YYYY-MM-DDTHH:mm'),
     };
-    selectedProducts.value = useSales.salesList.details;
+    selectedProducts.value = usePurchase.purchaseList.details;
     await usePaymentMethod.fetchAllPaymentMethod();
 });
 
 // Form Submit function
 async function formSubmit() {
     let payload = {
-        remark: formData.value.remark,
-        sale_date: formData.value.salesDate,
-        updated_by: userData.value.id,
         payment_id: formData.value.paymentId,
-        status_id: formData.value.statusId,
         paid_amount: formData.value.paidAmount,
+        remark: formData.value.remark,
+        status_id: formData.value.statusId,
+        purchase_date: formData.value.purchaseDate,
+        updated_by: userData.value.id,
     }
     console.log(payload);
-    await useSales.editSales(payload, route.query.id);
-    if (useSales.error.length) {
-        useSales.error.forEach((msg) => {
+    await usePurchase.editPurchase(payload, route.query.id);
+    if (usePurchase.error.length) {
+        usePurchase.error.forEach((msg) => {
             toast.add({
               severity: 'error',
               summary: 'Error Message',
@@ -81,8 +80,8 @@ async function formSubmit() {
         });
         return;
     }
-    toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales update successfully.', life: 3000 });
-    router.push('/sales');
+    toast.add({ severity: 'success', summary: 'Success Message', detail: 'Purchase update successfully.', life: 3000 });
+    router.push('/purchase');
 }
 
 </script>
@@ -90,11 +89,11 @@ async function formSubmit() {
 <template>
     <div class="p-4">
         <!-- Page Title -->
-        <PageTitle title="Update Sales">
+        <PageTitle title="Update Purchase">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary"
-                        @click="changeRoute('/sales')" />
+                        @click="changeRoute('/purchase')" />
                 </div>
             </template>
         </PageTitle>
@@ -104,17 +103,17 @@ async function formSubmit() {
                 <!-- Form section subtitle -->
                 <SubTitle label="Basic Info" />
                 <div class="grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
-                    <!-- Sales Id Select -->
-                    <BaseInput size="sm" v-model="formData.salesId" label="Sales ID"
-                        placeholder="Sales ID" height="h-[35px]" disabled />
+                    <!-- Purchase Id -->
+                    <BaseInput size="sm" v-model="formData.purchaseId" label="Purchase ID"
+                        placeholder="Purchase ID" height="h-[35px]" disabled />
                     <!-- Customer -->
-                    <BaseInput size="sm" v-model="formData.customerName" label="Customer"
-                        placeholder="Customer" height="h-[35px]" disabled />
+                    <BaseInput size="sm" v-model="formData.supplierName" label="Supplier"
+                        placeholder="Supplier" height="h-[35px]" disabled />
                     <!-- Warehouse -->
                     <BaseInput size="sm" v-model="formData.warehouseName" label="Warehouse"
                         placeholder="Warehouse" height="h-[35px]" disabled />
                     <!-- Expired date input -->
-                    <BaseInput size="sm" v-model="formData.salesDate" label="Sales Date"
+                    <BaseInput size="sm" v-model="formData.purchaseDate" label="Sales Date"
                         height="h-[35px]" type="datetime-local"
                     />
                     <div class="flex flex-col gap-1">
@@ -129,10 +128,10 @@ async function formSubmit() {
                         placeholder="Reason for adjustment" height="h-[35px]" type="text" />
                 </div>
                 <div class="flex justify-end mt-4">
-                    <!-- Save Button -->
-                    <BaseButton label="Save" :isLoading="useSales.loading"
-                        :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary"
-                        @click="formSubmit" :disabled="useSales.loading" />
+                    <!-- Update Button -->
+                    <BaseButton label="Save" :isLoading="usePurchase.loading"
+                        :icon="usePurchase.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary"
+                        @click="formSubmit" :disabled="usePurchase.loading" />
                 </div>
             </template>
         </BaseCard>
@@ -141,11 +140,9 @@ async function formSubmit() {
                 <thead class="sticky top-0">
                     <tr class="bg-gray-100 text-right">
                         <th class="px-2 py-2 text-center">Product Name</th>
-                        <th class="px-2 py-2">Unit Price</th>
-                        <th class="px-2 py-2">Discount Amt</th>
-                        <th class="px-2 py-2">Sales Price</th>
-                        <th class="px-2 py-2">Sales Qty</th>
-                        <th class="px-2 py-2">Subtotal</th>
+                        <th class="px-2 py-2">Purchase Price</th>
+                        <th class="px-2 py-2">Purchase Qty</th>
+                        <th class="px-2 py-2">Total</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -154,37 +151,28 @@ async function formSubmit() {
                     >
                         <td class="border-b border-gray-200 px-2 py-2 text-center">{{ product.product.name }}</td>
                         <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.price).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.discount_amount).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.discount_price).toLocaleString('en-us') }}</td>
                         <td class="border-b border-gray-200 px-2 py-2">{{ product.quantity }}</td>
                         <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.total).toLocaleString('en-us') }}</td>
                     </tr>
+                    <tr 
+                        class="text-right"
+                    >
+                        <td colspan="2" class="border-b border-gray-200 px-2 py-2 text-center">
+                            <strong>Total:</strong>
+                        </td>
+                        <td class="border-b border-gray-200 px-2 py-2">
+                            <strong>
+                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity)), 0).toLocaleString('en-us') }}
+                            </strong>
+                        </td>
+                        <td class="border-b border-gray-200 px-2 py-2">
+                            <strong>
+                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.total)), 0).toLocaleString('en-us') }}
+                            </strong>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
-        </div>
-        <!-- Total Amounts -->
-        <div class="mt-3 text-black font-semibold flex justify-end">
-            <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
-                <span class="whitespace-nowrap">Total Amount</span>
-                <span class="text-right">:</span>
-                <span class="font-bold text-right">{{ Number(formData.totalAmount).toLocaleString('en-us') }}</span>
-            </div>
-        </div>
-        <!-- Paid Amount -->
-        <div class="mt-3 text-black font-semibold flex justify-end">
-            <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
-                <span class="whitespace-nowrap">Paid Amount</span>
-                <span class="text-right">:</span>
-                <span class="font-bold text-right">{{ Number(formData.paidAmount).toLocaleString('en-us') }}</span>
-            </div>
-        </div>
-        <!-- Change Amount -->
-        <div class="mt-3 text-black font-semibold flex justify-end">
-            <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
-                <span class="whitespace-nowrap">Change Amount</span>
-                <span class="text-right">:</span>
-                <span class="font-bold text-right">{{ Number(formData.changeAmount).toLocaleString('en-us') }}</span>
-            </div>
         </div>
     </div>
 </template>

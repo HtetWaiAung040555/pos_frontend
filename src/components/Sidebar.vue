@@ -53,6 +53,32 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
           },
         ],
       },
+      {
+        name: 'Purchase Management', 
+        icon: 'fa fa-cart-arrow-down',
+        pathname: '/purchase',
+        permission: {name: 'Purchase', action: 'View'},
+        children: [
+          { 
+            name: 'Purchase', 
+            icon: 'fa fa-cart-plus ', 
+            pathname: "/purchase",
+            permission: {name: 'Purchase', action: "View"}
+          },
+          { 
+            name: 'Purchase Return', 
+            icon: 'fa fa-cart-plus ', 
+            pathname: "/purchase_return",
+            permission: {name: 'Purchase return', action: "View"}
+          },
+          { 
+            name: 'Supplier', 
+            icon: 'fa fa-users ', 
+            pathname: "/supplier",
+            permission: {name: 'Supplier', action: "View"}
+          }
+        ]
+      },
       { 
         name: 'Products', 
         icon: 'fa fa-box-open',
@@ -153,12 +179,6 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
         pathname: "/wallet",
         permission: {name: 'Wallet', action: "View"}
       },
-      { 
-        name: 'Supplier', 
-        icon: 'fas fa-solid fa-truck-arrow-right ', 
-        pathname: "/supplier",
-        permission: {name: 'Supplier', action: "View"}
-      }
   ];
 
   function toggleDropdown(itemName) {
@@ -195,8 +215,8 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
     <!-- Sidebar -->
     <div :class="[
         'sidebar-bg text-white transition-all duration-300 text-sm font-semibold pt-2 h-screen',
-        collapseSidebar.isSidebarCollapsed ? 'w-16' : 'w-64',
-        'md:group-hover:w-64',
+        collapseSidebar.isSidebarCollapsed ? 'w-16' : 'w-74',
+        'md:group-hover:w-74',
       ]"
       class="relative group">
 

@@ -16,7 +16,8 @@ export const usePromotionStore = defineStore('wallet', {
 
     actions: {
         async fetchAllPromo() {
-            this.loading = true
+            this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/promotions`);
                 this.promoList = response.data.data;
@@ -28,6 +29,7 @@ export const usePromotionStore = defineStore('wallet', {
         },
         async fetchPromo(id) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/promotions/${id}`);
                 this.promoList = response.data.data;
@@ -39,6 +41,7 @@ export const usePromotionStore = defineStore('wallet', {
         },
         async addPromo(formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/promotions`, formData);
                 this.promoList = response.data.data;
@@ -50,6 +53,7 @@ export const usePromotionStore = defineStore('wallet', {
         },
         async editPromo(formData, id) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.put(`/promotions/${id}`, formData);
                 this.promoList = response.data.data;
@@ -61,6 +65,7 @@ export const usePromotionStore = defineStore('wallet', {
         },
         async deletePromo(data, id) {
             this.deleteLoading = true;
+            this.error = [];
             try {
                 const response = await axios.delete(`/promotions/${id}`, {data: data});
                 this.data = response;

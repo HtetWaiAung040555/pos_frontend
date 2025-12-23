@@ -2,9 +2,9 @@ import { normalizeApiError } from "@/utils/NormalizeApiError";
 import axios from "axios";
 import { defineStore } from "pinia";
 
-export const useSaleStore = defineStore('sales', {
+export const usePurchaseStore = defineStore('purchase', {
     state: () => ({
-        salesList: [],
+        purchaseList: [],
         loading: false,
         deleteLoading: false,
         error: [],
@@ -12,17 +12,17 @@ export const useSaleStore = defineStore('sales', {
 
     }),
     actions: {
-        async fetchAllSales(filteredData) {
+        async fetchAllPurchase(filteredData) {
             this.loading = true;
             this.error = [];
             try {
                 let response;
                 if (filteredData) {
-                    response = await axios.get(`/sales?start_date=${filteredData.start_date}&end_date=${filteredData.end_date}&${filteredData.customer_id? customer_id=filteredData.customer_id : ""}&${filteredData.status_id? status_id=filteredData.status_id: ""}`);
-                    this.salesList = response.data.data;
+                    response = await axios.get(`/purchases?start_date=${filteredData.start_date}&end_date=${filteredData.end_date}&${filteredData.supplier_id? supplier_id=filteredData.supplier_id : ""}&${filteredData.status_id? status_id=filteredData.status_id: ""}`);
+                    this.purchaseList = response.data.data;
                 } else {
-                    response = await axios.get(`/sales`);
-                    this.salesList = response.data.data;
+                    response = await axios.get(`/purchases`);
+                    this.purchaseList = response.data.data;
                 }
                 
             } catch (err) {
@@ -31,48 +31,47 @@ export const useSaleStore = defineStore('sales', {
                 this.loading = false;
             }
         },
-        async fetchSales(id) {
+        async fetchPurchase(id) {
             this.loading = true;
             this.error = [];
             try {
-                const response = await axios.get(`/sales/${id}`);
-                this.salesList = response.data.data;
+                const response = await axios.get(`/purchases/${id}`);
+                this.purchaseList = response.data.data;
             } catch (err) {
                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
         },
-        async fetchSalesByStatus(status) {
+        async fetchPurchaseByStatus(status) {
             this.loading = true;
-            this.error = [];
             try {
-                const response = await axios.get(`/sales?status_id=${status}`);
-                this.salesList = response.data.data;
+                const response = await axios.get(`/purchases?status_id=${status}`);
+                this.purchaseList = response.data.data;
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
         },
-        async addSales(formData) {
+        async addPurchase(formData) {
             this.loading = true;
             this.error = [];
             try {
-                const response = await axios.post(`/sales`, formData);
-                this.salesList = response.data.data;
+                const response = await axios.post(`/purchases`, formData);
+                this.purchaseList = response.data.data;
             } catch(err) {
                 this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }
         },
-        async editSales(formData, id) {
+        async editPurchase(formData, id) {
             this.loading = true;
             this.error = [];
             try {
-                const response = await axios.put(`/sales/${id}`, formData)
-                this.salesList = response.data.data;
+                const response = await axios.put(`/purchases/${id}`, formData)
+                this.purchaseList = response.data.data;
                 console.log(response);
             } catch (err) {
                 this.error = normalizeApiError(err);
@@ -80,11 +79,10 @@ export const useSaleStore = defineStore('sales', {
                 this.loading = false;
             }
         },
-        async deleteSales(data, id) {
+        async deletePurchase(data, id) {
             this.deleteLoading = true;
-            this.error = [];
             try {
-                const response = await axios.delete(`/sales/${id}`, { data: data });
+                const response = await axios.delete(`/purchases/${id}`, { data: data });
                 this.data = response;
             } catch (err) {
                 this.error = normalizeApiError(err);

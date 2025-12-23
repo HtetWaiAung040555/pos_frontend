@@ -16,7 +16,8 @@ export const useWalletStore = defineStore('wallet', {
 
     actions: {
         async fetchAllWallet() {
-            this.loading = true
+            this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/customers_transactions`);
                 this.walletList = response.data.data;
@@ -28,6 +29,7 @@ export const useWalletStore = defineStore('wallet', {
         },
         async fetchWallet(walletId) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/customers_transactions/${walletId}`);
                 this.walletList = response.data.data;
@@ -39,6 +41,7 @@ export const useWalletStore = defineStore('wallet', {
         },
         async addWallet(formData) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.post(`/customers_transactions`, formData);
                 this.walletList = response.data.data;
@@ -50,6 +53,7 @@ export const useWalletStore = defineStore('wallet', {
         },
         async editWallet(formData, walletId) {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.put(`/customers_transactions/${walletId}`, formData);
                 this.walletList = response.data.data;
@@ -61,6 +65,7 @@ export const useWalletStore = defineStore('wallet', {
         },
         async deleteWallet(walletId) {
             this.deleteLoading = true;
+            this.error = [];
             try {
                 const response = await axios.delete(`/customers_transactions/${walletId}`);
                 this.data = response;

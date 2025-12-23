@@ -9,10 +9,10 @@ import { useToast } from 'primevue';
 import moment from 'moment';
 import BaseInput from '@/components/BaseInput.vue';
 import { usePermissionStore } from '@/stores/usePermissionStore';
-import { useSalesReturnStore } from '@/stores/useSalesReturnStore';
+import { usePurchaseReturnStore } from '@/stores/usePurchaseReturn';
 
 const router = useRouter();
-const useSalesReturn = useSalesReturnStore();
+const usePurchaseReturn = usePurchaseReturnStore();
 const toast = useToast();
 const usePermission = usePermissionStore();
 const returnList = ref([]);
@@ -29,10 +29,10 @@ const selectedPayment = ref('');
 const searchValue = ref('');
 
 onMounted(async () => {
-    await fetchSalesReturn();
+    await fetchPurchaseReturn();
 });
 
-async function fetchSalesReturn() {
+async function fetchPurchaseReturn() {
     // convert local datetime-local strings to backend friendly format (YYYY-MM-DD HH:mm:ss)
     const start = filteredData.value.startedDate
         ? moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss')
@@ -41,11 +41,11 @@ async function fetchSalesReturn() {
         ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss')
         : null;
 
-    await useSalesReturn.fetchAllSalesReturn({
+    await usePurchaseReturn.fetchAllPurchaseReturn({
         start_date: start,
         end_date: end
     });
-    returnList.value = useSalesReturn.returnList || [];
+    returnList.value = usePurchaseReturn.returnList || [];
     selectedStatus.value = '';
     selectedPayment.value = '';
     searchValue.value = '';
@@ -54,7 +54,7 @@ async function fetchSalesReturn() {
 const columns = [
     { key: 'id', label: 'Return No.' },
     { key: 'return_date', label: 'Date', formatter: (row) => moment(row.return_date).format('DD-MM-YY hh:mm') },
-    { key: 'customer.name', label: 'Customer Name', formatter: (row) => row.customer.name },
+    { key: 'supplier.name', label: 'Supplier Name', formatter: (row) => row.supplier.name },
     { key: 'total_amount', label: 'Total' },
     { key: 'payment_method.name', label: 'Payment', formatter: (row) => row.payment_method.name },
     { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.warehouse.name },
@@ -106,8 +106,6 @@ const displayedSalesReturn = computed(() => {
         });
     }
 
-    console.log(list);
-
     return list;
 });
 
@@ -117,9 +115,9 @@ function changeRoute(pathname) {
 
 // Sales delete function
 async function deleteHandle(id) {
-    await useSalesReturn.deleteSalesReturn({void_by: JSON.parse(localStorage.getItem('user')).id}, id);
-    if (useSalesReturn.error.length) {
-        useSalesReturn.error.forEach((msg) => {
+    await usePurchaseReturn.deletePurchaseReturn({void_by: JSON.parse(localStorage.getItem('user')).id}, id);
+    if (usePurchaseReturn.error.length) {
+        usePurchaseReturn.error.forEach((msg) => {
             toast.add({
               severity: 'error',
               summary: 'Error Message',
@@ -129,10 +127,10 @@ async function deleteHandle(id) {
         });
         return
     }
-    if (useSalesReturn.data.status === 200) {
+    if (usePurchaseReturn.data.status === 200) {
         toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales deleted successfully.', life: 3000 });
         // refetch with current date range
-        await fetchSalesReturn();
+        await fetchPurchaseReturn();
     }
 }
 
@@ -142,24 +140,24 @@ async function deleteHandle(id) {
 
 <template>
     <div class="p-4">
-        <PageTitle title="Sales Return List">
+        <PageTitle title="Purchase Return List">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
-                    <BaseButton v-if="usePermission.can('Sales return', 'Create')" icon="fa fa-circle-plus" label="Create"
-                        severity="primary" @click="changeRoute('/sales_return/create')" />
+                    <BaseButton v-if="usePermission.can('Purchase return', 'Create')" icon="fa fa-circle-plus" label="Create"
+                        severity="primary" @click="changeRoute('/purchase_return/create')" />
                 </div>
             </template>
         </PageTitle>
-        <DataTable :columns="columns" :rows="displayedSalesReturn" :pageSize="5" :editPath="'Update Sales Return'"
-            :isLoading="useSalesReturn.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
-            :isEdit="!usePermission.can('Sales return', 'Update')" :isDelete="!usePermission.can('Sales return', 'Delete')">
+        <DataTable :columns="columns" :rows="displayedSalesReturn" :pageSize="5" :editPath="'Update Purchase Return'"
+            :isLoading="usePurchaseReturn.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
+            :isEdit="!usePermission.can('Purchase return', 'Update')" :isDelete="!usePermission.can('Purchase return', 'Delete')">
             <template #filters>
                 <div class="flex gap-2 items-center">
                     <BaseInput size="sm" v-model="filteredData.startedDate" type="datetime-local"
                         placeholder="Start DateTime" width="240px" height="h-[35px]" />
                     <BaseInput size="sm" v-model="filteredData.endedDate" type="datetime-local"
                         placeholder="End DateTime" width="240px" height="h-[35px]" />
-                    <BaseButton label="Fetch" severity="primary" @click="fetchSalesReturn" />
+                    <BaseButton label="Fetch" severity="primary" @click="fetchPurchaseReturn" />
 
                     <select v-model="selectedStatus" class="border p-2 rounded text-sm">
                         <option value="">All Status</option>
