@@ -39,7 +39,6 @@ function changeRoute(pathname) {
 onMounted(async () => {
     userData.value = JSON.parse(localStorage.getItem('user'));
     await useSales.fetchSales(route.query.id);
-    console.log(useSales.salesList);
     formData.value = {
         salesId: useSales.salesList.id,
         warehouseId: useSales.salesList.warehouse.id,
@@ -68,7 +67,6 @@ async function formSubmit() {
         status_id: formData.value.statusId,
         paid_amount: formData.value.paidAmount,
     }
-    console.log(payload);
     await useSales.editSales(payload, route.query.id);
     if (useSales.error.length) {
         useSales.error.forEach((msg) => {

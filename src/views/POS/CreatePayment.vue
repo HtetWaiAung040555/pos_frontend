@@ -43,7 +43,6 @@ const errorMsg = ref({
 onMounted(async () => {
   await useSales.fetchSales(route.query.id);
   salesData.value = useSales.salesList || salesData.value;
-  console.log('Sales Data:', useSales.salesList);
   data.value.payAmount = salesData.value.total_amount || data.value.payAmount;
   await usePaymentMethod.fetchAllPaymentMethod();
   await useStatus.fetchAllStatus();
@@ -100,7 +99,6 @@ async function formSubmit() {
 }
 
 async function formSubmitAndPrint() {
-  console.log('Submit and print clicked');
   // First submit the form (persist payment) then print slip
   try {
     await formSubmit();
@@ -111,7 +109,6 @@ async function formSubmitAndPrint() {
 }
 
 async function formCancel() {
-  console.log('Submit clicked');
 }
 
 function changePaymentMethod(e) {

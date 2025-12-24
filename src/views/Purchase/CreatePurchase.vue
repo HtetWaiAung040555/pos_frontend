@@ -169,6 +169,11 @@ function onChangeQty(product) {
     if (product.quantity < 0) product.quantity = 0;
 }
 
+function onChangePrice(product) {
+    product.purchasePrice = Number(product.purchasePrice) || 0;
+    if (product.purchasePrice < 0) product.purchasePrice = 0;
+}
+
 function onChangeExpiredDate(product) {
     product.expiredDate = product.expiredDate;
 }
@@ -186,10 +191,10 @@ async function formSubmit() {
         products: selectedProducts.value.map(p => ({
             product_id: p.productId,
             quantity: p.quantity,
-            expired_date: p.expiredDate
+            expired_date: p.expiredDate,
+            purchase_price: p.purchasePrice
         }))
     }
-    console.log(payload);
     await usePurchase.addPurchase(payload);
     if (usePurchase.error.length) {
         usePurchase.error.forEach((msg) => {
@@ -290,7 +295,9 @@ async function formSubmit() {
                                         <td class="p-2">
                                             <input type="datetime-local" min="0" class="w-44 text-right px-1 py-1 border rounded" v-model="product.expiredDate" @input="onChangeExpiredDate(product)" />
                                         </td>
-                                        <td class="p-2 text-right">{{ Number(product.purchasePrice).toLocaleString('en-us') || 0 }}</td>
+                                        <td class="p-2 text-right">
+                                            <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.purchasePrice" @input="onChangePrice(product)" />
+                                        </td>
                                         <td class="p-2 text-right">
                                             <input type="number" min="0" class="w-20 text-right px-1 py-1 border rounded" v-model.number="product.quantity" @input="onChangeQty(product)" />
                                         </td>

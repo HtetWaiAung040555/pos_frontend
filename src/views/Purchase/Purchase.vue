@@ -43,10 +43,6 @@ async function fetchPurchaseByDate() {
         : null;
 
     // pass plain object to store method (server should accept datetime strings)
-    console.log({
-        start_date: start,
-        end_date: end
-    })
     await usePurchase.fetchAllPurchase({
         start_date: start,
         end_date: end

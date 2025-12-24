@@ -68,11 +68,6 @@ async function fetchSalesByDate() {
         ? moment(filteredData.value.endedData).format('YYYY-MM-DD HH:mm:ss')
         : null;
 
-    // pass plain object to store method (server should accept datetime strings)
-    console.log({
-        start_date: start,
-        end_date: end
-    })
     await useStockTransaction.fetchStockTransactions({
         start_date: start,
         end_date: end

@@ -106,8 +106,6 @@ const displayedSalesReturn = computed(() => {
         });
     }
 
-    console.log(list);
-
     return list;
 });
 

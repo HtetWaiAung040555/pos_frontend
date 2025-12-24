@@ -240,8 +240,6 @@ async function formSubmit() {
         created_by: userData.value.id,
     };
 
-    console.log('PayLoad:', payload);
-
     await usePromo.addPromo(payload);
 
     if (usePromo.error.length) {

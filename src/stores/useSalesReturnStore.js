@@ -16,7 +16,6 @@ export const useSalesReturnStore = defineStore('Sales Return', {
             this.loading = true;
             this.error = [];
             try {
-                console.log(filteredData);
                 let response;
                 if (filteredData) {
                     response = await axios.get(`/sale_returns?start_date=${filteredData.start_date}&end_date=${filteredData.end_date}&${filteredData.customer_id? customer_id=filteredData.customer_id : ""}&${filteredData.status_id? status_id=filteredData.status_id: ""}`);
@@ -61,7 +60,6 @@ export const useSalesReturnStore = defineStore('Sales Return', {
             try {
                 const response = await axios.put(`/sale_returns/${id}`, formData);
                 this.returnList = response.data.data;
-                console.log(response);
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

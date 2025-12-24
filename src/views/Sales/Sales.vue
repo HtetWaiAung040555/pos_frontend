@@ -44,12 +44,6 @@
         const end = filteredData.value.endDateTimeLocal
             ? moment(filteredData.value.endDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
             : null;
-
-        // pass plain object to store method (server should accept datetime strings)
-        console.log({
-            start_date: start,
-            end_date: end
-        })
         await useSales.fetchAllSales({
             start_date: start,
             end_date: end

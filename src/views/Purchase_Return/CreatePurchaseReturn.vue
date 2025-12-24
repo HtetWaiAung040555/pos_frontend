@@ -105,7 +105,6 @@ async function formSubmit() {
             quantity: product.returnQty,
         })),
     }
-    console.log(payload);
     await usePurchaseReturn.addPurchaseReturn(payload);
     if (usePurchaseReturn.error.length) {
         usePurchaseReturn.error.forEach((msg) => {
@@ -124,7 +123,6 @@ async function formSubmit() {
 
 // Remove a product row from selectedProducts
 function removeProduct(index) {
-    console.log(index);
     selectedProducts.value.splice(index, 1);
 }
 

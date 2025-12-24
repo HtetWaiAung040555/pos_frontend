@@ -139,7 +139,7 @@ const router = createRouter({
         {path: '/supplier/update', name: 'Update Supplier', component: UpdateSupplier, meta: { requiresAuth: true, permission: { resource: 'Supplier', action: 'Update' } }},
         {path: '/purchase', name: 'Purchase', component: Purchase, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'View' } }},
         {path: '/purchase/create', name: 'Create Purchase', component: CreatePurchase, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'Create' } }},
-        {path: '/purchase', name: 'Update Purchase', component: UpdatePurchase, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'Update' } }},
+        {path: '/purchase/update', name: 'Update Purchase', component: UpdatePurchase, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'Update' } }},
         {path: '/purchase_return', name: 'Purchase Return', component: PurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'View' } }},
         {path: '/purchase_return/create', name: 'Create Purchase Return', component: CreatePurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'Create' } }},
         {path: '/purchase_return/update', name: 'Update Purchase Return', component: UpdatePurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'Update' } }},

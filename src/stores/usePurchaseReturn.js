@@ -16,7 +16,6 @@ export const usePurchaseReturnStore = defineStore('Purchase Return', {
             this.loading = true;
             this.error = [];
             try {
-                console.log(filteredData);
                 let response;
                 if (filteredData) {
                     response = await axios.get(`/purchase_returns?start_date=${filteredData.start_date}&end_date=${filteredData.end_date}&${filteredData.supplier_id? supplier_id=filteredData.supplier_id : ""}&${filteredData.status_id? status_id=filteredData.status_id: ""}`);
@@ -49,7 +48,6 @@ export const usePurchaseReturnStore = defineStore('Purchase Return', {
             try {
                 const response = await axios.post(`/purchase_returns`, formData);
                 this.returnList = response.data.data;
-                console.log(response);
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {
@@ -62,7 +60,6 @@ export const usePurchaseReturnStore = defineStore('Purchase Return', {
             try {
                 const response = await axios.put(`/purchase_returns/${id}`, formData);
                 this.returnList = response.data.data;
-                console.log(response);
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

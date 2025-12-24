@@ -39,7 +39,6 @@ function changeRoute(pathname) {
 onMounted(async () => {
     userData.value = JSON.parse(localStorage.getItem('user'));
     await useSalesReturn.fetchSalesReturn(route.query.id);
-    console.log(useSalesReturn.returnList);
     formData.value = {
         salesId: useSalesReturn.returnList.sales.id,
         warehouseId: useSalesReturn.returnList.warehouse.id,
@@ -77,7 +76,6 @@ async function formSubmit() {
             quantity: product.quantity,
         })),
     }
-    console.log(payload);
     await useSalesReturn.editSalesReturn(payload, route.query.id);
     if (useSalesReturn.error.length) {
         useSalesReturn.error.forEach((msg) => {
@@ -96,7 +94,6 @@ async function formSubmit() {
 
 // Remove a product row from selectedProducts
 function removeProduct(index) {
-    console.log(index);
     selectedProducts.value.splice(index, 1);
 }
 

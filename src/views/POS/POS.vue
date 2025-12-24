@@ -56,7 +56,6 @@ onMounted(async () => {
   // productList.value = inventory;
   await useProduct.fetchSalesProduct({warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id});
   productList.value = useProduct.productList;
-  console.log(productList.value);
   // Always keep barcode input focused
   nextTick(() => barcodeInput.value?.focus());
   // window.addEventListener('click', () => {
@@ -67,7 +66,6 @@ onMounted(async () => {
 const filteredProducts = computed(() => {
   if (!searchQuery.value) return productList.value;
   const query = searchQuery.value.toLocaleLowerCase().trim();
-  console.log(productList.value);
   return productList.value.filter(item => {
     return (
       item.name.toLocaleLowerCase().includes(query) ||
@@ -98,7 +96,6 @@ async function addProduct(product) {
     return
   }
   let exist = selectedProducts.value.find(p => p.id === product.id);
-  console.log(checkQty);
   if (exist) {
     selectedPId.value = product.id;
     increaseQty(exist);
@@ -106,9 +103,7 @@ async function addProduct(product) {
     return;
   }
   const checkPromo = await axios.get(`/promotions/checkprice/${product.id}`);
-  console.log("before" + JSON.stringify(checkPromo.data));
   if (checkPromo.data.promotion_id) {
-    console.log(checkPromo.data);
     selectedProducts.value = [
       ...selectedProducts.value,
       {
@@ -184,7 +179,6 @@ function decreaseQty(product) {
 
 // 🧾 Barcode Scan Handler
 function handleBarcodeInput(e) {
-  console.log('Barcode input detected:', e.target.value);
   //If Enter key is pressed after typing the barcode 
   if (e.key === "Enter" && e.target.value.trim() !== "") {
     const query = e.target.value.toLowerCase().trim();
@@ -194,8 +188,8 @@ function handleBarcodeInput(e) {
       return (p.barcode?.toLowerCase() === query);
     });
     if (matchedProduct) {
-      // Auto add product to POS 
-      console.log('Matched product for barcode:', matchedProduct.product); addProduct(matchedProduct.product);
+      // Auto add product to POS
+      addProduct(matchedProduct.product);
       // Clear the search bar for next scan 
       e.target.value = "";
     }
@@ -248,7 +242,6 @@ async function holdSale() {
 async function fetchHoldList() {
   loadingHolds.value = true;
   let status_id = useStatus.statusList.find(el => el.name === 'Hold').id;
-  console.log(status_id);
   try {
     await useSales.fetchSalesByStatus(status_id);
     holdList.value = useSales.salesList;
@@ -293,8 +286,6 @@ async function editHold(hold) {
     // Set customer if included
     if (hold.customer) selectedCustomer.value = useCustomer.customerList.filter(el => el.id === hold.customer.id)[0];
 
-    console.log("Selected Customers: " + selectedCustomer.value);
-
     // Close hold list dialog
     visibleHoldList.value = false;
   } catch (err) {
@@ -326,7 +317,6 @@ async function deleteHold(hold) {
 
 async function onPayClick() {
   if (selectedHold.value) {
-    console.log(selectedHold.value);
     const payload = {
       paid_amount: 0,
       payment_id: 1,
@@ -368,7 +358,6 @@ async function onPayClick() {
       status_id: useStatus.statusList.find(el => el.name === 'Hold').id,
       created_by: JSON.parse(localStorage.getItem('user')).id,
     };
-    console.log(payload);
     await useSales.addSales(payload);
     if (useSales.error.length) {
       useSales.error.forEach((msg) => {

@@ -72,7 +72,6 @@ export const usePurchaseStore = defineStore('purchase', {
             try {
                 const response = await axios.put(`/purchases/${id}`, formData)
                 this.purchaseList = response.data.data;
-                console.log(response);
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

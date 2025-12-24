@@ -139,7 +139,6 @@ async function formSubmit() {
         created_by: userData.value.id,
         status_id: status.value ? '1' : '2'
     };
-    console.log(formData);
     await useUser.addUser(formData.value);
     if (useUser.error.length) {
         useUser.error.forEach((msg) => {

@@ -41,9 +41,7 @@ export const useInventoryStore = defineStore('Inventory', {
             this.error = [];
             try {
                 const response = await axios.post(`/inventories`, formData);
-                console.log(response);
                 this.stockList = response.data.data;
-                console.log(response);
             } catch (err) {
                this.error = normalizeApiError(err);
             } finally {
@@ -54,10 +52,8 @@ export const useInventoryStore = defineStore('Inventory', {
             this.loading = true;
             this.error = [];
             try {
-                console.log(formData);
                 const response = await axios.put(`/inventories/${id}`, formData);
                 this.stockList = response.data.data;
-                console.log(response);
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

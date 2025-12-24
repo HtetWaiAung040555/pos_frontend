@@ -76,7 +76,6 @@ onMounted(async () => {
                 selectedProducts.value = promo.products.map(id => productList.value.find(p => p.id === id)).filter(Boolean);
             }
         }
-        console.log('Loaded promotion:', selectedProducts.value);
     }
 });
 

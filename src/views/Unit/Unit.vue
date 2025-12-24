@@ -26,7 +26,6 @@ let unitList = ref([]);
 onMounted(async () => {
     await useUnit.fetchAllUnit();
     unitList.value = useUnit.unitList
-    console.log(unitList.value);
 });
 
 const columns = [

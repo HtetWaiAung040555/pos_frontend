@@ -26,7 +26,6 @@ const walletList = ref([]);
 onMounted(async () => {
     await useWallet.fetchAllWallet();
     walletList.value = useWallet.walletList;
-    console.log(walletList.value);
 });
 
 // Table headers

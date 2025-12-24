@@ -26,7 +26,6 @@
     onMounted(async () => {
         await useProduct.fetchAllProduct();
         dataList.value = useProduct.productList;
-        console.log(dataList.value);
     });
 
     // Table headers

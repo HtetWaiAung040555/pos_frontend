@@ -73,7 +73,6 @@ export const useSaleStore = defineStore('sales', {
             try {
                 const response = await axios.put(`/sales/${id}`, formData)
                 this.salesList = response.data.data;
-                console.log(response);
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

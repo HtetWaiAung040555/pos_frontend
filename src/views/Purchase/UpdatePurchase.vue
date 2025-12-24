@@ -39,7 +39,6 @@ function changeRoute(pathname) {
 onMounted(async () => {
     userData.value = JSON.parse(localStorage.getItem('user'));
     await usePurchase.fetchPurchase(route.query.id);
-    console.log(usePurchase.purchaseList);
     formData.value = {
         purchaseId: usePurchase.purchaseList.id,
         warehouseId: usePurchase.purchaseList.warehouse.id,
@@ -51,11 +50,33 @@ onMounted(async () => {
         paidAmount: usePurchase.purchaseList.paid_amount,
         statusId: usePurchase.purchaseList.status.id,
         remark: usePurchase.purchaseList.remark,
-        purchaseDate: moment(usePurchase.purchaseList.purchase_date).format('YYYY-MM-DDTHH:mm'),
+        purchaseDate: moment(usePurchase.purchaseList.purchase_date).format('YYYY-MM-DDTHH:mm')
     };
-    selectedProducts.value = usePurchase.purchaseList.details;
+    selectedProducts.value = usePurchase.purchaseList.details.map(p => ({
+        productId: p.product.id,
+        productName: p.product.name,
+        quantity: p.quantity,
+        expiredDate: moment(p.inventory.expired_date).format('YYYY-MM-DD'),
+        purchasePrice: p.price,
+        total: p.total,
+        inventoryId: p.inventory.id,
+    }));
     await usePaymentMethod.fetchAllPaymentMethod();
 });
+
+function onChangeQty(product) {
+    product.quantity = Number(product.quantity) || 0;
+    if (product.quantity < 0) product.quantity = 0;
+}
+
+function onChangePrice(product) {
+    product.purchasePrice = Number(product.purchasePrice) || 0;
+    if (product.purchasePrice < 0) product.purchasePrice = 0;
+}
+
+function onChangeExpiredDate(product) {
+    product.expiredDate = product.expiredDate;
+}
 
 // Form Submit function
 async function formSubmit() {
@@ -66,8 +87,14 @@ async function formSubmit() {
         status_id: formData.value.statusId,
         purchase_date: formData.value.purchaseDate,
         updated_by: userData.value.id,
+        products: selectedProducts.value.map(p => ({
+            product_id: p.productId,
+            quantity: p.quantity,
+            expired_date: p.expiredDate,
+            purchase_price: p.purchasePrice,
+            inventory_id: p.inventoryId
+        }))
     }
-    console.log(payload);
     await usePurchase.editPurchase(payload, route.query.id);
     if (usePurchase.error.length) {
         usePurchase.error.forEach((msg) => {
@@ -140,6 +167,7 @@ async function formSubmit() {
                 <thead class="sticky top-0">
                     <tr class="bg-gray-100 text-right">
                         <th class="px-2 py-2 text-center">Product Name</th>
+                        <th class="px-2 py-2 text-center">Expired Date</th>
                         <th class="px-2 py-2">Purchase Price</th>
                         <th class="px-2 py-2">Purchase Qty</th>
                         <th class="px-2 py-2">Total</th>
@@ -149,15 +177,22 @@ async function formSubmit() {
                     <tr 
                         class="hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.id"
                     >
-                        <td class="border-b border-gray-200 px-2 py-2 text-center">{{ product.product.name }}</td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.price).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ product.quantity }}</td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.total).toLocaleString('en-us') }}</td>
+                        <td class="border-b border-gray-200 p-2 text-center">{{ product.productName }}</td>
+                        <td class="border-b border-gray-200 p-2 text-center">
+                            <input type="date" min="0" class="w-44 text-right px-1 -1 border rounded" v-model="product.expiredDate" @input="onChangeExpiredDate(product)" />
+                        </td>
+                        <td class="border-b border-gray-200 p-2">
+                            <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.purchasePrice" @input="onChangePrice(product)" />
+                        </td>
+                        <td class="border-b border-gray-200 p-2">
+                            <input type="number" min="0" class="w-20 text-right px-1 py-1 border rounded" v-model.number="product.quantity" @input="onChangeQty(product)" />
+                        </td>
+                        <td class="border-b border-gray-200 p-2">{{ Number(Number(product.quantity) * Number(product.purchasePrice)).toLocaleString('en-us') }}</td>
                     </tr>
                     <tr 
                         class="text-right"
                     >
-                        <td colspan="2" class="border-b border-gray-200 px-2 py-2 text-center">
+                        <td colspan="3" class="border-b border-gray-200 px-2 py-2">
                             <strong>Total:</strong>
                         </td>
                         <td class="border-b border-gray-200 px-2 py-2">
@@ -167,7 +202,7 @@ async function formSubmit() {
                         </td>
                         <td class="border-b border-gray-200 px-2 py-2">
                             <strong>
-                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.total)), 0).toLocaleString('en-us') }}
+                                {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity) * Number(product.purchasePrice)), 0).toLocaleString('en-us') }}
                             </strong>
                         </td>
                     </tr>

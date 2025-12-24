@@ -26,7 +26,6 @@ let categoryList = ref([]);
 onMounted(async () => {
     await useCategory.fetchAllCategory();
     categoryList.value = useCategory.categoryList;
-    console.log(categoryList.value)
 });
 
 

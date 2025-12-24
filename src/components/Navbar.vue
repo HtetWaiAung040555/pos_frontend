@@ -27,7 +27,6 @@ const openEditModal = ref(false);
 
 onMounted(() => {
   userData.value = JSON.parse(localStorage.getItem('user'));
-  console.log(userData.value);
 });
 
 function toggleDropdown() {

@@ -122,7 +122,6 @@ function exportToExcel() {
       const rowArr = props.columns.map(col => {
         const dataPath = col.key.split('.');
         const val = dataPath.reduce((acc, key) => acc?.[key], r);
-        console.log(col.key+": "+val);
         return val === undefined || val === null ? '' : val;
       });
       data.push(rowArr);

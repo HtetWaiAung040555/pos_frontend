@@ -25,8 +25,7 @@ let paymentMethodList = ref([]);
 
 onMounted(async () => {
     await usePaymentMethod.fetchAllPaymentMethod();
-    paymentMethodList.value = usePaymentMethod.paymentMethodList
-    console.log(paymentMethodList.value);
+    paymentMethodList.value = usePaymentMethod.paymentMethodList;
 });
 
 const columns = [
