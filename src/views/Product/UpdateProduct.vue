@@ -12,11 +12,16 @@
     import BaseLabel from '@/components/BaseLabel.vue';
     import { errMsgList } from '@/utils/const';
     import { useProductStore } from '@/stores/useProductStore';
+import { useCategoryStore } from '@/stores/useCategoryStore';
+import { useUnitStore } from '@/stores/useUnitStore';
+import { Select } from 'primevue';
     
     const router = useRouter();
     const route = useRoute();
     const toast = useToast();
     const useProduct = useProductStore();
+    const useCategory = useCategoryStore();
+    const useUnit = useUnitStore();
 
     const formData = ref(
       {
@@ -24,6 +29,7 @@
         unit: "",
         sec_prop: "",
         price: 0,
+        purchase_price: 0,
         barcode: "",
         image_url: "",
         status_id: "",
@@ -36,9 +42,10 @@
         name: "",
         price: "",
         unit: "",
-        sec_prop: "",
     });
     const uploadImage = ref('');
+    const selectedCategory = ref('');
+    const selectedUnit = ref('');
 
     // Change route function
     function changeRoute(pathname) {
@@ -51,6 +58,11 @@
         formData.value = useProduct.productList;
         formData.value.barcode = useProduct.productList.barcode === null? "" : useProduct.productList.barcode;
         uploadImage.value = useProduct.productList.image_url;
+        status.value = formData.value.status.id === 1 ? true : false;
+        await useCategory.fetchAllCategory();
+        selectedCategory.value = useCategory.categoryList.filter(el => el.id === formData.value.category_id.id)[0];
+        await useUnit.fetchAllUnit();
+        selectedUnit.value = useUnit.unitList.filter(el => el.id === formData.value.unit_id.id)[0];
     });
 
     function onImageSelected(event) {
@@ -72,7 +84,6 @@
                 name: errMsgList.name,
                 price: "",
                 unit: "",
-                sec_prop: "",
             };
             return
         } else if (formData.value.price <= 0) {
@@ -80,32 +91,24 @@
                 name: "",
                 price: errMsgList.price,
                 unit: "",
-                sec_prop: "",
             };
             return
-        } else if (formData.value.unit === "") {
+        } else if (!selectedUnit.value) {
             errorMsg.value = {
                 name: "",
                 price: "",
                 unit: errMsgList.unit,
-                sec_prop: "",
-            };
-            return
-        } else if (formData.value.sec_prop === "") {
-            errorMsg.value = {
-                name: "",
-                price: "",
-                unit: "",
-                sec_prop: errMsgList.sec_prop,
-            };
+            }
             return
         }
         const fd = new FormData();
         fd.append("_method", "PUT")
         fd.append("name", formData.value.name);
-        fd.append("unit", formData.value.unit);
+        fd.append("unit_id", selectedUnit.value.id);
+        fd.append("category_id", selectedCategory.value.id ? selectedCategory.value.id : '');
         fd.append("sec_prop", formData.value.sec_prop);
         fd.append("price", formData.value.price);
+        fd.append("purchase_price", formData.value.purchase_price);
         fd.append("barcode", formData.value.barcode);
         fd.append("status_id", status.value? "1" : "2");
         fd.append("updated_by", userData.value.id);
@@ -195,6 +198,20 @@
                     </div>
                 </div>
                 <div class="flex gap-x-4 mt-4">
+                    <!-- Category Select -->
+                    <div class="flex flex-col gap-y-1">
+                        <BaseLabel label="Category" />
+                        <Select v-model="selectedCategory" :options="useCategory.categoryList" showClear filter
+                            optionLabel="name" placeholder="Select category" class="w-[300px] h-[35px] items-center" />
+                    </div>
+                    <!-- Unit -->
+                    <div class="flex flex-col gap-y-1">
+                        <BaseLabel label="Unit" />
+                        <Select v-model="selectedUnit" :options="useUnit.unitList" showClear filter optionLabel="name"
+                            placeholder="Select unit" class="w-[300px] h-[35px] items-center" />
+                    </div>
+                </div>
+                <div class="flex gap-x-4 mt-4">
                     <!-- Barcode Input -->
                     <BaseInput
                         size="sm"
@@ -204,19 +221,6 @@
                         width="300px"
                         height="h-[35px]"
                     />
-                    <!-- Unit -->
-                    <BaseInput
-                        size="sm"
-                        v-model="formData.unit"
-                        label="Unit"
-                        placeholder="Pcs, Pack, etc..."
-                        width="300px"
-                        height="h-[35px]"
-                        :isRequire="true"
-                        :error="errorMsg.unit"
-                    />
-                </div>
-                <div class="flex gap-x-4 mt-4">
                     <!-- Secondary property input -->
                     <BaseInput
                         size="sm"
@@ -228,22 +232,33 @@
                         :isRequire="true"
                         :error="errorMsg.sec_prop"
                     />
-                    <!-- Price -->
+                </div>
+                <div class="flex gap-x-4 mt-4">
+                    <!-- Sales Price -->
                     <BaseInput
                         size="sm"
                         v-model="formData.price"
-                        label="Price"
+                        label="Sales Price"
                         width="300px"
                         height="h-[35px]"
                         type="number"
-                        :isRequire="true"
-                        :error="errorMsg.price"
+                        disabled
+                    />
+                    <!-- Price -->
+                    <BaseInput
+                        size="sm"
+                        v-model="formData.purchase_price"
+                        label="Purchase Price"
+                        width="300px"
+                        height="h-[35px]"
+                        type="number"
+                        disabled
                     />
                 </div>
                 <div class="flex justify-end mt-4">
                     <!-- Save Button -->
                     <BaseButton 
-                        label="Save" 
+                        label="Update" 
                         :isLoading="useProduct.loading" :icon="useProduct.loading? 'fa fa-spinner' : 'fa fa-floppy-disk'" 
                         severity="primary" 
                         @click="formSubmit" 

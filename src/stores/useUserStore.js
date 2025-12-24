@@ -97,6 +97,7 @@ export const useUserStore = defineStore('user', {
                         name: response.data.user.name,
                         branch: response.data.user.branch,
                         counter: response.data.user.counter,
+                        email: response.data.user.email,
                         permissions: [...response.data.user.role.permissions]
                     }));
                 }

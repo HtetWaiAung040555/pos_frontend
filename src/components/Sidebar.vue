@@ -1,7 +1,7 @@
 <script setup>
   import { useCollapseSidebar } from '@/stores/collapseSidebar';
 import { usePermissionStore } from '@/stores/usePermissionStore';
-  import { onMounted, ref } from 'vue';
+  import { ref } from 'vue';
   import { useRouter } from 'vue-router';
 
   const collapseSidebar = useCollapseSidebar();
@@ -80,10 +80,30 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
         ]
       },
       { 
-        name: 'Products', 
+        name: 'Product Management', 
         icon: 'fa fa-box-open',
         pathname: "/product",
-        permission: {name: 'Product', action: "View"}
+        permission: {name: 'Product', action: "View"},
+        children: [
+          { 
+            name: 'Product', 
+            icon: 'fa fa-box-open ', 
+            pathname: "/product",
+            permission: {name: 'Product', action: "View"}
+          },
+          { 
+            name: 'Unit', 
+            icon: 'fa fa-ruler ', 
+            pathname: "/unit",
+            permission: {name: 'Product', action: "View"}
+          },
+          { 
+            name: 'Category', 
+            icon: 'fas fa-clone',
+            pathname: "/category",
+            permission: {name: 'Category', action: "View"}
+          },
+        ]
       },
       { 
         name: 'Inventory', 
@@ -166,12 +186,6 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
         icon: 'fas fa-money-check-dollar',
         pathname: "/payment_method",
         permission: {name: 'Payment method', action: "View"}
-      },
-      { 
-        name: 'Category', 
-        icon: 'fas fa-clone',
-        pathname: "/category",
-        permission: {name: 'Category', action: "View"}
       },
       { 
         name: 'Wallet', 

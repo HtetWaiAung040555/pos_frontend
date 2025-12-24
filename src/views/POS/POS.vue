@@ -11,6 +11,7 @@ import { useSaleStore } from '@/stores/useSalesStore';
 import { useRouter } from 'vue-router';
 import moment from 'moment';
 import axios from 'axios';
+import { useProductStore } from '@/stores/useProductStore';
 
 const toast = useToast();
 const router = useRouter();
@@ -18,6 +19,7 @@ const useInventory = useInventoryStore();
 const useCustomer = useCustomerStore();
 const useStatus = useStatusStore();
 const useSales = useSaleStore();
+const useProduct = useProductStore();
 
 const productList = ref([]);
 const userData = ref({});
@@ -46,13 +48,15 @@ const selectedHold = ref('');
 
 onMounted(async () => {
   await useStatus.fetchAllStatus();
-  console.log(useStatus.statusList);
   await useInventory.fetchAllStock();
   await useCustomer.fetchAllCustomer();
-  const inventory = useInventory.stockList.filter(item => item.warehouse.id === JSON.parse(localStorage.getItem('user')).branch.warehouse_id);
+  // const inventory = useInventory.stockList.filter(item => item.warehouse.id === JSON.parse(localStorage.getItem('user')).branch.warehouse_id);
   userData.value = JSON.parse(localStorage.getItem('user'));
   selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
-  productList.value = inventory;
+  // productList.value = inventory;
+  await useProduct.fetchSalesProduct({warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id});
+  productList.value = useProduct.productList;
+  console.log(productList.value);
   // Always keep barcode input focused
   nextTick(() => barcodeInput.value?.focus());
   // window.addEventListener('click', () => {
@@ -63,12 +67,12 @@ onMounted(async () => {
 const filteredProducts = computed(() => {
   if (!searchQuery.value) return productList.value;
   const query = searchQuery.value.toLocaleLowerCase().trim();
+  console.log(productList.value);
   return productList.value.filter(item => {
-    const product = item.product;
     return (
-      product.name.toLocaleLowerCase().includes(query) ||
-      String(product.id).includes(query) ||
-      product.barcode?.toLocaleLowerCase().includes(query)
+      item.name.toLocaleLowerCase().includes(query) ||
+      String(item.id).includes(query) ||
+      item.barcode?.toLocaleLowerCase().includes(query)
     );
   })
 });
@@ -83,7 +87,18 @@ watch(visible, (newVal) => {
 });
 
 async function addProduct(product) {
+  let checkQty = product.qty <= 0;
+  if (checkQty) {
+    toast.add({
+      severity: 'warn',
+      summary: 'Stock Qty Warning',
+      detail: "Insufficient quantity.",
+      life: 3000
+    });
+    return
+  }
   let exist = selectedProducts.value.find(p => p.id === product.id);
+  console.log(checkQty);
   if (exist) {
     selectedPId.value = product.id;
     increaseQty(exist);
@@ -264,15 +279,13 @@ async function editHold(hold) {
           return {
             ...i.product,
             qty: i.quantity,
-            price: i.price ?? i.product.price
+            price: i.price ?? i.product.price,
+            promotion_id: i.promotion.id || null,
+            discount_amount: i.discount_amount || 0,
+            discount_type: i.promotion.discount_type,
+            discount_value: i.promotion.discount_value,
+            discount_price: i.discount_price
           }
-        }
-        // Fallback: try to find product in local productList
-        const found = productList.value.find(p => p.product.id === i.product_id) || {};
-        return {
-          ...(found.product || { id: i.product_id, name: i.name ?? 'Unknown' }),
-          qty: i.quantity,
-          price: i.price
         }
       });
     }
@@ -287,6 +300,11 @@ async function editHold(hold) {
   } catch (err) {
     console.error('Failed to fetch hold detail', err);
   }
+}
+
+function resetData() {
+  selectedProducts.value = [];
+  selectedHold.value = [];
 }
 
 async function deleteHold(hold) {
@@ -392,9 +410,9 @@ async function onPayClick() {
           <!-- Scrollable product grid -->
           <div class="flex-1 overflow-y-auto mt-4 pr-1">
             <div class="grid grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-              <ProductCard v-for="product in filteredProducts" :key="product.product.id" :name="product.product.name"
-                :price="product.product.price" :imageUrl="product.product.image_url" :qty="product.qty"
-                @click="addProduct(product.product)" />
+              <ProductCard v-for="product in filteredProducts" :key="product.id" :name="product.name"
+                :price="product.price" :imageUrl="product.image_url" :qty="product.qty"
+                @click="addProduct(product)" />
             </div>
           </div>
         </div>
@@ -472,8 +490,8 @@ async function onPayClick() {
           <!-- Fixed bottom button group -->
           <div class="shrink-0 mt-4 flex justify-end gap-x-2 items-center">
             <BaseButton label="Reset" severity="danger" icon="fa fa-rotate-left"
-              :disabled="selectedProducts.length === 0" @click="selectedProducts = []" />
-            <BaseButton label="Hold" severity="secondary" icon="fa fa-hand" :disabled="selectedProducts.length === 0"
+              :disabled="selectedProducts.length === 0" @click="resetData" />
+            <BaseButton label="Hold" severity="secondary" icon="fa fa-hand" :disabled="selectedProducts.length === 0 || selectedHold.length != 0"
               @click="holdSale" />
             <BaseButton label="Pay" severity="primary" icon="fa fa-credit-card"
               :disabled="selectedProducts.length === 0" @click="onPayClick" />

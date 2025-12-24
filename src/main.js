@@ -71,6 +71,9 @@ import UpdatePurchase from './views/Purchase/UpdatePurchase.vue';
 import PurchaseReturn from './views/Purchase_Return/PurchaseReturn.vue';
 import CreatePurchaseReturn from './views/Purchase_Return/CreatePurchaseReturn.vue';
 import UpdatePurchaseReturn from './views/Purchase_Return/UpdatePurchaseReturn.vue';
+import Unit from './views/Unit/Unit.vue';
+import CreateUnit from './views/Unit/CreateUnit.vue';
+import UpdateUnit from './views/Unit/UpdateUnit.vue';
 
 
 
@@ -119,6 +122,9 @@ const router = createRouter({
         {path: '/category', name: 'Category', component: Category, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'View' } }},
         {path: '/category/create', name: 'Create Category', component: CreateCategory, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'Create' } }},
         {path: '/category/update', name: 'Update Category', component: UpdateCategory, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'Update' } }},
+        {path: '/unit', name: 'Unit', component: Unit, meta: { requiresAuth: true, permission: { resource: 'Unit', action: 'View' } }},
+        {path: '/unit/create', name: 'Create Unit', component: CreateUnit, meta: { requiresAuth: true, permission: { resource: 'Unit', action: 'Create' } }},
+        {path: '/unit/update', name: 'Update Unit', component: UpdateUnit, meta: { requiresAuth: true, permission: { resource: 'Unit', action: 'Update' } }},
         {path: '/wallet', name: 'Wallet', component: Wallet, meta: { requiresAuth: true, permission: { resource: 'Wallet', action: 'View' } }},
         {path: '/wallet/createTopUp', name: 'Create Wallet Top Up', component: CreateWalletTopUp, meta: { requiresAuth: true, permission: { resource: 'Wallet', action: 'Create' } }},
         {path: '/wallet/updateTopUp', name: 'Update Wallet Top Up', component: UpdateWalletTopUp, meta: { requiresAuth: true, permission: { resource: 'Wallet', action: 'Update' } }},

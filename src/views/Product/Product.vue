@@ -37,10 +37,11 @@
         } },
         { key: 'name', label: 'Name' },
         { key: 'barcode', label: 'Barcode' },
-        { key: 'unit', label: 'Unit' },
+        { key: 'unit_id.name', label: 'Unit', formatter: (row) => row.unit_id.name },
         { key: 'category_id.name', label: 'Category', formatter: (row) => row.category_id.name },
         { key: 'sec_prop', label: 'Property' },
-        { key: 'price', label: 'Price' },
+        { key: 'price', label: 'Sales Price' },
+        { key: 'purchase_price', label: 'Purchase Price' },
         { key: 'status', label: 'Status', formatter: (row) => {
             const color = row.status.name === 'Active' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';
             return `<span class="text-white px-2 py-1 rounded ${color}">${row.status.name}</span>`;
