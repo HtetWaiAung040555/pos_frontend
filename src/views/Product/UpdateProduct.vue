@@ -60,9 +60,9 @@ import { Select } from 'primevue';
         uploadImage.value = useProduct.productList.image_url;
         status.value = formData.value.status.id === 1 ? true : false;
         await useCategory.fetchAllCategory();
-        selectedCategory.value = useCategory.categoryList.filter(el => el.id === formData.value.category_id.id)[0];
+        selectedCategory.value = useCategory.categoryList.filter(el => el.id === formData.value.category_id.id)[0] || selectedCategory.value;
         await useUnit.fetchAllUnit();
-        selectedUnit.value = useUnit.unitList.filter(el => el.id === formData.value.unit_id.id)[0];
+        selectedUnit.value = useUnit.unitList.filter(el => el.id === formData.value.unit_id.id)[0] || selectedCategory.value;
     });
 
     function onImageSelected(event) {

@@ -109,6 +109,7 @@ async function formSubmitAndPrint() {
 }
 
 async function formCancel() {
+  router.push('/pos');
 }
 
 function changePaymentMethod(e) {

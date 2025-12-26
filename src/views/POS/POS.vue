@@ -5,13 +5,15 @@ import ProductCard from '@/components/ProductCard.vue';
 import { useCustomerStore } from '@/stores/useCustomerStore';
 import { useInventoryStore } from '@/stores/useInventoryStore';
 import { Dialog, Select, useToast } from 'primevue';
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useStatusStore } from '@/stores/useStatusStore';
 import { useSaleStore } from '@/stores/useSalesStore';
 import { useRouter } from 'vue-router';
 import moment from 'moment';
 import axios from 'axios';
 import { useProductStore } from '@/stores/useProductStore';
+const isAndroid = /Android/i.test(navigator.userAgent);
+
 
 const toast = useToast();
 const router = useRouter();
@@ -45,6 +47,8 @@ const visibleHoldList = ref(false);
 const holdList = ref([]);
 const loadingHolds = ref(false);
 const selectedHold = ref('');
+let barcodeBuffer = '';
+let barcodeTimer = null;
 
 onMounted(async () => {
   await useStatus.fetchAllStatus();
@@ -57,10 +61,20 @@ onMounted(async () => {
   await useProduct.fetchSalesProduct({warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id});
   productList.value = useProduct.productList;
   // Always keep barcode input focused
-  nextTick(() => barcodeInput.value?.focus());
+  if (!isAndroid) {
+    nextTick(() => barcodeInput.value?.focus());
+  } else {
+    window.addEventListener('keydown', handleGlobalBarcode);
+  }
   // window.addEventListener('click', () => {
   //   barcodeInput.value?.focus();
   // });
+});
+
+onUnmounted(() => {
+  if (isAndroid) {
+    window.removeEventListener('keydown', handleGlobalBarcode);
+  }
 });
 
 const filteredProducts = computed(() => {
@@ -130,6 +144,38 @@ async function addProduct(product) {
 
 }
 
+function handleGlobalBarcode(e) {
+  // Ignore if user is typing in real inputs
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+  // Only allow barcode characters
+  if (e.key.length === 1) {
+    barcodeBuffer += e.key;
+  }
+
+  if (e.key === 'Enter') {
+    const code = barcodeBuffer.trim().toLowerCase();
+    barcodeBuffer = '';
+
+    if (!code) return;
+
+    const matchedProduct = productList.value.find(
+      p => p.barcode?.toLowerCase() === code
+    );
+
+    if (matchedProduct) {
+      addProduct(matchedProduct);
+    }
+  }
+
+  // Reset buffer if typing pauses
+  clearTimeout(barcodeTimer);
+  barcodeTimer = setTimeout(() => {
+    barcodeBuffer = '';
+  }, 100);
+}
+
 function openDialog(product) {
   let exist = selectedProducts.value.find(p => p.id === product.id);
   if (exist) {
@@ -184,12 +230,11 @@ function handleBarcodeInput(e) {
     const query = e.target.value.toLowerCase().trim();
     // Try to find matching product by barcode or ID 
     const matchedProduct = productList.value.find(item => {
-      const p = item.product;
-      return (p.barcode?.toLowerCase() === query);
+      return (item.barcode?.toLowerCase() === query);
     });
     if (matchedProduct) {
       // Auto add product to POS
-      addProduct(matchedProduct.product);
+      addProduct(matchedProduct);
       // Clear the search bar for next scan 
       e.target.value = "";
     }
