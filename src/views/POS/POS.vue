@@ -61,14 +61,9 @@ onMounted(async () => {
   await useProduct.fetchSalesProduct({warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id});
   productList.value = useProduct.productList;
   // Always keep barcode input focused
-  if (!isAndroid) {
+  
     // Desktop scanners
-    nextTick(() => barcodeInput.value?.focus());
-  } else {
-    // ✅ Android scanners
-    document.addEventListener('keydown', handleAndroidBarcode);
-    document.addEventListener('keypress', handleAndroidBarcode);
-  }
+  nextTick(() => barcodeInput.value?.focus());
   // window.addEventListener('click', () => {
   //   barcodeInput.value?.focus();
   // });
