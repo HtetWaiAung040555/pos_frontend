@@ -62,9 +62,12 @@ onMounted(async () => {
   productList.value = useProduct.productList;
   // Always keep barcode input focused
   if (!isAndroid) {
+    // Desktop scanners
     nextTick(() => barcodeInput.value?.focus());
   } else {
-    window.addEventListener('keydown', handleGlobalBarcode);
+    // ✅ Android scanners
+    document.addEventListener('keydown', handleAndroidBarcode);
+    document.addEventListener('keypress', handleAndroidBarcode);
   }
   // window.addEventListener('click', () => {
   //   barcodeInput.value?.focus();
@@ -73,7 +76,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (isAndroid) {
-    window.removeEventListener('keydown', handleGlobalBarcode);
+    document.removeEventListener('keydown', handleAndroidBarcode);
+    document.removeEventListener('keypress', handleAndroidBarcode);
   }
 });
 
@@ -144,7 +148,7 @@ async function addProduct(product) {
 
 }
 
-function handleGlobalBarcode(e) {
+function handleAndroidBarcode(e) {
   // Ignore if user is typing in real inputs
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -167,6 +171,11 @@ function handleGlobalBarcode(e) {
     if (matchedProduct) {
       addProduct(matchedProduct);
     }
+  }
+
+  // Accept only visible characters
+  if (key.length === 1) {
+    barcodeBuffer += key;
   }
 
   // Reset buffer if typing pauses
@@ -212,14 +221,17 @@ function addQty() {
 // Increase quantity by 1
 function increaseQty(product) {
   product.qty += 1;
+  nextTick(() => barcodeInput.value?.focus());
 }
 
 // Decrease quantity by 1
 function decreaseQty(product) {
   if (product.qty <= 1) {
+    nextTick(() => barcodeInput.value?.focus());
     return
   } else {
     product.qty -= 1;
+    nextTick(() => barcodeInput.value?.focus());
   }
 }
 
@@ -276,11 +288,13 @@ async function holdSale() {
         life: 3000
       });
     });
+    nextTick(() => barcodeInput.value?.focus());
     return
   }
   if (useSales.salesList) {
     toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales hold successfully.', life: 3000 });
     selectedProducts.value = [];
+    nextTick(() => barcodeInput.value?.focus());
   }
 }
 
@@ -425,7 +439,6 @@ async function onPayClick() {
 </script>
 
 <template>
-  <label for="barcodeInput">
     <div class="flex flex-col h-[calc(100vh-64px)] bg-blue-100/30">
       <!-- 🧾 Hidden barcode input -->
       <input ref="barcodeInput" id="barcodeInput" type="text" class="absolute opacity-0 pointer-events-none"
@@ -598,5 +611,4 @@ async function onPayClick() {
         </template>
       </Dialog>
     </div>
-  </label>
 </template>

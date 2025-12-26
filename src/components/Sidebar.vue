@@ -95,7 +95,7 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             name: 'Unit', 
             icon: 'fa fa-ruler ', 
             pathname: "/unit",
-            permission: {name: 'Product', action: "View"}
+            permission: {name: 'Unit', action: "View"}
           },
           { 
             name: 'Category', 
