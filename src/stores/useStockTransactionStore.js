@@ -13,6 +13,7 @@ export const useStockTransactionStore = defineStore('Stock Transaction', {
     }),
     actions: {
         async fetchStockTransactions(filteredData) {
+            this.list = [],
             this.loading = true;
             this.error = [];
             try {

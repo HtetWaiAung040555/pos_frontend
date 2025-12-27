@@ -73,6 +73,7 @@ const totalPages = computed(() => Math.ceil(sortedRows.value.length / props.page
 
 // Paginated rows
 const paginatedRows = computed(() => {
+  if (!props.isPaginate) return sortedRows.value;
   const start = (currentPage.value - 1) * props.pageSize;
   return sortedRows.value.slice(start, start + props.pageSize);
 });
