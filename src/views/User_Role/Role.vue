@@ -92,7 +92,7 @@ async function deleteHandle(id) {
             </template>
         </PageTitle>
         <!-- Displaying role data -->
-        <DataTable :columns="columns" :rows="filteredRows" :pageSize="5" :editPath="'Update Role'"
+        <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Role'"
             :isLoading="useRole.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
             :isEdit="!usePermission.can('Role', 'Update')" :isDelete="!usePermission.can('Role', 'Delete')">
             <template #filters>

@@ -83,7 +83,7 @@ const router = createRouter({
         {path: '/login', name: 'Login', component: Login},
         {path: '/register', name: 'Register', component: Register},
         {path: '/unauthorized', name: 'Unauthorized', component: Unauthorized},
-        {path: '/', name: 'Home', component: Home, meta: { requiresAuth: true }},
+        {path: '/', name: 'Home', component: Home, meta: { requiresAuth: true, permission: { resource: 'Dashboard', action: 'View' } }},
         {path: '/pos', name: 'POS', component: POS, meta: { requiresAuth: true, permission: { resource: 'POS', action: 'View' } }},
         {path: '/user', name: 'Users', component: User, meta: { requiresAuth: true, permission: { resource: 'User', action: 'View' }  }},
         {path: '/user/create', name: 'Create User', component: CreateUser, meta: { requiresAuth: true, permission: { resource: 'User', action: 'Create' } }},

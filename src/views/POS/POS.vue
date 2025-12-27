@@ -60,20 +60,6 @@ onMounted(async () => {
   // productList.value = inventory;
   await useProduct.fetchSalesProduct({warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id});
   productList.value = useProduct.productList;
-  // Always keep barcode input focused
-  
-    // Desktop scanners
-  nextTick(() => barcodeInput.value?.focus());
-  // window.addEventListener('click', () => {
-  //   barcodeInput.value?.focus();
-  // });
-});
-
-onUnmounted(() => {
-  if (isAndroid) {
-    document.removeEventListener('keydown', handleAndroidBarcode);
-    document.removeEventListener('keypress', handleAndroidBarcode);
-  }
 });
 
 const filteredProducts = computed(() => {
@@ -143,43 +129,6 @@ async function addProduct(product) {
 
 }
 
-function handleAndroidBarcode(e) {
-  // Ignore if user is typing in real inputs
-  const tag = e.target.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-
-  // Only allow barcode characters
-  if (e.key.length === 1) {
-    barcodeBuffer += e.key;
-  }
-
-  if (e.key === 'Enter') {
-    const code = barcodeBuffer.trim().toLowerCase();
-    barcodeBuffer = '';
-
-    if (!code) return;
-
-    const matchedProduct = productList.value.find(
-      p => p.barcode?.toLowerCase() === code
-    );
-
-    if (matchedProduct) {
-      addProduct(matchedProduct);
-    }
-  }
-
-  // Accept only visible characters
-  if (key.length === 1) {
-    barcodeBuffer += key;
-  }
-
-  // Reset buffer if typing pauses
-  clearTimeout(barcodeTimer);
-  barcodeTimer = setTimeout(() => {
-    barcodeBuffer = '';
-  }, 100);
-}
-
 function openDialog(product) {
   let exist = selectedProducts.value.find(p => p.id === product.id);
   if (exist) {
@@ -244,6 +193,8 @@ function handleBarcodeInput(e) {
       addProduct(matchedProduct);
       // Clear the search bar for next scan 
       e.target.value = "";
+    } else {
+      
     }
   }
 }
@@ -435,9 +386,6 @@ async function onPayClick() {
 
 <template>
     <div class="flex flex-col h-[calc(100vh-64px)] bg-blue-100/30">
-      <!-- 🧾 Hidden barcode input -->
-      <input ref="barcodeInput" id="barcodeInput" type="text" class="absolute opacity-0 pointer-events-none"
-        @keyup="handleBarcodeInput" />
       <!-- Main POS content fills remaining height -->
       <div class="flex flex-1 overflow-hidden">
         <!-- Left section (Products) -->
@@ -471,6 +419,8 @@ async function onPayClick() {
                 </div>
               </template>
             </Select>
+            <BaseInput id="barcodeInput" type="text" height="h-[33px]" width="350px" placeholder="Scan products by barcode..."
+            @keyup="handleBarcodeInput" />
           </div>
 
           <!-- Scrollable Cart Table -->

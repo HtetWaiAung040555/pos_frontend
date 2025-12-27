@@ -99,7 +99,6 @@
         <DataTable 
             :columns="columns" 
             :rows="filteredRows" 
-            :pageSize="5" 
             :editPath="'Update Promotion'" 
             :isLoading="usePromo.loading" 
             @delete="deleteHandle"

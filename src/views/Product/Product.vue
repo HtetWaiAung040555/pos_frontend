@@ -108,7 +108,6 @@
         <DataTable
             :columns="columns"
             :rows="filteredRows"
-            :pageSize="5"
             :editPath="'Update Product'"
             :isLoading="useProduct.loading"
             :defaultSort="{key: 'created_at', order: 'desc'}"

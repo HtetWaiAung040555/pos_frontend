@@ -15,6 +15,7 @@
 import { useCategoryStore } from '@/stores/useCategoryStore';
 import { useUnitStore } from '@/stores/useUnitStore';
 import { Select } from 'primevue';
+import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
     
     const router = useRouter();
     const route = useRoute();
@@ -62,7 +63,7 @@ import { Select } from 'primevue';
         await useCategory.fetchAllCategory();
         selectedCategory.value = useCategory.categoryList.filter(el => el.id === formData.value.category_id.id)[0] || selectedCategory.value;
         await useUnit.fetchAllUnit();
-        selectedUnit.value = useUnit.unitList.filter(el => el.id === formData.value.unit_id.id)[0] || selectedCategory.value;
+        selectedUnit.value = useUnit.unitList.filter(el => el.id === formData.value.unit_id.id)[0] || selectedUnit.value;
     });
 
     function onImageSelected(event) {
@@ -209,6 +210,7 @@ import { Select } from 'primevue';
                         <BaseLabel label="Unit" />
                         <Select v-model="selectedUnit" :options="useUnit.unitList" showClear filter optionLabel="name"
                             placeholder="Select unit" class="w-[300px] h-[35px] items-center" />
+                        <BaseErrorLabel v-if="errorMsg.unit" :label="errorMsg.unit" />
                     </div>
                 </div>
                 <div class="flex gap-x-4 mt-4">
@@ -242,7 +244,6 @@ import { Select } from 'primevue';
                         width="300px"
                         height="h-[35px]"
                         type="number"
-                        disabled
                     />
                     <!-- Price -->
                     <BaseInput

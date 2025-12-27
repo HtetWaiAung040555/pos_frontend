@@ -151,7 +151,6 @@
         <DataTable 
             :columns="columns" 
             :rows="displayedSales" 
-            :pageSize="5" 
             :editPath="'Update Sales'" 
             :isLoading="useSales.loading" 
             @delete="deleteHandle"

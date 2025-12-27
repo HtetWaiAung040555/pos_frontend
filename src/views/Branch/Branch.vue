@@ -97,7 +97,7 @@ async function deleteHandle(id) {
             </template>
         </PageTitle>
         <!-- DataTable -->
-        <DataTable :columns="columns" :rows="filteredRows" :pageSize="5" :editPath="'Update Branch'"
+        <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Branch'"
             :isLoading="useBranch.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
             :isEdit="!usePermission.can('Branch', 'Update')" :isDelete="!usePermission.can('Branch', 'Delete')">
             <!-- Filter Section -->

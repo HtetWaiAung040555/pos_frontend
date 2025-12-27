@@ -97,8 +97,7 @@
         </PageTitle>
         <DataTable 
             :columns="columns" 
-            :rows="filteredRows" 
-            :pageSize="5" 
+            :rows="filteredRows"
             :editPath="'Update Warehouse'" 
             :isLoading="useWarehouse.loading" 
             @delete="deleteHandle"

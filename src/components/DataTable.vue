@@ -8,7 +8,8 @@ import * as XLSX from 'xlsx';
 const props = defineProps({
   columns: { type: Array, required: true }, // [{ key: 'name', label: 'Name' }]
   rows: { type: Array, required: true },    // your data array
-  pageSize: { type: Number, default: 5 },
+  pageSize: { type: Number, default: 10 },
+  isPaginate: {type: Boolean, default: false},
   isAction: {type: Boolean, default: true},
   editPath: {type: String, default: ""},
   deletePath: {type: String, default: ""},
@@ -251,7 +252,7 @@ function exportToExcel() {
       </div>
 
       <!-- Pagination -->
-      <div class="sticky bottom-0 bg-white border-t border-gray-200">
+      <div v-if="isPaginate" class="sticky bottom-0 bg-white border-t border-gray-200">
         <div class="flex items-center justify-end mt-3 gap-2">
           <BaseButton 
             icon="fa fa-chevron-left" 

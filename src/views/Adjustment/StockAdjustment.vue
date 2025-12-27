@@ -100,7 +100,7 @@ async function deleteHandle(id) {
             </template>
         </PageTitle>
         <!-- DataTable -->
-        <DataTable :columns="columns" :rows="filteredRows" :pageSize="5" :isAction="false"
+        <DataTable :columns="columns" :rows="filteredRows" :isPaginate="false" :isAction="false"
             :isLoading="useStockTransaction.loading" :defaultSort="{ key: 'created_at', order: 'desc' }" @delete="deleteHandle">
             <!-- Filter Section -->
             <template #filters>

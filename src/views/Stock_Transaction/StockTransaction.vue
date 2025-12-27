@@ -139,7 +139,7 @@ async function deleteHandle(id) {
         </PageTitle>
         <!-- DataTable -->
         <DataTable 
-            :columns="columns" :rows="filteredRows" :pageSize="20" :isAction="false"
+            :columns="columns" :rows="filteredRows" :isAction="false"
             :isLoading="useStockTransaction.loading" :defaultSort="{ key: 'id', order: 'desc' }" @delete="deleteHandle"
             :filename="'Stock_Transaction'">
             <!-- Filter Section -->

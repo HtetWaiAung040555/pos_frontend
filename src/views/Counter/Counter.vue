@@ -93,7 +93,7 @@ async function deleteHandle(id) {
                 </div>
             </template>
         </PageTitle>
-        <DataTable :columns="columns" :rows="filteredRows" :pageSize="5" :editPath="'Update Counter'"
+        <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Counter'"
             :isLoading="useCounter.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
             :isEdit="!usePermission.can('Counter', 'Update')" :isDelete="!usePermission.can('Counter', 'Delete')">
             <template #filters>
