@@ -12,8 +12,6 @@ import { useRouter } from 'vue-router';
 import moment from 'moment';
 import axios from 'axios';
 import { useProductStore } from '@/stores/useProductStore';
-const isAndroid = /Android/i.test(navigator.userAgent);
-
 
 const toast = useToast();
 const router = useRouter();
@@ -194,8 +192,27 @@ function handleBarcodeInput(e) {
       // Clear the search bar for next scan 
       e.target.value = "";
     } else {
-      
+
     }
+  }
+}
+
+// When Enter is pressed in the Select filter input, pick a matching customer
+function onSelectEnter(e) {
+  const inputVal = (e.target?.value || '').toString().trim();
+  if (!inputVal) return;
+
+  const q = inputVal.toLowerCase();
+  const found = useCustomer.customerList.find(c => {
+    if (!c) return false;
+    const idStr = String(c.id || '').toLowerCase();
+    const name = (c.name || '').toLowerCase();
+    return idStr === q || idStr.includes(q) || name.includes(q);
+  });
+
+  if (found) {
+    selectedCustomer.value = found;
+    try { e.target.blur(); } catch (err) {}
   }
 }
 
@@ -412,7 +429,7 @@ async function onPayClick() {
           <!-- Top: Customer selection -->
           <div class="shrink-0 mb-2 flex gap-x-2 items-center">
             <Select v-model="selectedCustomer" :options="useCustomer.customerList" filter optionLabel="id"
-              placeholder="Select a customer" class="w-[200px] h-[30px] items-center">
+              placeholder="Select a customer" class="w-[200px] h-[30px] items-center" @keydown.enter="onSelectEnter">
               <template #option="slotProps">
                 <div class="flex items-center text-[13px]">
                   {{ slotProps.option.id }} | {{ slotProps.option.name }}
