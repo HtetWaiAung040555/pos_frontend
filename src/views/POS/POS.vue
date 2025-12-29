@@ -45,8 +45,6 @@ const visibleHoldList = ref(false);
 const holdList = ref([]);
 const loadingHolds = ref(false);
 const selectedHold = ref('');
-let barcodeBuffer = '';
-let barcodeTimer = null;
 
 onMounted(async () => {
   await useStatus.fetchAllStatus();
@@ -90,7 +88,6 @@ async function addProduct(product) {
       detail: "Insufficient quantity.",
       life: 3000
     });
-    return
   }
   let exist = selectedProducts.value.find(p => p.id === product.id);
   if (exist) {
@@ -199,7 +196,8 @@ function handleBarcodeInput(e) {
 
 // When Enter is pressed in the Select filter input, pick a matching customer
 function onSelectEnter(e) {
-  const inputVal = (e.target?.value || '').toString().trim();
+  // Prefer the event target value, fall back to the active element value (works on mobile)
+  const inputVal = (e.target?.value || (document.activeElement && (document.activeElement.value || '')) || '').toString().trim();
   if (!inputVal) return;
 
   const q = inputVal.toLowerCase();
@@ -429,7 +427,7 @@ async function onPayClick() {
           <!-- Top: Customer selection -->
           <div class="shrink-0 mb-2 flex gap-x-2 items-center">
             <Select v-model="selectedCustomer" :options="useCustomer.customerList" filter optionLabel="id"
-              placeholder="Select a customer" class="w-[200px] h-[30px] items-center" @keydown.enter="onSelectEnter">
+              placeholder="Select a customer" class="w-[200px] h-[30px] items-center" @keyup.enter="onSelectEnter">
               <template #option="slotProps">
                 <div class="flex items-center text-[13px]">
                   {{ slotProps.option.id }} | {{ slotProps.option.name }}
