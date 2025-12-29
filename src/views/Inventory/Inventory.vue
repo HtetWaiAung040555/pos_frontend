@@ -53,7 +53,7 @@
     // Filter Function
     const filteredRows = computed(() => {
         const searchedData = filter.searchFunction(dataList.value, searchValue.value, [
-            "name",
+            "product.name",
         ]);
         return filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value })
     });
@@ -116,7 +116,6 @@
                         size="sm"
                         type="date"
                         v-model="startDate"
-                        placeholder="Search"
                         width="200px"
                         height="h-[35px]"
                     />
@@ -124,7 +123,6 @@
                         size="sm"
                         type="date"
                         v-model="endDate"
-                        placeholder="Search"
                         width="200px"
                         height="h-[35px]"
                     />

@@ -141,7 +141,7 @@ async function formSubmit(isNew) {
                 created_by: "",
             };
             selectedCategory.value = "";
-            selectedUnit.value = "";
+            selectedUnit.value = useUnit.unitList.filter(el => el.id === 1)[0] || selectedUnit.value;
             uploadImage.value = "";
             router.push('/product/create');
             return
