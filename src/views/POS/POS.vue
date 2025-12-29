@@ -12,6 +12,7 @@ import { useRouter } from 'vue-router';
 import moment from 'moment';
 import axios from 'axios';
 import { useProductStore } from '@/stores/useProductStore';
+import BaseSearchSelect from '@/components/BaseSearchSelect.vue';
 
 const toast = useToast();
 const router = useRouter();
@@ -426,14 +427,22 @@ async function onPayClick() {
         <div class="flex flex-col w-1/3 bg-white text-black p-4 overflow-hidden">
           <!-- Top: Customer selection -->
           <div class="shrink-0 mb-2 flex gap-x-2 items-center">
-            <Select v-model="selectedCustomer" :options="useCustomer.customerList" filter optionLabel="id"
-              placeholder="Select a customer" class="w-[200px] h-[30px] items-center" @keyup.enter="onSelectEnter">
+            <!-- <Select v-model="selectedCustomer" :options="useCustomer.customerList" filter optionLabel="id"
+              placeholder="Select a customer" class="w-[200px] h-[30px] items-center" @keyup="onSelectEnter">
               <template #option="slotProps">
                 <div class="flex items-center text-[13px]">
                   {{ slotProps.option.id }} | {{ slotProps.option.name }}
                 </div>
               </template>
-            </Select>
+            </Select> -->
+            <BaseSearchSelect
+              v-model="selectedCustomer"
+              :options="useCustomer.customerList"
+              optionLabel="name"
+              optionValue="id"
+              placeholder="Select customer"
+            />
+
             <BaseInput id="barcodeInput" type="text" height="h-[33px]" width="350px" placeholder="Scan products by barcode..."
             @keyup="handleBarcodeInput" />
           </div>
