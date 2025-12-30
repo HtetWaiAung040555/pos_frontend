@@ -65,6 +65,8 @@ onMounted(async () => {
     await usePaymentMethod.fetchAllPaymentMethod();
     await useProduct.fetchAllProduct();
     productList.value = useProduct.productList || [];
+    selectedCustomer.value = useCustomer.customerList.filter(c => c.is_default)[0];
+    selectedWarehouse.value = useWarehouse.warehouseList.filter(w => w.id === userData.value.branch.warehouse_id)[0];
 });
 
 const filteredProducts = computed(() => {
@@ -196,6 +198,11 @@ function cancelProductSelection() {
 function onChangeQty(product) {
     product.quantity = Number(product.quantity) || 0;
     if (product.quantity < 0) product.quantity = 0;
+}
+
+function onChangePrice(product) {
+    product.price = Number(product.price) || 0;
+    if (product.price < 0) product.price = 0;
 }
 
 // Form Submit function
@@ -409,7 +416,8 @@ function printSlip() {
                                         <td class="p-2">{{ product.productName }}</td>
                                         <td class="p-2">{{ product.barcode }}</td>
                                         <td class="p-2 text-right">
-                                            {{ Number(product.price).toLocaleString() }}
+                                            <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.price" @input="onChangePrice(product)" />
+                                            <!-- {{ Number(product.price).toLocaleString() }} -->
                                         </td>
                                         <td class="p-2 text-right">
                                             {{ product.promotionId ? product.discountValue + (product.discountType === 'percent' ? '%' : '') : 0 }}
@@ -426,6 +434,9 @@ function printSlip() {
                                                 @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)"><i
                                                     class="pi pi-trash"></i></button>
                                         </td>
+                                    </tr>
+                                    <tr v-if="selectedProducts.length === 0">
+                                        <td colspan="5" class="py-4 text-center text-gray-500">No products selected</td>
                                     </tr>
                                     <tr class="border-b border-gray-200 font-bold bg-gray-100">
                                         <td colspan="6" class="p-2 text-right">Grand Total</td>
@@ -445,9 +456,6 @@ function printSlip() {
                                             }}
                                         </td>
                                         <td>&nbsp;</td>
-                                    </tr>
-                                    <tr v-if="selectedProducts.length === 0">
-                                        <td colspan="5" class="py-4 text-center text-gray-500">No products selected</td>
                                     </tr>
                                 </tbody>
                             </table>

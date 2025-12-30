@@ -338,7 +338,7 @@ async function onPayClick() {
       paid_amount: 0,
       payment_id: 1,
       sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
-      status_id: useStatus.statusList.find(el => el.name === 'Pending').id,
+      status_id: useStatus.statusList.find(el => el.name === 'Hold').id,
       updated_by: JSON.parse(localStorage.getItem('user')).id
     }
     await useSales.editSales(selectedHold.value.id, payload);
