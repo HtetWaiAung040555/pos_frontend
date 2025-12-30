@@ -104,7 +104,7 @@ function generateCustomerCode() {
                 maxSerial = num;
                 pad = Math.max(pad, leadingZeros.length + numStr.length);
             }
-        } 
+        }
     });
 
     // If no customers matched our prefix, fall back to lastRaw only if it matches the prefix
@@ -199,12 +199,15 @@ async function formSubmit() {
         }
     }
     await useCustomer.addCustomer(formData.value);
-    if (useCustomer.error) {
-        Object.values(useCustomer.error).forEach((err) => {
-            err.forEach((msg) => {
-                toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-            })
-        })
+    if (useCustomer.error.length) {
+        useCustomer.error.forEach((msg) => {
+            toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+            });
+        });
         return
     }
     if (useCustomer.customerList) {
@@ -259,27 +262,14 @@ async function formSubmit() {
                 </div>
                 <div class="flex gap-x-2 mt-6">
                     <div class="flex flex-col">
-                        <BaseInput
-                            size="sm"
-                            v-model="formData.id"
-                            label="Code"
-                            placeholder="Code (leave empty to auto-generate)"
-                            width="300px"
-                            height="h-[35px]"
-                        />
+                        <BaseInput size="sm" v-model="formData.id" label="Code"
+                            placeholder="Code (leave empty to auto-generate)" width="300px" height="h-[35px]" />
                     </div>
                 </div>
                 <div class="flex gap-x-4 mt-6">
                     <!-- Customer Name Input -->
-                    <BaseInput 
-                        size="sm" 
-                        v-model="formData.name" 
-                        label="Name" 
-                        placeholder="Name" 
-                        width="300px"
-                        height="h-[35px]" :isRequire="true"
-                        :error="errorMsg.name" 
-                    />
+                    <BaseInput size="sm" v-model="formData.name" label="Name" placeholder="Name" width="300px"
+                        height="h-[35px]" :isRequire="true" :error="errorMsg.name" />
                     <!-- Customer Status -->
                     <div class="flex flex-col gap-y-1 w-[200px]">
                         <BaseLabel label="Status" />

@@ -26,7 +26,6 @@
     onMounted(async () => {
         await useProduct.fetchAllProduct();
         dataList.value = useProduct.productList;
-        console.log(dataList.value);
     });
 
     // Table headers
@@ -37,10 +36,11 @@
         } },
         { key: 'name', label: 'Name' },
         { key: 'barcode', label: 'Barcode' },
-        { key: 'unit', label: 'Unit' },
+        { key: 'unit_id.name', label: 'Unit', formatter: (row) => row.unit_id.name },
         { key: 'category_id.name', label: 'Category', formatter: (row) => row.category_id.name },
         { key: 'sec_prop', label: 'Property' },
-        { key: 'price', label: 'Price' },
+        { key: 'price', label: 'Sales Price' },
+        { key: 'purchase_price', label: 'Purchase Price' },
         { key: 'status', label: 'Status', formatter: (row) => {
             const color = row.status.name === 'Active' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';
             return `<span class="text-white px-2 py-1 rounded ${color}">${row.status.name}</span>`;
@@ -68,8 +68,15 @@
     // Branch delete function
     async function deleteHandle(id) {
         await useProduct.deleteProduct(id);
-        if(useProduct.error) {
-            toast.add({ severity: 'error', summary: 'Error Message', detail: useProduct.error, life: 3000 });
+        if(useProduct.error.length) {
+            useProduct.error.forEach((msg) => {
+                toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+                });
+            });
             return
         }
         if (useProduct.data.status === 200) {
@@ -101,7 +108,6 @@
         <DataTable
             :columns="columns"
             :rows="filteredRows"
-            :pageSize="5"
             :editPath="'Update Product'"
             :isLoading="useProduct.loading"
             :defaultSort="{key: 'created_at', order: 'desc'}"

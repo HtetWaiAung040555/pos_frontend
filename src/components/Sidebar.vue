@@ -1,7 +1,7 @@
 <script setup>
   import { useCollapseSidebar } from '@/stores/collapseSidebar';
 import { usePermissionStore } from '@/stores/usePermissionStore';
-  import { onMounted, ref } from 'vue';
+  import { ref } from 'vue';
   import { useRouter } from 'vue-router';
 
   const collapseSidebar = useCollapseSidebar();
@@ -39,13 +39,71 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             pathname: "/customer",
             permission: {name: 'Customer', action: "View"}
           },
+          { 
+            name: 'Promotions', 
+            icon: 'fa fa-tags',
+            pathname: "/promotion",
+            permission: {name: 'Promotion', action: "View"}
+          },
+          { 
+            name: 'Sales Return', 
+            icon: 'fa fa-undo',
+            pathname: "/sales_return",
+            permission: {name: 'Sales return', action: "View"}
+          },
         ],
       },
+      {
+        name: 'Purchase Management', 
+        icon: 'fa fa-cart-arrow-down',
+        pathname: '/purchase',
+        permission: {name: 'Purchase', action: 'View'},
+        children: [
+          { 
+            name: 'Purchase', 
+            icon: 'fa fa-cart-plus ', 
+            pathname: "/purchase",
+            permission: {name: 'Purchase', action: "View"}
+          },
+          { 
+            name: 'Purchase Return', 
+            icon: 'fa fa-cart-plus ', 
+            pathname: "/purchase_return",
+            permission: {name: 'Purchase return', action: "View"}
+          },
+          { 
+            name: 'Supplier', 
+            icon: 'fa fa-users ', 
+            pathname: "/supplier",
+            permission: {name: 'Supplier', action: "View"}
+          }
+        ]
+      },
       { 
-        name: 'Products', 
+        name: 'Product Management', 
         icon: 'fa fa-box-open',
         pathname: "/product",
-        permission: {name: 'Product', action: "View"}
+        permission: {name: 'Product', action: "View"},
+        children: [
+          { 
+            name: 'Product', 
+            icon: 'fa fa-box-open ', 
+            pathname: "/product",
+            permission: {name: 'Product', action: "View"}
+          },
+          { 
+            name: 'Unit', 
+            icon: 'fa fa-ruler ', 
+            pathname: "/unit",
+            permission: {name: 'Unit', action: "View"}
+          },
+          { 
+            name: 'Category', 
+            icon: 'fas fa-clone',
+            pathname: "/category",
+            permission: {name: 'Category', action: "View"}
+          },
+        ]
       },
       { 
         name: 'Inventory', 
@@ -56,6 +114,18 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             icon: 'fa fa-cart-flatbed',
             pathname: "/inventory",
             permission: {name: 'Inventory', action: "View"}
+          },
+          { 
+            name: 'Stocks Adjustment', 
+            icon: 'fa fa-sliders',
+            pathname: "/stock_adjustment",
+            permission: {name: 'Stock adjustment', action: "View"}
+          },
+          { 
+            name: 'Stocks Transaction', 
+            icon: 'fa fa-right-left',
+            pathname: "/stock_transaction",
+            permission: {name: 'Stock transaction', action: "View"}
           },
           { 
             name: 'Warehouse', 
@@ -118,17 +188,11 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
         permission: {name: 'Payment method', action: "View"}
       },
       { 
-        name: 'Category', 
-        icon: 'fas fa-clone',
-        pathname: "/category",
-        permission: {name: 'Category', action: "View"}
-      },
-      { 
         name: 'Wallet', 
         icon: 'fas fa-solid fa-wallet',
         pathname: "/wallet",
         permission: {name: 'Wallet', action: "View"}
-      }
+      },
   ];
 
   function toggleDropdown(itemName) {
@@ -165,8 +229,8 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
     <!-- Sidebar -->
     <div :class="[
         'sidebar-bg text-white transition-all duration-300 text-sm font-semibold pt-2 h-screen',
-        collapseSidebar.isSidebarCollapsed ? 'w-16' : 'w-64',
-        'md:group-hover:w-64',
+        collapseSidebar.isSidebarCollapsed ? 'w-16' : 'w-74',
+        'md:group-hover:w-74',
       ]"
       class="relative group">
 

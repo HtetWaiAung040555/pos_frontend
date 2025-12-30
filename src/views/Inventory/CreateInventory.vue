@@ -8,7 +8,6 @@
     import BaseInput from '@/components/BaseInput.vue';
     import { onMounted, ref, watch } from 'vue';
     import { useToast } from 'primevue/usetoast';
-    import BaseSwitch from '@/components/BaseSwitch.vue';
     import BaseLabel from '@/components/BaseLabel.vue';
     import { Select } from 'primevue';
     import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
@@ -16,6 +15,7 @@
     import { useWarehouseStore } from '@/stores/useWarehouseStore';
     import { useProductStore } from '@/stores/useProductStore';
     import { useInventoryStore } from '@/stores/useInventoryStore';
+import moment from 'moment';
     
     const router = useRouter();
     const toast = useToast();
@@ -27,8 +27,7 @@
       {
         name: "",
         qty: 0,
-        product_id: "",
-        warehouse_id: "",
+        expiredDate: moment().format('YYYY-MM-DD'),
         created_by: "",
       }
     )
@@ -82,19 +81,22 @@
             return
         }
         formData.value = {
-            ...formData.value,
+            qty: formData.value.qty,
             product_id: selectedProduct.value.id,
             warehouse_id: selectedWarehouse.value.id,
+            expired_date: formData.value.expiredDate,
             created_by: userData.value.id,
         };
-        console.log(formData);
         await useInventory.addStock(formData.value);
-        if(useInventory.error) {
-            Object.values(useInventory.error).forEach((err) => {
-                err.forEach((msg) => {
-                    toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-                })
-            })
+        if(useInventory.error.length) {
+            useInventory.error.forEach((msg) => {
+                toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+                });
+            });
             return
         }
         if (useInventory.stockList) {
@@ -122,28 +124,14 @@
                 <SubTitle label="Basic Info" />
                 <div class="flex gap-x-4 mt-6">
                     <!-- User Name Input -->
-                    <BaseInput
+                    <!-- <BaseInput
                         size="sm"
                         v-model="formData.name"
                         label="Name"
                         placeholder="Name"
                         width="300px"
                         height="h-[35px]"
-                    />
-                    <!-- Qty input -->
-                    <BaseInput
-                        size="sm"
-                        v-model="formData.qty"
-                        label="Qty"
-                        placeholder="Stock Qty"
-                        width="300px"
-                        height="h-[35px]"
-                        type="number"
-                        :isRequire="true"
-                        :error="errorMsg.qty"
-                    />
-                </div>
-                <div class="flex gap-x-4 mt-4">
+                    /> -->
                     <!-- Product Select -->
                     <div class="flex flex-col gap-y-1">
                         <BaseLabel 
@@ -178,6 +166,29 @@
                         />
                         <BaseErrorLabel v-if="errorMsg.warehouse" :label="errorMsg.warehouse" />
                     </div>
+                </div>
+                <div class="flex gap-x-4 mt-4">
+                    <!-- Qty input -->
+                    <BaseInput
+                        size="sm"
+                        v-model="formData.qty"
+                        label="Qty"
+                        placeholder="Stock Qty"
+                        width="300px"
+                        height="h-[35px]"
+                        type="number"
+                        :isRequire="true"
+                        :error="errorMsg.qty"
+                    />
+                    <!-- Expired date input -->
+                    <BaseInput 
+                        size="sm" 
+                        v-model="formData.expiredDate"
+                        label="Expired Date"
+                        width="300px"
+                        height="h-[35px]" 
+                        type="date"
+                    />
                 </div>
                 <div class="flex justify-end mt-4">
                     <!-- Save Button -->

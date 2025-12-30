@@ -1,3 +1,4 @@
+import { normalizeApiError } from "@/utils/NormalizeApiError";
 import axios from "axios";
 import { defineStore } from "pinia";
 
@@ -6,7 +7,7 @@ export const usePermissionStore = defineStore('permission', {
         permissionList: [],
         userPermission: [],
         loading: false,
-        error: null,
+        error: [],
     }), 
     actions: {
         loadPermission() {
@@ -21,11 +22,12 @@ export const usePermissionStore = defineStore('permission', {
         },
         async fetchAllPermission() {
             this.loading = true;
+            this.error = [];
             try {
                 const response = await axios.get(`/permissions`);
                 this.permissionList = response.data.data;
             } catch (err) {
-                this.error = err.message;
+                this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
             }

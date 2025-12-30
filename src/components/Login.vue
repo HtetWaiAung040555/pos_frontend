@@ -87,7 +87,7 @@
           <p class="text-red-500 text-sm font-semibold mt-1 mb-0" v-if="formData.isPassword">
             Password Required
           </p>
-          <p class="text-red-500 text-sm font-semibold mt-3 mb-0" v-if="useUser.error">
+          <p class="text-red-500 text-sm font-semibold mt-3 mb-0" v-if="useUser.error.length">
             {{ useUser.error }}
           </p>
         </div>

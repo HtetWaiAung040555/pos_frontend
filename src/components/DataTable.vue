@@ -3,18 +3,23 @@ import { ref, computed, onMounted } from 'vue';
 import BaseButton from './BaseButton.vue';
 import Loading from './Loading.vue';
 import Dialog from 'primevue/dialog';
+import * as XLSX from 'xlsx';
 
 const props = defineProps({
   columns: { type: Array, required: true }, // [{ key: 'name', label: 'Name' }]
   rows: { type: Array, required: true },    // your data array
-  pageSize: { type: Number, default: 5 },
+  pageSize: { type: Number, default: 10 },
+  isPaginate: {type: Boolean, default: false},
   isAction: {type: Boolean, default: true},
   editPath: {type: String, default: ""},
   deletePath: {type: String, default: ""},
+  adjustPath: {type: String, default: ""},
   isLoading: {type: Boolean, default: false},
   defaultSort: {type: Object, default: () => ({key: null, order: 'desc'})},
   isEdit: {type: Boolean, default: true},
   isDelete: {type: Boolean, default: true},
+  isAdjust: {type: Boolean, default: false},
+  filename: {type: String, default: 'export'}
 });
 
 const emit = defineEmits(['delete']);
@@ -68,6 +73,7 @@ const totalPages = computed(() => Math.ceil(sortedRows.value.length / props.page
 
 // Paginated rows
 const paginatedRows = computed(() => {
+  if (!props.isPaginate) return sortedRows.value;
   const start = (currentPage.value - 1) * props.pageSize;
   return sortedRows.value.slice(start, start + props.pageSize);
 });
@@ -109,28 +115,67 @@ function confirmDelete() {
   visible.value = !visible.value;
 }
 
+function exportToExcel() {
+  try {
+    const headers = props.columns.map(c => (c.label || c.key));
+
+    const data = [headers];
+    props.rows.forEach(r => {
+      const rowArr = props.columns.map(col => {
+        const dataPath = col.key.split('.');
+        const val = dataPath.reduce((acc, key) => acc?.[key], r);
+        return val === undefined || val === null ? '' : val;
+      });
+      data.push(rowArr);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+
+    const filename = `${props.filename}_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'_')}.xlsx`;
+    XLSX.writeFile(wb, filename);
+  } catch (err) {
+    console.error('Export to excel failed', err);
+  }
+}
+
 </script>
 
 <template>
   <div class="bg-white text-black rounded-lg shadow p-4 mt-3">
     <!-- Search -->
     <div class="mb-3">
-      <slot name="filters">
-        <!-- Default fallback: search input -->
-        <input
-          type="text"
-          v-model="searchQuery"
-          placeholder="Search..."
-          class="w-full border rounded px-3 py-2 text-sm"
-        />
-      </slot>
+      <div class="flex items-center gap-2">
+        <div class="flex-1">
+          <slot name="filters">
+            <!-- Default fallback: search input -->
+            <input
+              type="text"
+              v-model="searchQuery"
+              placeholder="Search..."
+              class="w-full border rounded px-3 py-2 text-sm"
+            />
+          </slot>
+        </div>
+        <div class="">
+          <BaseButton
+            label="Export"
+            icon="fa fa-file-excel"
+            size="sm"
+            variant="solid"
+            severity="success"
+            @click="exportToExcel"
+          />
+        </div>
+      </div>
     </div>
 
-    <div class="flex flex-col max-h-[300px] overflow-hidden">
+    <div class="flex flex-col max-h-[450px] overflow-hidden">
 
       <!-- Table -->
       <div class="flex-1 overflow-y-auto">
-        <table class="w-full resize">
+        <table class="w-full">
           <thead class="sticky top-0 z-10">
             <tr class="bg-gray-100">
               <th
@@ -177,6 +222,13 @@ function confirmDelete() {
               >
               </td>
               <td class="p-2 text-center w-[120px]" v-if="props.isAction">
+                <router-link v-if="isAdjust" :to="{name: props.adjustPath, query: {id: row.id}}">
+                  <BaseButton 
+                    icon="pi pi-sliders-h" 
+                    variant="text" 
+                    size="sm" 
+                  />
+                </router-link>
                 <router-link :to="{name: props.editPath, query: {id: row.id}}">
                   <BaseButton 
                     icon="pi pi-pen-to-square" 
@@ -201,7 +253,7 @@ function confirmDelete() {
       </div>
 
       <!-- Pagination -->
-      <div class="sticky bottom-0 bg-white border-t border-gray-200">
+      <div v-if="isPaginate" class="sticky bottom-0 bg-white border-t border-gray-200">
         <div class="flex items-center justify-end mt-3 gap-2">
           <BaseButton 
             icon="fa fa-chevron-left" 

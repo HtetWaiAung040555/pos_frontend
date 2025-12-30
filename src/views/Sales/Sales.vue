@@ -44,12 +44,6 @@
         const end = filteredData.value.endDateTimeLocal
             ? moment(filteredData.value.endDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
             : null;
-
-        // pass plain object to store method (server should accept datetime strings)
-        console.log({
-            start_date: start,
-            end_date: end
-        })
         await useSales.fetchAllSales({
             start_date: start,
             end_date: end
@@ -66,7 +60,7 @@
         { key: 'sale_date', label: 'Date', formatter: (row) => moment(row.sale_date).format('DD-MM-YY hh:mm') },
         { key: 'customer.name', label: 'Customer Name', formatter: (row) => row.customer.name },
         { key: 'total_amount', label: 'Total' },
-        { key: 'paymentMethod.name', label: 'Payment', formatter: (row) => row.paymentMethod.name },
+        { key: 'payment_method.name', label: 'Payment', formatter: (row) => row.payment_method.name },
         { key: 'status.name', label: 'Status', formatter: (row) => row.status.name },
         { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
@@ -115,8 +109,6 @@
             });
         }
 
-        console.log(list);
-
         return list;
     });
 
@@ -126,8 +118,8 @@
 
     // Sales delete function
     async function deleteHandle(id) {
-        await useSales.deleteSales(id);
-        if(useSales.error) {
+        await useSales.deleteSales({void_by: JSON.parse(localStorage.getItem('user')).id}, id);
+        if(useSales.error.length) {
             toast.add({ severity: 'error', summary: 'Error Message', detail: useSales.error, life: 3000 });
             return
         }
@@ -152,14 +144,13 @@
                         icon="fa fa-circle-plus" 
                         label="Create" 
                         severity="primary" 
-                        @click="changeRoute('/sales/create')"  />
+                        @click="changeRoute('/pos')"  />
                 </div>
             </template>
         </PageTitle>
         <DataTable 
             :columns="columns" 
             :rows="displayedSales" 
-            :pageSize="5" 
             :editPath="'Update Sales'" 
             :isLoading="useSales.loading" 
             @delete="deleteHandle"

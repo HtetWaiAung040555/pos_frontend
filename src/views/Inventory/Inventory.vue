@@ -38,6 +38,7 @@
         { key: 'product.name', label: 'Product', formatter: (row) => row.product.name },
         { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.warehouse.name },
         { key: 'qty', label: 'Qty' },
+        { key: 'expired_date', label: 'Expire', formatter: (row) => row.expired_date? moment(row.expired_date).format('DD-MM-YY') : "N/A" },
         { key: 'created_by', label: 'Created By', formatter: (row) => row.created_by },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
         { key: 'updated_by', label: 'Updated By', formatter: (row) => row.updated_by },
@@ -52,19 +53,26 @@
     // Filter Function
     const filteredRows = computed(() => {
         const searchedData = filter.searchFunction(dataList.value, searchValue.value, [
-            "name",
+            "product.name",
         ]);
         return filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value })
     });
 
     //Branch delete function
     async function deleteHandle(id) {
-        await useUser.deleteUser(id);
-        if(useUser.error) {
-            toast.add({ severity: 'error', summary: 'Error Message', detail: useUser.error, life: 3000 });
+        await useInventory.deleteUser(id);
+        if(useInventory.error.length) {
+            useInventory.error.forEach((msg) => {
+            toast.add({
+              severity: 'error',
+              summary: 'Error Message',
+              detail: msg,
+              life: 3000
+            });
+        });
             return
         }
-        if (useUser.data.status === 200) {
+        if (useInventory.stockList.status === 200) {
             toast.add({ severity: 'success', summary: 'Success Message', detail: 'Inventory deleted successfully.', life: 3000 });
             await useUser.fetchAllUsers();
             dataList.value = useUser.users;
@@ -93,12 +101,12 @@
         <DataTable
             :columns="columns"
             :rows="filteredRows"
-            :pageSize="5"
             :editPath="'Update Inventory'"
             :isLoading="useInventory.loading"
             :defaultSort="{key: 'created_at', order: 'desc'}"
             :isEdit="!usePermission.can('Inventory', 'Update')"
             :isDelete="!usePermission.can('Inventory', 'Delete')"
+            :isAdjust="true"
             @delete="deleteHandle"
         >
             <!-- Filter Section -->
@@ -108,7 +116,6 @@
                         size="sm"
                         type="date"
                         v-model="startDate"
-                        placeholder="Search"
                         width="200px"
                         height="h-[35px]"
                     />
@@ -116,7 +123,6 @@
                         size="sm"
                         type="date"
                         v-model="endDate"
-                        placeholder="Search"
                         width="200px"
                         height="h-[35px]"
                     />

@@ -6,11 +6,8 @@
     import SubTitle from '@/components/SubTitle.vue';
     import { useRouter } from 'vue-router';
     import BaseInput from '@/components/BaseInput.vue';
-    import BaseTextarea from '@/components/BaseTextarea.vue';
     import { onMounted, ref } from 'vue';
     import { useToast } from 'primevue/usetoast';
-    import BaseSwitch from '@/components/BaseSwitch.vue';
-    import BaseLabel from '@/components/BaseLabel.vue';
     import { errMsgList } from '@/utils/const';
     import { useWarehouseStore } from '@/stores/useWarehouseStore';
     
@@ -63,12 +60,15 @@
 
         await useWarehouse.addWarehouse(formData.value);
         
-        if(useWarehouse.error) {
-            Object.values(useWarehouse.error).forEach((err) => {
-                err.forEach((msg) => {
-                    toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-                })
-            })
+        if(useWarehouse.error.length) {
+            useWarehouse.error.forEach((msg) => {
+                toast.add({
+                    severity: 'error',
+                    summary: 'Error Message',
+                    detail: msg,
+                    life: 3000
+                });
+            });
             return
         }
         if (useWarehouse.warehouseList) {
