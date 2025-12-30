@@ -55,6 +55,7 @@ onMounted(async () => {
         salesDate: moment(useSales.salesList.sale_date).format('YYYY-MM-DDTHH:mm'),
     };
     selectedProducts.value = useSales.salesList.details;
+    console.log('sales: ', useSales.salesList);
     await usePaymentMethod.fetchAllPaymentMethod();
 });
 
@@ -287,7 +288,7 @@ function printSlip() {
             <div>
               <span style="font-weight: bold;">Receipt:</span> {{ formData.salesId }}
             </div>
-            <div><span style="font-weight: bold;">Counter:</span> {{ userData.counter?.name }}</div>
+            <div><span style="font-weight: bold;">Counter:</span> {{ useSales.salesList.counter }}</div>
           </div>
           <div style="text-align: left;">
             <div><span style="font-weight: bold;">Cashier:</span> {{ useSales.salesList.created_by }}</div>
