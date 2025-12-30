@@ -193,6 +193,12 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
         pathname: "/wallet",
         permission: {name: 'Wallet', action: "View"}
       },
+      { 
+        name: 'Price Change', 
+        icon: 'fas fa-arrow-up-right-dots',
+        pathname: "/price_change",
+        permission: {name: 'Price change', action: "View"}
+      },
   ];
 
   function toggleDropdown(itemName) {
