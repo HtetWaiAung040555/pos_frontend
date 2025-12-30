@@ -70,7 +70,16 @@ const changeReturn = computed(() => {
   return change;
 });
 
-async function formSubmit() {
+async function formSubmit(isPrint) {
+  if (salesData.value.payment_method.id === 3 && (salesData.value.customer.balance - subtotal.value) < 0) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error Message',
+      detail: 'Customer balance is insufficient for this purchase.',
+      life: 3000
+    });
+    return
+  }
   const payload = {
     sale_date: moment(data.value.date).format("YYYY/MM/DD HH:mm:ss"),
     payment_id: salesData.value.payment_method.id,
@@ -94,6 +103,9 @@ async function formSubmit() {
   }
   if (useSales.salesList) {
     toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales created successfully.', life: 3000 });
+    if (isPrint) {
+      printSlip();
+    }
     router.push('/pos');
   }
 }
@@ -105,7 +117,6 @@ async function formSubmitAndPrint() {
   } catch (err) {
     console.error('Error submitting before print', err);
   }
-  printSlip();
 }
 
 async function formCancel() {
@@ -248,7 +259,7 @@ function printSlip() {
           <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
             v-model="salesData.payment_method.id" @change="changePaymentMethod">
             <option value="1" v-if="usePaymentMethod.loading">Loading. . .</option>
-            <option v-for="pm in usePaymentMethod.paymentMethodList" :value="pm.id">
+            <option v-for="pm in usePaymentMethod.paymentMethodList?.filter(p => p.id !== 2)" :value="pm.id">
               {{ pm.name }}
             </option>
           </select>
@@ -283,8 +294,8 @@ function printSlip() {
 
         <!-- Submit Button Group -->
         <div class="flex gap-3 mt-5">
-          <BaseButton label="Submit" @click="formSubmit" />
-          <BaseButton label="Submit & Print" @click="formSubmitAndPrint" />
+          <BaseButton label="Submit" @click="formSubmit(false)" />
+          <BaseButton label="Submit & Print" @click="formSubmit(true)" />
           <BaseButton label="Cancel" severity="danger" @click="formCancel" />
         </div>
 
@@ -302,8 +313,8 @@ function printSlip() {
             border-bottom: 1px solid black;
           ">
           <h1 class="text-lg font-bold">FUSION MART</h1>
-          <div>53 Street, Between 36 & 37 ST (MA-68/2), Ye Mon Taung Quater, Mandalay</div>
-          <div>Tel: +959740010055</div>
+          <div>{{ userData.branch?.location }}</div>
+          <div>{{ userData.branch?.phone }}</div>
         </header>
 
         <!-- Receipt Info -->

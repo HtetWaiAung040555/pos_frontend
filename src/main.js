@@ -74,6 +74,7 @@ import UpdatePurchaseReturn from './views/Purchase_Return/UpdatePurchaseReturn.v
 import Unit from './views/Unit/Unit.vue';
 import CreateUnit from './views/Unit/CreateUnit.vue';
 import UpdateUnit from './views/Unit/UpdateUnit.vue';
+import CreateSales from './views/Sales/CreateSales.vue';
 
 
 
@@ -118,6 +119,7 @@ const router = createRouter({
         {path: '/warehouse/create', name: 'Create Warehouse', component: CreateWarehouse, meta: { requiresAuth: true, permission: { resource: 'Warehouse', action: 'Create' } }},
         {path: '/warehouse/update', name: 'Update Warehouse', component: UpdateWarehouse, meta: { requiresAuth: true, permission: { resource: 'Warehouse', action: 'Update' } }},
         {path: '/sales', name: 'Sales', component: Sales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'View' } }},
+        {path: '/sales/create', name: 'Create Sales', component: CreateSales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'Create' } }},
         {path: '/sales/update', name: 'Update Sales', component: UpdateSales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'Update' } }},
         {path: '/category', name: 'Category', component: Category, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'View' } }},
         {path: '/category/create', name: 'Create Category', component: CreateCategory, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'Create' } }},

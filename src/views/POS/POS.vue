@@ -3,9 +3,8 @@ import BaseButton from '@/components/BaseButton.vue';
 import BaseInput from '@/components/BaseInput.vue';
 import ProductCard from '@/components/ProductCard.vue';
 import { useCustomerStore } from '@/stores/useCustomerStore';
-import { useInventoryStore } from '@/stores/useInventoryStore';
 import { Dialog, Select, useToast } from 'primevue';
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useStatusStore } from '@/stores/useStatusStore';
 import { useSaleStore } from '@/stores/useSalesStore';
 import { useRouter } from 'vue-router';
@@ -16,7 +15,6 @@ import BaseSearchSelect from '@/components/BaseSearchSelect.vue';
 
 const toast = useToast();
 const router = useRouter();
-const useInventory = useInventoryStore();
 const useCustomer = useCustomerStore();
 const useStatus = useStatusStore();
 const useSales = useSaleStore();
@@ -38,7 +36,7 @@ const visible = ref(false);
 const qty = ref("");
 const qtyInputRef = ref(null);
 const selectedPId = ref("");
-const selectedCustomer = ref("");
+const selectedCustomer = ref({});
 const searchQuery = ref("");
 const barcodeInput = ref(null); // Hidden barcode input reference
 // Hold sales UI
@@ -48,15 +46,13 @@ const loadingHolds = ref(false);
 const selectedHold = ref('');
 
 onMounted(async () => {
-  await useStatus.fetchAllStatus();
-  await useInventory.fetchAllStock();
   await useCustomer.fetchAllCustomer();
-  // const inventory = useInventory.stockList.filter(item => item.warehouse.id === JSON.parse(localStorage.getItem('user')).branch.warehouse_id);
   userData.value = JSON.parse(localStorage.getItem('user'));
   selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
   // productList.value = inventory;
   await useProduct.fetchSalesProduct({warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id});
   productList.value = useProduct.productList;
+  await useStatus.fetchAllStatus();
 });
 
 const filteredProducts = computed(() => {
@@ -416,7 +412,18 @@ async function onPayClick() {
           <!-- Scrollable product grid -->
           <div class="flex-1 overflow-y-auto mt-4 pr-1">
             <div class="grid grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-              <ProductCard v-for="product in filteredProducts" :key="product.id" :name="product.name"
+              <div v-if="useProduct.loading || useCustomer.loading" v-for="n in 18" :key="n" class="w-full rounded-md p-4">
+                <div class="flex animate-pulse space-x-4">
+                  <div class="flex-1 space-y-6 py-1">
+                      <div class="h-2 rounded bg-gray-300"></div>
+                      <div class="space-y-3">
+                          <div class="h-2 rounded bg-gray-300"></div>
+                          <div class="h-2 rounded bg-gray-300"></div>
+                      </div>
+                  </div>
+                </div>
+              </div>
+              <ProductCard v-else v-for="product in filteredProducts" :key="product.id" :name="product.name"
                 :price="product.price" :imageUrl="product.image_url" :qty="product.qty"
                 @click="addProduct(product)" />
             </div>
@@ -543,7 +550,17 @@ async function onPayClick() {
               </div>
             </div>
 
-            <div v-if="loadingHolds" class="text-center py-8">Loading...</div>
+            <div v-if="loadingHolds" class="w-full rounded-md p-4">
+              <div class="flex animate-pulse space-x-4">
+                  <div class="flex-1 space-y-6 py-1">
+                      <div class="h-2 rounded bg-gray-300"></div>
+                      <div class="space-y-3">
+                          <div class="h-2 rounded bg-gray-300"></div>
+                          <div class="h-2 rounded bg-gray-300"></div>
+                      </div>
+                  </div>
+                </div>
+            </div>
 
             <div v-else>
               <table class="table-auto w-full border-collapse">
@@ -561,7 +578,7 @@ async function onPayClick() {
                   <tr v-for="(h, idx) in holdList" :key="h.id" class="border-t text-sm">
                     <td class="p-2">{{ idx + 1 }}</td>
                     <td class="p-2">{{ h.id }}</td>
-                    <td class="p-2">{{ h.customer?.name ?? 'Walk-in' }}</td>
+                    <td class="p-2">{{ h.customer?.name ?? '' }}</td>
                     <td class="p-2 text-right font-semibold">Ks. {{ (h.total_amount || 0).toLocaleString('en-us') }}
                     </td>
                     <td class="p-2">{{ h.created_at ? new Date(h.created_at).toLocaleString() : '' }}</td>

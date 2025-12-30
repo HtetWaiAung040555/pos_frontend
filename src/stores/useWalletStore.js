@@ -7,7 +7,7 @@ const api_url = API_URL;
 
 export const useWalletStore = defineStore('wallet', {
     state: () => ({
-        walletList: null,
+        walletList: [],
         loading: false,
         deleteLoading: false,
         data: null,
@@ -15,12 +15,18 @@ export const useWalletStore = defineStore('wallet', {
     }),
 
     actions: {
-        async fetchAllWallet() {
+        async fetchAllWallet(filteredData) {
             this.loading = true;
             this.error = [];
             try {
-                const response = await axios.get(`/customers_transactions`);
-                this.walletList = response.data.data;
+                let response;
+                if (filteredData) {
+                    response = await axios.get(`/customers_transactions?start_date=${filteredData.start_date}&end_date=${filteredData.end_date}&${filteredData.customer_id? customer_id=filteredData.customer_id : ""}`);
+                    this.walletList = response.data.data;
+                } else {
+                    response = await axios.get(`/customers_transactions`);
+                    this.walletList = response.data.data;
+                }
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

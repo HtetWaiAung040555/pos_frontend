@@ -18,7 +18,6 @@ const usePermission = usePermissionStore();
 const returnList = ref([]);
 // Date range for API fetch
 const filteredData = ref({
-    // Local values bound to datetime-local inputs (format: YYYY-MM-DDTHH:mm)
     startedDate: moment().startOf('month').format('YYYY-MM-DDTHH:mm'),
     endedDate: moment().format('YYYY-MM-DDTHH:mm')
 });

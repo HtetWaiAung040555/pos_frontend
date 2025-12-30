@@ -10,8 +10,6 @@ import { onMounted, ref, warn, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import BaseLabel from '@/components/BaseLabel.vue';
 import { Select } from 'primevue';
-import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
-import { errMsgList } from '@/utils/const';
 import moment from 'moment';
 import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
 import { usePurchaseReturnStore } from '@/stores/usePurchaseReturn';
@@ -167,7 +165,7 @@ function onReturnQtyChange(product) {
                             filter
                             optionLabel="id"
                             placeholder="Select Purchase Invoice ID"
-                            class="w-[300px] h-[35px] items-center" 
+                            class="h-[35px] items-center" 
                         />
                     </div>
                     <!-- Customer -->

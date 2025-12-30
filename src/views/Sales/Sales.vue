@@ -62,9 +62,9 @@
         { key: 'total_amount', label: 'Total' },
         { key: 'payment_method.name', label: 'Payment', formatter: (row) => row.payment_method.name },
         { key: 'status.name', label: 'Status', formatter: (row) => row.status.name },
-        { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
+        { key: 'created_by', label: 'Created By', formatter: (row) => row.created_by },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
-        { key: 'updated_by.name', label: 'Updated By', formatter: (row) => row.updated_by.name },
+        { key: 'updated_by', label: 'Updated By', formatter: (row) => row.updated_by },
         { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
     ];
 
@@ -144,6 +144,13 @@
                         icon="fa fa-circle-plus" 
                         label="Create" 
                         severity="primary" 
+                        @click="changeRoute('/sales/create')"  />
+                    <BaseButton 
+                        v-if="usePermission.can('POS', 'View')"
+                        icon="fa fa-cash-register" 
+                        label="POS Sale" 
+                        severity="primary" 
+                        variant="outlined"
                         @click="changeRoute('/pos')"  />
                 </div>
             </template>

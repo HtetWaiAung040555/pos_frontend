@@ -11,19 +11,19 @@ import { useToast } from 'primevue/usetoast';
 import BaseLabel from '@/components/BaseLabel.vue';
 import moment from 'moment';
 import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
-import { usePurchaseStore } from '@/stores/usePurchaseStore';
-import { useSupplierStore } from '@/stores/useSupplierStore';
 import { useWarehouseStore } from '@/stores/useWarehouseStore';
 import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
 import { Select } from 'primevue';
 import { useProductStore } from '@/stores/useProductStore';
+import { useCustomerStore } from '@/stores/useCustomerStore';
+import { useSaleStore } from '@/stores/useSalesStore';
+import axios from 'axios';
 
 const router = useRouter();
-const route = useRoute();
 const toast = useToast();
-const usePurchase = usePurchaseStore();
+const useSales = useSaleStore();
 const usePaymentMethod = usePaymentMethodStore();
-const useSupplier = useSupplierStore();
+const useCustomer = useCustomerStore();
 const useWarehouse = useWarehouseStore();
 const useProduct = useProductStore();
 
@@ -36,20 +36,20 @@ const selectionBuffer = ref([]);
 const headerCheckboxRef = ref(null);
 const isCheckingAll = ref(false);
 const isSelectAllLoading = ref(false);
-const selectedSupplier = ref([]);
+const selectedCustomer = ref([]);
 const selectedWarehouse = ref([]);
 const formData = ref({
-    purchaseId: '',
+    salesId: '',
     warehouseId: '',
-    supplierId: '',
+    customerId: '',
     paymentId: '1',
     remark: '',
-    purchaseDate: moment().format('YYYY-MM-DDTHH:mm'),
-    statusId: 7,
+    salesDate: moment().format('YYYY-MM-DDTHH:mm'),
+    statusId: 5, // default to 'Hold' status
     products: [],
 })
 const errorMsg = ref({
-    supplier: "",
+    customer: "",
     warehouse: "",
 });
 
@@ -60,7 +60,7 @@ function changeRoute(pathname) {
 
 onMounted(async () => {
     userData.value = JSON.parse(localStorage.getItem('user'));
-    await useSupplier.fetchAllSupplier();
+    await useCustomer.fetchAllCustomer();
     await useWarehouse.fetchAllWarehouse();
     await usePaymentMethod.fetchAllPaymentMethod();
     await useProduct.fetchAllProduct();
@@ -147,16 +147,45 @@ watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.va
     }
 });
 
-function confirmProductSelection() {
-    selectedProducts.value = selectionBuffer.value.map(p=> ({
-        productId: p.id,
-        productName: p.name,
-        barcode: p.barcode,
-        purchasePrice: p.purchase_price,
-        quantity: 0,
-        expiredDate: '',
-        image: p.image_url
-    }));
+async function confirmProductSelection() {
+    selectionBuffer.value.forEach(async (p) => {
+        const checkPromo = await axios.get(`/promotions/checkprice/${p.id}`);
+        if (checkPromo.data.promotion_id) {
+            selectedProducts.value = [
+                ...selectedProducts.value,
+                {
+                    id: p.id,
+                    productName: p.name,
+                    barcode: p.barcode,
+                    quantity: 1,
+                    image: p.image_url,
+                    price: Number(p.price),
+                    promotionId: checkPromo.data.promotion_id,
+                    discountAmount: checkPromo.data.discount_amount,
+                    discountPrice: p.price - checkPromo.data.discount_amount,
+                    discountValue: checkPromo.data.discount_value,
+                    discountType: checkPromo.data.discount_type,
+                }
+            ]
+        } else {
+            selectedProducts.value = [
+                ...selectedProducts.value,
+                {
+                    id: p.id,
+                    productName: p.name,
+                    barcode: p.barcode,
+                    quantity: 1,
+                    image: p.image_url,
+                    price: Number(p.price),
+                    promotionId: null,
+                    discountAmount: 0,
+                    discountPrice: 0,
+                    discountValue: 0,
+                    discountType: '',
+                }
+            ]
+        }
+    });
     isProductDialogVisible.value = false;
 }
 
@@ -169,35 +198,29 @@ function onChangeQty(product) {
     if (product.quantity < 0) product.quantity = 0;
 }
 
-function onChangePrice(product) {
-    product.purchasePrice = Number(product.purchasePrice) || 0;
-    if (product.purchasePrice < 0) product.purchasePrice = 0;
-}
-
-function onChangeExpiredDate(product) {
-    product.expiredDate = product.expiredDate;
-}
-
 // Form Submit function
-async function formSubmit() {
+async function formSubmit(isPrint = false) {
     let payload = {
-        supplier_id: selectedSupplier.value.id,
+        customer_id: selectedCustomer.value.id,
         payment_id: formData.value.paymentId,
         status_id: formData.value.statusId,
         remark: formData.value.remark,
-        purchase_date: formData.value.purchaseDate,
+        sale_date: formData.value.salesDate,
         warehouse_id: selectedWarehouse.value.id,
         created_by: userData.value.id,
+        paid_amount: 0,
         products: selectedProducts.value.map(p => ({
-            product_id: p.productId,
+            product_id: p.id,
             quantity: p.quantity,
-            expired_date: p.expiredDate,
-            purchase_price: p.purchasePrice
+            price: p.price,
+            promotion_id: p.promotionId || null,
+            discount_amount: p.discountAmount || 0,
+            discount_price: p.discountPrice || 0,
         }))
     }
-    await usePurchase.addPurchase(payload);
-    if (usePurchase.error.length) {
-        usePurchase.error.forEach((msg) => {
+    await useSales.addSales(payload);
+    if (useSales.error.length) {
+        useSales.error.forEach((msg) => {
             toast.add({
                 severity: 'error',
                 summary: 'Error Message',
@@ -207,8 +230,100 @@ async function formSubmit() {
         });
         return;
     }
-    toast.add({ severity: 'success', summary: 'Success Message', detail: 'Purchase create successfully.', life: 3000 });
-    router.push('/purchase');
+    if (useSales.salesList) {
+        let updatedSales = {
+            payment_id: formData.value.paymentId,
+            status_id: 7, // set to 'Completed' after creation
+            paid_amount: useSales.salesList.total_amount,
+            remark: formData.value.remark,
+            sale_date: formData.value.salesDate,
+            updated_by: userData.value.id,
+        };
+        await useSales.editSales(updatedSales, useSales.salesList.id);
+        if (useSales.error.length) {
+            useSales.error.forEach((msg) => {
+                toast.add({
+                    severity: 'error',
+                    summary: 'Error Message',
+                    detail: msg,
+                    life: 3000
+                });
+            });
+            return;
+        }
+        toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales create successfully.', life: 3000 });
+        if (isPrint) printSlip();
+        router.push('/sales');
+    }
+    
+}
+
+// Print only the slip section between the markers
+function printSlip() {
+  const slip = document.getElementById('slip-section');
+  if (!slip) {
+    alert('Slip section not found');
+    return;
+  }
+
+  // Build minimal printable document
+  const printWindow = window.open('', '', 'width=400,height=600')
+  if (!printWindow) {
+    alert('Unable to open print window. Please allow popups.');
+    return;
+  }
+
+  const doc = printWindow.document;
+  const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Receipt</title>
+          <style>
+            /* ============ PRINT STYLES FOR 80MM THERMAL RECEIPT ============ */
+            @page {
+              size: 384px auto;
+              margin: 5mm;
+            }
+
+            body {
+              width: 384px;
+              font-family: 'Courier New', monospace;
+              font-size: 11px;
+              color: #000;
+              margin: 0 auto;
+              padding: 0;
+              line-height: 1.3;
+            }
+
+            
+
+            /* Hide anything extra in print */
+            @media print {
+              body {
+                width: 80mm;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${slip.innerHTML}
+        </body>
+      </html>
+    `;
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  // Wait a short time to ensure images/fonts load
+  printWindow.focus();
+  setTimeout(() => {
+    printWindow.print();
+    // Optionally close window after printing
+    // printWindow.close();
+  }, 500);
 }
 
 </script>
@@ -216,11 +331,11 @@ async function formSubmit() {
 <template>
     <div class="p-4">
         <!-- Page Title -->
-        <PageTitle title="Create Purchase">
+        <PageTitle title="Create Sales">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary"
-                        @click="changeRoute('/purchase')" />
+                        @click="changeRoute('/sales')" />
                 </div>
             </template>
         </PageTitle>
@@ -232,11 +347,11 @@ async function formSubmit() {
                 <div class="grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
                     <!-- Supplier -->
                     <div class="flex flex-col gap-y-1">
-                        <BaseLabel label="Supplier" :isRequire="true" />
-                        <Select v-model="selectedSupplier" :options="useSupplier.supplierList" showClear filter
-                            optionLabel="name" placeholder="Select a supplier"
+                        <BaseLabel label="Customer" :isRequire="true" />
+                        <Select v-model="selectedCustomer" :options="useCustomer.customerList" showClear filter
+                            optionLabel="name" placeholder="Select a customer"
                             class="h-[35px] items-center" />
-                        <BaseErrorLabel v-if="errorMsg.supplier" :label="errorMsg.supplier" />
+                        <BaseErrorLabel v-if="errorMsg.customer" :label="errorMsg.customer" />
                     </div>
                     <!-- Warehouse -->
                     <div class="flex flex-col gap-y-1">
@@ -246,8 +361,8 @@ async function formSubmit() {
                             class="h-[35px] items-center" />
                         <BaseErrorLabel v-if="errorMsg.warehouse" :label="errorMsg.warehouse" />
                     </div>
-                    <!-- Purchase date input -->
-                    <BaseInput size="sm" v-model="formData.purchaseDate" label="Purchase Date" height="h-[35px]"
+                    <!-- Sales date input -->
+                    <BaseInput size="sm" v-model="formData.salesDate" label="Sales Date" height="h-[35px]"
                         type="datetime-local" />
                     <div class="flex flex-col gap-1">
                         <BaseLabel label="Payment Method:" />
@@ -274,7 +389,8 @@ async function formSubmit() {
                                         <th class="p-2">Image</th>
                                         <th class="p-2">Product Name</th>
                                         <th class="p-2">Barcode</th>
-                                        <th class="p-2">Expired Date</th>
+                                        <th class="p-2 text-right">Unit Price</th>
+                                        <th class="p-2 text-right">Discount</th>
                                         <th class="p-2 text-right">Price</th>
                                         <th class="p-2 text-right">Qty</th>
                                         <th class="p-2 text-right">Total</th>
@@ -292,21 +408,43 @@ async function formSubmit() {
                                         </td>
                                         <td class="p-2">{{ product.productName }}</td>
                                         <td class="p-2">{{ product.barcode }}</td>
-                                        <td class="p-2">
-                                            <input type="datetime-local" min="0" class="w-44 text-right px-1 py-1 border rounded" v-model="product.expiredDate" @input="onChangeExpiredDate(product)" />
+                                        <td class="p-2 text-right">
+                                            {{ Number(product.price).toLocaleString() }}
                                         </td>
                                         <td class="p-2 text-right">
-                                            <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.purchasePrice" @input="onChangePrice(product)" />
+                                            {{ product.promotionId ? product.discountValue + (product.discountType === 'percent' ? '%' : '') : 0 }}
+                                        </td>
+                                        <td class="p-2 text-right">
+                                            {{ product.promotionId ? Number(product.discountPrice).toLocaleString() : Number(product.price).toLocaleString() }}
                                         </td>
                                         <td class="p-2 text-right">
                                             <input type="number" min="0" class="w-20 text-right px-1 py-1 border rounded" v-model.number="product.quantity" @input="onChangeQty(product)" />
                                         </td>
-                                        <td class="p-2 text-right">{{ Number(product.purchasePrice) * product.quantity }}</td>
+                                        <td class="p-2 text-right">{{ product.promotionId ? Number(product.discountPrice) * product.quantity : Number(product.price) * product.quantity }}</td>
                                         <td class="p-2 text-right">
                                             <button class="text-red-600 hover:text-red-800 px-2 py-1"
                                                 @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)"><i
                                                     class="pi pi-trash"></i></button>
                                         </td>
+                                    </tr>
+                                    <tr class="border-b border-gray-200 font-bold bg-gray-100">
+                                        <td colspan="6" class="p-2 text-right">Grand Total</td>
+                                        <td class="p-2 text-right">
+                                            {{
+                                                selectedProducts.reduce((sum, p) => {
+                                                    return sum + Number(p.quantity);
+                                                }, 0).toLocaleString()
+                                            }}
+                                        </td>
+                                        <td class="p-2 text-right">
+                                            {{
+                                                selectedProducts.reduce((sum, p) => {
+                                                    const price = p.promotionId ? p.discountPrice : p.price;
+                                                    return sum + (Number(price) * p.quantity);
+                                                }, 0).toLocaleString()
+                                            }}
+                                        </td>
+                                        <td>&nbsp;</td>
                                     </tr>
                                     <tr v-if="selectedProducts.length === 0">
                                         <td colspan="5" class="py-4 text-center text-gray-500">No products selected</td>
@@ -358,7 +496,7 @@ async function formSubmit() {
                                         </td>
                                         <td class="py-2">{{ product.name }}</td>
                                         <td class="py-2">{{ product.barcode }}</td>
-                                        <td class="py-2 text-end">{{ Number(product.purchase_price).toLocaleString() || 0 }}</td>
+                                        <td class="py-2 text-end">{{ Number(product.price).toLocaleString() || 0 }}</td>
                                     </tr>
                                     <tr v-if="(filteredProducts || []).length === 0">
                                         <td colspan="4" class="py-4 text-center text-gray-500">No products found</td>
@@ -375,9 +513,9 @@ async function formSubmit() {
                 </div>
                 <div class="flex justify-end mt-4">
                     <!-- Save Button -->
-                    <BaseButton label="Save" :isLoading="usePurchase.loading"
-                        :icon="usePurchase.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary"
-                        @click="formSubmit" :disabled="usePurchase.loading" />
+                    <BaseButton label="Save" :isLoading="useSales.loading"
+                        :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary"
+                        @click="formSubmit" :disabled="useSales.loading" />
                 </div>
             </template>
         </BaseCard>

@@ -1,7 +1,7 @@
 <script setup>
 import Button from 'primevue/button';
 import { useCollapseSidebar } from '@/stores/collapseSidebar';
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, onBeforeUnmount } from 'vue';
 import BaseButton from './BaseButton.vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useUserStore } from '@/stores/useUserStore';
@@ -12,6 +12,7 @@ import SubTitle from './SubTitle.vue';
 
 const collapseSidebar = useCollapseSidebar();
 const openDropdown = ref(false);
+const dropdownRef = ref(null);
 const router = useRouter();
 const route = useRoute();
 const useUser = useUserStore();
@@ -27,7 +28,18 @@ const openEditModal = ref(false);
 
 onMounted(() => {
   userData.value = JSON.parse(localStorage.getItem('user'));
+  document.addEventListener('click', handleClickOutside);
 });
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutside);
+});
+
+function handleClickOutside(event) {
+  if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
+    openDropdown.value = false;
+  }
+}
 
 function toggleDropdown() {
   openDropdown.value = !openDropdown.value;
@@ -115,11 +127,11 @@ async function formSubmit() {
       <Button severity="contrast" variant="text" @click="collapseSidebar.toggleSidebar" icon="pi pi-bars" rounded />
     </div>
 
-    <div class="flex items-center gap-x-2">
+    <div ref="dropdownRef" class="flex items-center gap-x-2">
       <BaseButton class="w-10 h-10" severity="primary" variant="outlined" icon="fa fa-question" rounded />
       <BaseButton class="w-10 h-10" severity="primary" variant="solid" icon="pi pi-bell" rounded />
-      <div class="relative overflow-visible">
-        <div
+    <div class="relative overflow-visible">
+          <div
           class="flex justify-between text-black items-center bg-[#F8FAFC] hover:bg-gray-200 rounded-xl py-2 px-3 cursor-pointer"
           @click="toggleDropdown">
           <div class="flex items-center gap-x-2">
@@ -167,7 +179,7 @@ async function formSubmit() {
         </Transition>
       </div>
     </div>
-    <!-- Quantity dialog -->
+    <!-- Edit dialog -->
     <Dialog v-model:visible="openEditModal" :modal="true" :draggable="false"
       :position="'center'">
       <template #container="{ closeCallback }">

@@ -67,7 +67,7 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
           },
           { 
             name: 'Purchase Return', 
-            icon: 'fa fa-cart-plus ', 
+            icon: 'fa fa-undo ', 
             pathname: "/purchase_return",
             permission: {name: 'Purchase return', action: "View"}
           },
