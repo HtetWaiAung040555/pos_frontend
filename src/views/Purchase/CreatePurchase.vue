@@ -178,6 +178,10 @@ function onChangeExpiredDate(product) {
     product.expiredDate = product.expiredDate;
 }
 
+function removeProduct(product) {
+    selectedProducts.value = selectedProducts.value.filter(p => p.productId !== product.productId);
+}
+
 // Form Submit function
 async function formSubmit() {
     let payload = {
@@ -304,7 +308,7 @@ async function formSubmit() {
                                         <td class="p-2 text-right">{{ Number(product.purchasePrice) * product.quantity }}</td>
                                         <td class="p-2 text-right">
                                             <button class="text-red-600 hover:text-red-800 px-2 py-1"
-                                                @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)"><i
+                                                @click="removeProduct(product)"><i
                                                     class="pi pi-trash"></i></button>
                                         </td>
                                     </tr>
@@ -362,7 +366,7 @@ async function formSubmit() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="product in filteredProducts" :key="product.id" class="hover:bg-blue-50">
+                                    <tr v-for="product in filteredProducts" :key="product.productId" class="hover:bg-blue-50">
                                         <td class="py-2">
                                             <input type="checkbox" :checked="isBufferSelected(product)"
                                                 @change="toggleProductInBuffer($event, product)" />
