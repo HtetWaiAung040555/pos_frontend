@@ -366,7 +366,7 @@ function printSlip() {
               margin-bottom: 4px;
             ">
             <span>SUBTOTAL</span>
-            <span>$ {{Number(formData.totalAmount).toLocaleString() }}</span>
+            <span>Ks. {{Number(formData.totalAmount).toLocaleString() }}</span>
           </div>
           <!-- <div class="flex justify-between">
             <span>TAX ({{ data.taxRate }}%)</span>
@@ -381,7 +381,7 @@ function printSlip() {
               padding-top: 4px;
             ">
             <span>TOTAL</span>
-            <span>$ {{Number(formData.totalAmount).toLocaleString() }}</span>
+            <span>Ks. {{Number(formData.totalAmount).toLocaleString() }}</span>
             <!-- <span>{{ data.currency + (subtotal + tax).toLocaleString() }}</span> -->
           </div>
           <!-- Pay Amount -->
@@ -391,7 +391,7 @@ function printSlip() {
               padding-top: 4px;
             ">
             <span>Pay Amt ({{ formData.paymentMethodName }})</span>
-            <span>$ {{ Number(formData.paidAmount).toLocaleString() }}</span>
+            <span>Ks. {{ Number(formData.paidAmount).toLocaleString() }}</span>
           </div>
           <!-- Change Amount -->
           <div style="
@@ -400,7 +400,7 @@ function printSlip() {
               padding-top: 4px;
             ">
             <span>Change Amt</span>
-            <span>$ {{ + Number(formData.changeAmount).toLocaleString() }}</span>
+            <span>Ks. {{ + Number(formData.changeAmount).toLocaleString() }}</span>
           </div>
         </div>
 

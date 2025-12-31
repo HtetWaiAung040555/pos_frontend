@@ -75,6 +75,9 @@ import Unit from './views/Unit/Unit.vue';
 import CreateUnit from './views/Unit/CreateUnit.vue';
 import UpdateUnit from './views/Unit/UpdateUnit.vue';
 import CreateSales from './views/Sales/CreateSales.vue';
+import PriceChange from './views/Price_Change/PriceChange.vue';
+import CreatePriceChange from './views/Price_Change/CreatePriceChange.vue';
+import UpdatePriceChange from './views/Price_Change/UpdatePriceChange.vue';
 
 
 
@@ -145,6 +148,9 @@ const router = createRouter({
         {path: '/purchase_return', name: 'Purchase Return', component: PurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'View' } }},
         {path: '/purchase_return/create', name: 'Create Purchase Return', component: CreatePurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'Create' } }},
         {path: '/purchase_return/update', name: 'Update Purchase Return', component: UpdatePurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'Update' } }},
+        {path: '/price_change', name: 'Price Change', component: PriceChange, meta: { requiresAuth: true, permission: { resource: 'Price change', action: 'View' } }},
+        {path: '/price_change/create', name: 'Create Price Change', component: CreatePriceChange, meta: { requiresAuth: true, permission: { resource: 'Price change', action: 'Create' } }},
+        {path: '/price_change/update', name: 'Update Price Change', component: UpdatePriceChange, meta: { requiresAuth: true, permission: { resource: 'Price change', action: 'Update' } }},
         { path: '/', redirect: '/login' }
     ]
 });

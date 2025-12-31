@@ -10,6 +10,7 @@
     import BaseInput from '@/components/BaseInput.vue';
     import { usePermissionStore } from '@/stores/usePermissionStore';
     import { useSaleStore } from '@/stores/useSalesStore';
+import DashboardCard from '@/components/DashboardCard.vue';
 
     const router = useRouter();
     const useSales = useSaleStore();
@@ -112,6 +113,37 @@
         return list;
     });
 
+    const totalSalesAmount = computed(() => {
+        return displayedSales.value.reduce((sum, sale) => sum + (Number(sale.total_amount) || 0), 0);
+    });
+
+    const totalCashAmount = computed(() => {
+        return displayedSales.value.reduce((sum, sale) => {
+            if (sale.payment_method && sale.payment_method.name === 'Cash') {
+                return sum + (Number(sale.total_amount) || 0);
+            }
+            return sum;
+        }, 0);
+    });
+
+    const totalKpayAmount = computed(() => {
+        return displayedSales.value.reduce((sum, sale) => {
+            if (sale.payment_method && sale.payment_method.name === 'Kpay') {
+                return sum + (Number(sale.total_amount) || 0);
+            }
+            return sum;
+        }, 0);
+    });
+
+    const totalWalletAmount = computed(() => {
+        return displayedSales.value.reduce((sum, sale) => {
+            if (sale.payment_method && sale.payment_method.name === 'Wallet') {
+                return sum + (Number(sale.total_amount) || 0);
+            }
+            return sum;
+        }, 0);
+    });
+
     function changeRoute(pathname) {
         router.push(pathname);
     }
@@ -155,6 +187,13 @@
                 </div>
             </template>
         </PageTitle>
+        <div class="grid grid-cols-5 my-3 gap-x-4">
+            <DashboardCard title="Total Sales" :value="displayedSales.length" icon="fa fa-receipt" color="green" />
+            <DashboardCard title="Total Sales Amount" :value="totalSalesAmount.toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
+            <DashboardCard title="Total Cash" :value="totalCashAmount.toLocaleString('en-us')" icon="fa fa-hand-holding-dollar" color="gray" />
+            <DashboardCard title="Total Kpay" :value="totalKpayAmount.toLocaleString('en-us')" icon="fa fa-credit-card" color="blue" />
+            <DashboardCard title="Total Wallet" :value="totalWalletAmount.toLocaleString('en-us')" icon="fa fa-wallet" color="purple" />
+        </div>
         <DataTable 
             :columns="columns" 
             :rows="displayedSales" 

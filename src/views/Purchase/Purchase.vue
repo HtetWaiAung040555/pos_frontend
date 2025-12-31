@@ -10,6 +10,7 @@ import moment from 'moment';
 import BaseInput from '@/components/BaseInput.vue';
 import { usePermissionStore } from '@/stores/usePermissionStore';
 import { usePurchaseStore } from '@/stores/usePurchaseStore';
+import DashboardCard from '@/components/DashboardCard.vue';
 
 const router = useRouter();
 const usePurchase = usePurchaseStore();
@@ -85,17 +86,17 @@ const paymentOptions = computed(() => {
 });
 
 // Final list shown in table after client-side filtering
-const displayedSales = computed(() => {
+const displayedPurchase = computed(() => {
     let list = (purchaseList.value || []).slice();
 
     // filter by status
     if (selectedStatus.value) {
-        list = list.filter(s => String(s.status?.id) === String(selectedStatus.value));
+        list = list.filter(p => String(p.status?.id) === String(selectedStatus.value));
     }
 
     // filter by payment method
     if (selectedPayment.value) {
-        list = list.filter(s => String(s.payment_method?.id) === String(selectedPayment.value));
+        list = list.filter(p => String(p.payment?.id) === String(selectedPayment.value));
     }
 
     // search across invoice id, customer name
@@ -109,6 +110,37 @@ const displayedSales = computed(() => {
     }
 
     return list;
+});
+
+const totalPurchaseAmount = computed(() => {
+    return displayedPurchase.value.reduce((sum, sale) => sum + (Number(sale.total_amount) || 0), 0);
+});
+
+const totalCashAmount = computed(() => {
+    return displayedPurchase.value.reduce((sum, sale) => {
+        if (sale.payment_method && sale.payment_method.name === 'Cash') {
+            return sum + (Number(sale.total_amount) || 0);
+        }
+        return sum;
+    }, 0);
+});
+
+const totalKpayAmount = computed(() => {
+    return displayedPurchase.value.reduce((sum, sale) => {
+        if (sale.payment_method && sale.payment_method.name === 'Kpay') {
+            return sum + (Number(sale.total_amount) || 0);
+        }
+        return sum;
+    }, 0);
+});
+
+const totalWalletAmount = computed(() => {
+    return displayedPurchase.value.reduce((sum, sale) => {
+        if (sale.payment_method && sale.payment_method.name === 'Wallet') {
+            return sum + (Number(sale.total_amount) || 0);
+        }
+        return sum;
+    }, 0);
 });
 
 function changeRoute(pathname) {
@@ -143,7 +175,14 @@ async function deleteHandle(id) {
                 </div>
             </template>
         </PageTitle>
-        <DataTable :columns="columns" :rows="displayedSales" :editPath="'Update Purchase'"
+        <div class="grid grid-cols-5 my-3 gap-x-4">
+            <DashboardCard title="Total Sales" :value="displayedPurchase.length" icon="fa fa-receipt" color="green" />
+            <DashboardCard title="Total Sales Amount" :value="totalPurchaseAmount.toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
+            <DashboardCard title="Total Cash" :value="totalCashAmount.toLocaleString('en-us')" icon="fa fa-hand-holding-dollar" color="gray" />
+            <DashboardCard title="Total Kpay" :value="totalKpayAmount.toLocaleString('en-us')" icon="fa fa-credit-card" color="blue" />
+            <DashboardCard title="Total Wallet" :value="totalWalletAmount.toLocaleString('en-us')" icon="fa fa-wallet" color="purple" />
+        </div>
+        <DataTable :columns="columns" :rows="displayedPurchase" :editPath="'Update Purchase'"
             :isLoading="usePurchase.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
             :isEdit="!usePermission.can('Purchase', 'Update')" :isDelete="!usePermission.can('Purchase', 'Delete')">
             <template #filters>

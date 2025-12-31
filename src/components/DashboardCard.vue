@@ -16,6 +16,7 @@
         case 'yellow': return 'border-t-yellow-500'
         case 'red': return 'border-t-red-500'
         case 'purple': return 'border-t-purple-500'
+        case 'gray': return 'border-t-gray-500'
     }
     })
 
@@ -27,6 +28,7 @@
         case 'yellow': return 'bg-gradient-to-tr from-yellow-400 to-yellow-500'
         case 'red': return 'bg-gradient-to-tr from-red-500 to-red-600'
         case 'purple': return 'bg-gradient-to-tr from-purple-500 to-purple-600'
+        case 'gray': return 'bg-gradient-to-tr from-gray-500 to-gray-600'
     }
     })
 </script>
