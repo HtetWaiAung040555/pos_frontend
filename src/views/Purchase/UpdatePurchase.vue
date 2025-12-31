@@ -175,7 +175,7 @@ async function formSubmit() {
                 </thead>
                 <tbody>
                     <tr 
-                        class="hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.id"
+                        class="hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.productId"
                     >
                         <td class="border-b border-gray-200 p-2 text-center">{{ product.productName }}</td>
                         <td class="border-b border-gray-200 p-2 text-center">

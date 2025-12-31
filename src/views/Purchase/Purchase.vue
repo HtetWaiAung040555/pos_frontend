@@ -58,7 +58,7 @@ const columns = [
     { key: 'id', label: 'Purchase No.' },
     { key: 'purchase_date', label: 'Date', formatter: (row) => moment(row.purchase_date).format('DD-MM-YY hh:mm') },
     { key: 'supplier.name', label: 'Supplier Name', formatter: (row) => row.supplier.name },
-    { key: 'total_amount', label: 'Total' },
+    { key: 'total_amount', label: 'Total', formatter: (row) => Number(row.total_amount).toLocaleString('en-us') },
     { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.warehouse.name },
     { key: 'payment.name', label: 'Payment', formatter: (row) => row.payment.name },
     { key: 'status.name', label: 'Status', formatter: (row) => row.status.name },
@@ -117,27 +117,27 @@ const totalPurchaseAmount = computed(() => {
 });
 
 const totalCashAmount = computed(() => {
-    return displayedPurchase.value.reduce((sum, sale) => {
-        if (sale.payment_method && sale.payment_method.name === 'Cash') {
-            return sum + (Number(sale.total_amount) || 0);
+    return displayedPurchase.value.reduce((sum, purchase) => {
+        if (purchase.payment && purchase.payment.name === 'Cash') {
+            return sum + (Number(purchase.total_amount) || 0);
         }
         return sum;
     }, 0);
 });
 
 const totalKpayAmount = computed(() => {
-    return displayedPurchase.value.reduce((sum, sale) => {
-        if (sale.payment_method && sale.payment_method.name === 'Kpay') {
-            return sum + (Number(sale.total_amount) || 0);
+    return displayedPurchase.value.reduce((sum, purchase) => {
+        if (purchase.payment && purchase.payment.name === 'Kpay') {
+            return sum + (Number(purchase.total_amount) || 0);
         }
         return sum;
     }, 0);
 });
 
 const totalWalletAmount = computed(() => {
-    return displayedPurchase.value.reduce((sum, sale) => {
-        if (sale.payment_method && sale.payment_method.name === 'Wallet') {
-            return sum + (Number(sale.total_amount) || 0);
+    return displayedPurchase.value.reduce((sum, purchase) => {
+        if (purchase.payment && purchase.payment.name === 'Wallet') {
+            return sum + (Number(purchase.total_amount) || 0);
         }
         return sum;
     }, 0);
@@ -176,8 +176,8 @@ async function deleteHandle(id) {
             </template>
         </PageTitle>
         <div class="grid grid-cols-5 my-3 gap-x-4">
-            <DashboardCard title="Total Sales" :value="displayedPurchase.length" icon="fa fa-receipt" color="green" />
-            <DashboardCard title="Total Sales Amount" :value="totalPurchaseAmount.toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
+            <DashboardCard title="Total Purchase" :value="displayedPurchase.length" icon="fa fa-receipt" color="green" />
+            <DashboardCard title="Total Purchase Amount" :value="totalPurchaseAmount.toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
             <DashboardCard title="Total Cash" :value="totalCashAmount.toLocaleString('en-us')" icon="fa fa-hand-holding-dollar" color="gray" />
             <DashboardCard title="Total Kpay" :value="totalKpayAmount.toLocaleString('en-us')" icon="fa fa-credit-card" color="blue" />
             <DashboardCard title="Total Wallet" :value="totalWalletAmount.toLocaleString('en-us')" icon="fa fa-wallet" color="purple" />

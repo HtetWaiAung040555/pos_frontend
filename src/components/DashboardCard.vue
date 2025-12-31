@@ -35,12 +35,12 @@
 
 
 <template>
-  <div class="flex items-center justify-between p-5 bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300 border-t-4"
+  <div class="flex items-center justify-between p-3 bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300 border-t-4"
     :class="borderColor"
   >
     <!-- Icon  -->
-    <div class="flex items-center justify-center w-14 h-14 rounded-full shadow-md" :class="bgColor">
-      <i :class="[icon, 'text-white text-2xl']"></i>
+    <div class="flex items-center justify-center w-10 h-10 rounded-full shadow-md" :class="bgColor">
+      <i :class="[icon, 'text-white text-xl']"></i>
     </div>
 
     <!--  Info -->
@@ -48,7 +48,7 @@
       <h3 class="text-gray-500 text-sm font-medium tracking-wide">
         {{ title }}
       </h3>
-      <p class="text-2xl font-bold text-gray-800 mt-1">
+      <p class="text-lg font-bold text-gray-800 mt-1">
         {{ value }}
       </p>
     </div>

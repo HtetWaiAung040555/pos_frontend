@@ -60,7 +60,7 @@ import DashboardCard from '@/components/DashboardCard.vue';
         { key: 'id', label: 'Invoice No.' },
         { key: 'sale_date', label: 'Date', formatter: (row) => moment(row.sale_date).format('DD-MM-YY hh:mm') },
         { key: 'customer.name', label: 'Customer Name', formatter: (row) => row.customer.name },
-        { key: 'total_amount', label: 'Total' },
+        { key: 'total_amount', label: 'Total', formatter: (row) => Number(row.total_amount).toLocaleString('en-us') },
         { key: 'payment_method.name', label: 'Payment', formatter: (row) => row.payment_method.name },
         { key: 'status.name', label: 'Status', formatter: (row) => row.status.name },
         { key: 'created_by', label: 'Created By', formatter: (row) => row.created_by },

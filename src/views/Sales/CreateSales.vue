@@ -28,6 +28,7 @@ const useWarehouse = useWarehouseStore();
 const useProduct = useProductStore();
 
 const userData = ref({});
+const customerSelect = ref(null)
 const selectedProducts = ref([]);
 const isProductDialogVisible = ref(false);
 const productList = ref([]);
@@ -265,6 +266,28 @@ async function formSubmit(isPrint = false) {
     
 }
 
+function onCustomerFilter(e) {
+  const query = e.value?.trim()
+  if (!query) return
+
+  // Barcode scanners usually end with Enter → full ID present
+  const matched = useCustomer.customerList.find(
+    c => String(c.id) === query
+  )
+
+  if (matched) {
+    selectedCustomer.value = matched
+
+    // Clear filter input
+    customerSelect.value?.resetFilter()
+
+    // Return focus to barcode scanning (important for Android)
+    nextTick(() => {
+      document.activeElement?.blur()
+    })
+  }
+}
+
 // Print only the slip section between the markers
 function printSlip() {
   const slip = document.getElementById('slip-section');
@@ -352,12 +375,32 @@ function printSlip() {
                 <!-- Form section subtitle -->
                 <SubTitle label="Basic Info" />
                 <div class="grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
-                    <!-- Supplier -->
+                    <!-- Customer -->
                     <div class="flex flex-col gap-y-1">
                         <BaseLabel label="Customer" :isRequire="true" />
-                        <Select v-model="selectedCustomer" :options="useCustomer.customerList" showClear filter
-                            optionLabel="name" placeholder="Select a customer"
-                            class="h-[35px] items-center" />
+                        <Select
+                            ref="customerSelect"
+                            v-model="selectedCustomer"
+                            :options="useCustomer.customerList"
+                            filter
+                            showClear
+                            optionLabel="id"
+                            placeholder="Select a customer"
+                            class="h-[35px] items-center"
+                            @filter="onCustomerFilter"
+                        >
+                            <template #value="{ value }">
+                                <div v-if="value" class="flex flex-col">
+                                <span>{{ value.id }} | {{ value.name }}</span>
+                                </div>
+                            </template>
+
+                            <template #option="{ option }">
+                                <div class="flex flex-col">
+                                <span>{{ option.id }} | {{ option.name }}</span>
+                                </div>
+                            </template>
+                        </Select>
                         <BaseErrorLabel v-if="errorMsg.customer" :label="errorMsg.customer" />
                     </div>
                     <!-- Warehouse -->

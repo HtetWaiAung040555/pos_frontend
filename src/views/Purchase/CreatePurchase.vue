@@ -199,6 +199,7 @@ async function formSubmit() {
             purchase_price: p.purchasePrice
         }))
     }
+    console.log(payload);
     await usePurchase.addPurchase(payload);
     if (usePurchase.error.length) {
         usePurchase.error.forEach((msg) => {
@@ -297,7 +298,7 @@ async function formSubmit() {
                                         <td class="p-2">{{ product.productName }}</td>
                                         <td class="p-2">{{ product.barcode }}</td>
                                         <td class="p-2">
-                                            <input type="datetime-local" min="0" class="w-44 text-right px-1 py-1 border rounded" v-model="product.expiredDate" @input="onChangeExpiredDate(product)" />
+                                            <input type="date" min="0" class="w-44 text-right px-1 py-1 border rounded" v-model="product.expiredDate" @input="onChangeExpiredDate(product)" />
                                         </td>
                                         <td class="p-2 text-right">
                                             <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.purchasePrice" @input="onChangePrice(product)" />
