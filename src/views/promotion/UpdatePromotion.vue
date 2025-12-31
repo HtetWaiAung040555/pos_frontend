@@ -214,7 +214,7 @@ async function formSubmit() {
         start_at: formData.value.startDate,
         end_at: formData.value.endDate,
         products: selectedProducts.value.map(product => product.id),
-        status_id: promoStatus.value ? '1' : '2',
+        status_id: promoStatus.value ? 1 : 2,
         updated_by: userData.value.id,
     };
 
