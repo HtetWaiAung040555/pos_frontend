@@ -56,7 +56,7 @@ onMounted(async () => {
         productId: p.product.id,
         productName: p.product.name,
         quantity: p.quantity,
-        expiredDate: moment(p.inventory.expired_date).format('YYYY-MM-DD'),
+        expiredDate: p.inventory.expired_date === null? "" : moment(p.inventory.expired_date).format('YYYY-MM-DD'),
         purchasePrice: p.price,
         total: p.total,
         inventoryId: p.inventory.id,
@@ -95,6 +95,7 @@ async function formSubmit() {
             inventory_id: p.inventoryId
         }))
     }
+    console.log(payload);
     await usePurchase.editPurchase(payload, route.query.id);
     if (usePurchase.error.length) {
         usePurchase.error.forEach((msg) => {
