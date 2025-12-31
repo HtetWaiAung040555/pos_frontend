@@ -311,6 +311,20 @@ async function formSubmit() {
                                     <tr v-if="selectedProducts.length === 0">
                                         <td colspan="5" class="py-4 text-center text-gray-500">No products selected</td>
                                     </tr>
+                                    <tr class="border-b border-gray-200 font-bold bg-gray-100">
+                                        <td colspan="5" class="p-2 text-right">Grand Total</td>
+                                        <td class="p-2 text-right">
+                                            {{
+                                                selectedProducts.reduce((sum, p) => {
+                                                    return sum + Number(p.quantity);
+                                                }, 0).toLocaleString()
+                                            }}
+                                        </td>
+                                        <td class="p-2 text-right">
+                                            {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity) * Number(product.purchasePrice)), 0).toLocaleString('en-us') }}
+                                        </td>
+                                        <td>&nbsp;</td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>

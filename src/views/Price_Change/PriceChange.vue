@@ -100,7 +100,7 @@
             :editPath="'Update Price Change'" 
             :isLoading="usePriceChange.loading" 
             @delete="deleteHandle"
-            :defaultSort="{key: 'start_at', order: 'desc'}"
+            :defaultSort="{key: 'id', order: 'desc'}"
             :isEdit="!usePermission.can('Price change', 'Update')"
             :isDelete="!usePermission.can('Price change', 'Delete')"
         >
