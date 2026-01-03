@@ -124,8 +124,10 @@ async function formCancel() {
 }
 
 function changePaymentMethod(e) {
-  if (!e.target.value) return
-  if (e.target.value === '2') {
+  const inputValue = e.target.value;
+  if (!inputValue) return
+  salesData.value.payment_method.name = usePaymentMethod.paymentMethodList.find(pm => pm.id === parseInt(inputValue)).name;
+  if (inputValue === '2') {
     let statusData = useStatus.statusList.find(el => el.name === 'Unpaid');
     data.value.statusId = statusData.id;
     return
@@ -284,7 +286,7 @@ function printSlip() {
         <div class="flex flex-col col-span-2">
           <BaseLabel label="Payment Status:" />
           <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
-            v-model="data.statusId">
+            v-model="data.statusId" disabled>
             <option v-for="status in useStatus.statusList.filter(el => el.name === 'Complete' || el.name === 'Unpaid')"
               :value="status.id">
               {{ status.name === 'Complete' ? 'Paid' : status.name }}
@@ -422,7 +424,10 @@ function printSlip() {
               border-top: 1px solid black;
               padding-top: 4px;
             ">
-            <span>TOTAL</span>
+            <span>
+              TOTAL
+              <span style="font-weight: normal; font-size: small;">{{ salesData.payment_method.id !== 1 && salesData.payment_method.id !== 2 && salesData.payment_method.id !==3 ? `(${salesData.payment_method.name})` : '' }}</span>
+            </span>
             <span>{{ data.currency + Number(subtotal).toLocaleString() }}</span>
             <!-- <span>{{ data.currency + (subtotal + tax).toLocaleString() }}</span> -->
           </div>

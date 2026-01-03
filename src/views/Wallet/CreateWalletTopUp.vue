@@ -179,6 +179,29 @@ function printSlip() {
     printWindow.print();
   }, 500);
 }
+
+function onCustomerFilter(e) {
+  const query = e.value?.trim()
+  if (!query) return
+
+  // Barcode scanners usually end with Enter → full ID present
+  const matched = useCustomer.customerList.find(
+    c => String(c.id) === query
+  )
+
+  if (matched) {
+    selectedCustomer.value = matched
+
+    // Clear filter input
+    customerSelect.value?.resetFilter()
+
+    // Return focus to barcode scanning (important for Android)
+    nextTick(() => {
+      document.activeElement?.blur()
+    })
+  }
+}
+
 </script>
 
 <template>
@@ -191,24 +214,50 @@ function printSlip() {
       <!-- FORM -->
       <div class="flex-[1.2] grid grid-cols-2 gap-4 bg-white p-6 rounded-sm border border-gray-300 shadow-sm">
         <!-- Customer -->
-        <div class="flex flex-col">
+        <!-- <div class="flex flex-col">
           <BaseLabel label="Customer" :isRequire="true" />
           <Select v-model="selectedCustomer" :options="useCustomer.customerList" showClear filter optionLabel="name"
-            placeholder="Select a customer" class="w-[350px] h-[35px]" />
+            placeholder="Select a customer" class="h-[35px]" />
+        </div> -->
+        <div class="flex flex-col gap-y-1">
+          <BaseLabel label="Customer" :isRequire="true" />
+          <Select
+            ref="customerSelect"
+            v-model="selectedCustomer"
+            :options="useCustomer.customerList"
+            filter
+            showClear
+            optionLabel="id"
+            placeholder="Select a customer"
+            class="h-[35px] items-center"
+            @filter="onCustomerFilter"
+          >
+            <template #value="{ value }">
+              <div v-if="value" class="flex flex-col">
+              <span>{{ value.id }} | {{ value.name }}</span>
+              </div>
+            </template>
+
+            <template #option="{ option }">
+              <div class="flex flex-col">
+              <span>{{ option.id }} | {{ option.name }}</span>
+              </div>
+            </template>
+          </Select>
+          <BaseErrorLabel v-if="errorMsg.customer" :label="errorMsg.customer" />
         </div>
         <!-- Pay date Input -->
-        <BaseInput size="sm" v-model="data.pay_date" label="Pay Date" placeholder="Pay Date" width="300px"
-          height="h-[35px]" type="datetime-local" />
+        <BaseInput size="sm" v-model="data.pay_date" label="Pay Date" placeholder="Pay Date" height="h-[35px]" type="datetime-local" disabled />
         <!-- Amount -->
         <div class="flex flex-col">
           <BaseLabel label="Top Up Amount :" />
-          <BaseInput size="sm" v-model="data.amount" type="number" width="350px" height="h-[35px]" />
+          <BaseInput size="sm" v-model="data.amount" type="number" height="h-[35px]" />
         </div>
         <!-- Payment Method Select -->
         <div class="flex flex-col gap-y-1">
           <BaseLabel label="Payment Method" :isRequire="true" />
-          <Select v-model="selectedPaymentMethod" :options="usePaymentMethod.paymentMethodList" showClear filter
-            optionLabel="name" placeholder="Select a payment method" class="w-[300px] h-[35px] items-center" />
+          <Select v-model="selectedPaymentMethod" :options="usePaymentMethod.paymentMethodList?.filter(p => p.id !== 2 && p.id !== 3)" showClear filter
+            optionLabel="name" placeholder="Select a payment method" class="h-[35px] items-center" />
           <BaseErrorLabel v-if="errorMsg.paymentMethod" :label="errorMsg.paymentMethod" />
         </div>
 

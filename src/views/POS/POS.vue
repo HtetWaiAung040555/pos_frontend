@@ -395,6 +395,28 @@ async function onPayClick() {
   }
 }
 
+function onCustomerFilter(e) {
+  const query = e.value?.trim()
+  if (!query) return
+
+  // Barcode scanners usually end with Enter → full ID present
+  const matched = useCustomer.customerList.find(
+    c => String(c.id) === query
+  )
+
+  if (matched) {
+    selectedCustomer.value = matched
+
+    // Clear filter input
+    customerSelect.value?.resetFilter()
+
+    // Return focus to barcode scanning (important for Android)
+    nextTick(() => {
+      document.activeElement?.blur()
+    })
+  }
+}
+
 </script>
 
 <template>
@@ -443,14 +465,38 @@ async function onPayClick() {
                 </div>
               </template>
             </Select> -->
-            <BaseSearchSelect
+            <!-- <BaseSearchSelect
               v-model="selectedCustomer"
               :options="useCustomer.customerList"
               optionLabel="name"
               optionValue="id"
               placeholder="Select customer"
-            />
+            /> -->
+            <div class="flex flex-col gap-y-1">
+              <Select
+                ref="customerSelect"
+                v-model="selectedCustomer"
+                :options="useCustomer.customerList"
+                filter
+                showClear
+                optionLabel="id"
+                placeholder="Select a customer"
+                class="h-[35px] items-center"
+                @filter="onCustomerFilter"
+              >
+                <template #value="{ value }">
+                  <div v-if="value" class="flex flex-col">
+                  <span>{{ value.id }} | {{ value.name }}</span>
+                  </div>
+                </template>
 
+                <template #option="{ option }">
+                  <div class="flex flex-col">
+                  <span>{{ option.id }} | {{ option.name }}</span>
+                  </div>
+                </template>
+              </Select>
+            </div>
             <BaseInput id="barcodeInput" type="text" height="h-[33px]" width="350px" placeholder="Scan products by barcode..."
             @keyup="handleBarcodeInput" />
           </div>
@@ -586,7 +632,7 @@ async function onPayClick() {
                     <td class="p-2">
                       <div class="flex gap-x-2">
                         <BaseButton severity="info" size="sm" icon="pi pi-pen-to-square" @click="editHold(h)" />
-                        <BaseButton severity="danger" size="sm" icon="pi pi-trash" @click="deleteHold(h)" />
+                        <!-- <BaseButton severity="danger" disabled size="sm" icon="pi pi-trash" @click="deleteHold(h)" /> -->
                       </div>
                     </td>
                   </tr>
