@@ -13,6 +13,7 @@ import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { useCustomerStore } from '@/stores/useCustomerStore';
 import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
+import { usePermissionStore } from '@/stores/usePermissionStore';
 
 const router = useRouter();
 const toast = useToast();
@@ -20,6 +21,7 @@ const toast = useToast();
 const useWallet = useWalletStore();
 const useCustomer = useCustomerStore();
 const usePaymentMethod = usePaymentMethodStore();
+const usePermission = usePermissionStore();
 
 const userData = ref({});
 const selectedCustomer = ref(null);
@@ -247,7 +249,7 @@ function onCustomerFilter(e) {
           <BaseErrorLabel v-if="errorMsg.customer" :label="errorMsg.customer" />
         </div>
         <!-- Pay date Input -->
-        <BaseInput size="sm" v-model="data.pay_date" label="Pay Date" placeholder="Pay Date" height="h-[35px]" type="datetime-local" disabled />
+        <BaseInput size="sm" v-model="data.pay_date" label="Pay Date" placeholder="Pay Date" height="h-[35px]" type="datetime-local" :disabled="!usePermission.can('Wallet', 'Update')" />
         <!-- Amount -->
         <div class="flex flex-col">
           <BaseLabel label="Top Up Amount :" />

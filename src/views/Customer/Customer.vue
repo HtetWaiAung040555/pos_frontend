@@ -21,6 +21,7 @@ const useCustomer = useCustomerStore();
 const searchValue = ref('');
 const startDate = ref('');
 const endDate = ref('');
+const balanceSign = ref('all');
 const dataList = ref([]);
 
 onMounted(async () => {
@@ -51,7 +52,16 @@ const filteredRows = computed(() => {
     const searchedData = filter.searchFunction(dataList.value, searchValue.value, [
         "name",
     ]);
-    return filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value })
+    const dateFiltered = filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value });
+
+    if (balanceSign.value === 'all') return dateFiltered;
+
+    return dateFiltered.filter((row) => {
+        const bal = Number(row.balance ?? 0);
+        if (balanceSign.value === 'positive') return bal > 0;
+        if (balanceSign.value === 'negative') return bal < 0;
+        return true;
+    });
 });
 
 //Customer delete function
@@ -95,11 +105,16 @@ async function deleteHandle(id) {
             @delete="deleteHandle">
             <!-- Filter Section -->
             <template #filters>
-                <div class="flex gap-2">
+                <div class="flex gap-2 items-center">
                     <BaseInput size="sm" type="date" v-model="startDate" placeholder="Search" width="200px"
                         height="h-[35px]" />
                     <BaseInput size="sm" type="date" v-model="endDate" placeholder="Search" width="200px"
                         height="h-[35px]" />
+                    <select v-model="balanceSign" class="h-[35px] px-2 border rounded bg-white">
+                        <option value="all">All balances</option>
+                        <option value="positive">Positive (+)</option>
+                        <option value="negative">Negative (-)</option>
+                    </select>
                     <BaseInput size="sm" v-model="searchValue" placeholder="Search" width="200px" height="h-[35px]"
                         icon="pi pi-search" />
                 </div>

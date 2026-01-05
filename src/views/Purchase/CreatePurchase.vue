@@ -80,6 +80,7 @@ const filteredProducts = computed(() => {
 function openProductDialog() {
     // create a shallow copy buffer to allow canceling
     selectionBuffer.value = selectedProducts.value.slice();
+    console.log('selectionBuffer', selectionBuffer.value);
     searchTerm.value = '';
     isProductDialogVisible.value = true;
 }
@@ -149,13 +150,13 @@ watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.va
 
 function confirmProductSelection() {
     selectedProducts.value = selectionBuffer.value.map(p=> ({
-        productId: p.id,
-        productName: p.name,
+        id: p.id,
+        name: p.name,
         barcode: p.barcode,
-        purchasePrice: p.purchase_price,
+        purchase_price: p.purchase_price,
         quantity: 0,
         expiredDate: '',
-        image: p.image_url
+        image_url: p.image_url
     }));
     isProductDialogVisible.value = false;
 }
@@ -170,8 +171,8 @@ function onChangeQty(product) {
 }
 
 function onChangePrice(product) {
-    product.purchasePrice = Number(product.purchasePrice) || 0;
-    if (product.purchasePrice < 0) product.purchasePrice = 0;
+    product.purchase_price = Number(product.purchase_price) || 0;
+    if (product.purchase_price < 0) product.purchase_price = 0;
 }
 
 function onChangeExpiredDate(product) {
@@ -179,7 +180,7 @@ function onChangeExpiredDate(product) {
 }
 
 function removeProduct(product) {
-    selectedProducts.value = selectedProducts.value.filter(p => p.productId !== product.productId);
+    selectedProducts.value = selectedProducts.value.filter(p => p.id !== product.id);
 }
 
 // Form Submit function
@@ -193,10 +194,10 @@ async function formSubmit() {
         warehouse_id: selectedWarehouse.value.id,
         created_by: userData.value.id,
         products: selectedProducts.value.map(p => ({
-            product_id: p.productId,
+            product_id: p.id,
             quantity: p.quantity,
             expired_date: p.expiredDate,
-            purchase_price: p.purchasePrice
+            purchase_price: p.purchase_price
         }))
     }
     console.log(payload);
@@ -291,22 +292,22 @@ async function formSubmit() {
                                         class="border-b border-gray-200 hover:bg-blue-50">
                                         <td class="p-2">
                                             <div class="w-12 h-12 overflow-hidden rounded">
-                                                <img :src="product.image" alt="product"
+                                                <img :src="product.image_url" alt="product"
                                                     class="w-full h-full object-cover" />
                                             </div>
                                         </td>
-                                        <td class="p-2">{{ product.productName }}</td>
+                                        <td class="p-2">{{ product.name }}</td>
                                         <td class="p-2">{{ product.barcode }}</td>
                                         <td class="p-2">
                                             <input type="date" min="0" class="w-44 text-right px-1 py-1 border rounded" v-model="product.expiredDate" @input="onChangeExpiredDate(product)" />
                                         </td>
                                         <td class="p-2 text-right">
-                                            <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.purchasePrice" @input="onChangePrice(product)" />
+                                            <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.purchase_price" @input="onChangePrice(product)" />
                                         </td>
                                         <td class="p-2 text-right">
                                             <input type="number" min="0" class="w-20 text-right px-1 py-1 border rounded" v-model.number="product.quantity" @input="onChangeQty(product)" />
                                         </td>
-                                        <td class="p-2 text-right">{{ Number(product.purchasePrice) * product.quantity }}</td>
+                                        <td class="p-2 text-right">{{ Number(product.purchase_price) * product.quantity }}</td>
                                         <td class="p-2 text-right">
                                             <button class="text-red-600 hover:text-red-800 px-2 py-1"
                                                 @click="removeProduct(product)"><i
@@ -326,7 +327,7 @@ async function formSubmit() {
                                             }}
                                         </td>
                                         <td class="p-2 text-right">
-                                            {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity) * Number(product.purchasePrice)), 0).toLocaleString('en-us') }}
+                                            {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity) * Number(product.purchase_price)), 0).toLocaleString('en-us') }}
                                         </td>
                                         <td>&nbsp;</td>
                                     </tr>
@@ -367,7 +368,7 @@ async function formSubmit() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="product in filteredProducts" :key="product.productId" class="hover:bg-blue-50">
+                                    <tr v-for="product in filteredProducts" :key="product.id" class="hover:bg-blue-50">
                                         <td class="py-2">
                                             <input type="checkbox" :checked="isBufferSelected(product)"
                                                 @change="toggleProductInBuffer($event, product)" />
