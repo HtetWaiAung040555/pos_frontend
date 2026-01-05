@@ -70,11 +70,12 @@ async function formSubmit() {
     }
     let updatedData = {
         name: formData.value.name,
-        phone: formData.value.phone,
-        address: formData.value.address,
+        phone: formData.value.phone === null ? "" : formData.value.phone,
+        address: formData.value.address === null ? "" : formData.value.address,
         updated_by: userData.value.id,
         status_id: customerStatus.value ? '1' : '2'
     };
+    console.log("Updated Data:", updatedData);
     await useCustomer.editCustomer(route.query.id, updatedData);
     if (useCustomer.error.length) {
         useCustomer.error.forEach((msg) => {

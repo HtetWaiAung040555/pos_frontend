@@ -30,7 +30,7 @@ const data = ref({
   date: Date.now(),
   currency: 'Ks. ',
   taxRate: 3,
-  statusId: '',
+  statusId: 7, // Default to 'Complete'
   walletAmt: 0,
   walletPaymentId: 1,
   walletRemark: '',
@@ -47,7 +47,6 @@ onMounted(async () => {
   await usePaymentMethod.fetchAllPaymentMethod();
   await useStatus.fetchAllStatus();
   userData.value = JSON.parse(localStorage.getItem('user'));
-  data.value.statusId = useStatus.statusList.find(el => el.name === 'Complete').id;
 });
 
 const subtotal = computed(() => {
@@ -296,9 +295,9 @@ function printSlip() {
 
         <!-- Submit Button Group -->
         <div class="flex gap-3 mt-5">
-          <BaseButton label="Submit" @click="formSubmit(false)" />
-          <BaseButton label="Submit & Print" @click="formSubmit(true)" />
-          <BaseButton label="Cancel" severity="danger" @click="formCancel" />
+          <BaseButton label="Submit" @click="formSubmit(false)" :disabled="useSales.loading || usePaymentMethod.loading || useStatus.loading" />
+          <BaseButton label="Submit & Print" @click="formSubmit(true)" :disabled="useSales.loading || usePaymentMethod.loading || useStatus.loading" />
+          <BaseButton label="Cancel" severity="danger" :disabled="useSales.loading || usePaymentMethod.loading || useStatus.loading" @click="formCancel" />
         </div>
 
       </div>
