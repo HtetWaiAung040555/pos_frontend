@@ -286,8 +286,8 @@ function onCustomerFilter(e) {
         </div> -->
 
         <div class="flex gap-3 mt-5 col-span-2">
-          <BaseButton label="Submit" @click="formSubmit" />
-          <BaseButton label="Submit & Print" @click="formSubmitAndPrint" />
+          <BaseButton label="Update" @click="formSubmit" :icon="useWallet.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'"  :isLoading="useWallet.loading" :disabled="useWallet.loading" />
+          <BaseButton label="Submit & Print" @click="formSubmitAndPrint" :icon="useWallet.loading ? 'fa fa-spinner' : 'fa fa-print'"  :isLoading="useWallet.loading" :disabled="useWallet.loading"/>
         </div>
       </div>
 

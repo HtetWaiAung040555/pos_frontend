@@ -281,8 +281,8 @@ async function formSubmit() {
                                         <th class="p-2">Product Name</th>
                                         <th class="p-2">Barcode</th>
                                         <th class="p-2">Expired Date</th>
-                                        <th class="p-2 text-right">Price</th>
                                         <th class="p-2 text-right">Qty</th>
+                                        <th class="p-2 text-right">Price</th>
                                         <th class="p-2 text-right">Total</th>
                                         <th class="p-2">&nbsp;</th>
                                     </tr>
@@ -302,12 +302,12 @@ async function formSubmit() {
                                             <input type="date" min="0" class="w-44 text-right px-1 py-1 border rounded" v-model="product.expiredDate" @input="onChangeExpiredDate(product)" />
                                         </td>
                                         <td class="p-2 text-right">
-                                            <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.purchase_price" @input="onChangePrice(product)" />
-                                        </td>
-                                        <td class="p-2 text-right">
                                             <input type="number" min="0" class="w-20 text-right px-1 py-1 border rounded" v-model.number="product.quantity" @input="onChangeQty(product)" />
                                         </td>
-                                        <td class="p-2 text-right">{{ Number(product.purchase_price) * product.quantity }}</td>
+                                        <td class="p-2 text-right">
+                                            <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.purchase_price" @input="onChangePrice(product)" />
+                                        </td>
+                                        <td class="p-2 text-right">{{ (Number(product.purchase_price) * product.quantity).toLocaleString('en-us') }}</td>
                                         <td class="p-2 text-right">
                                             <button class="text-red-600 hover:text-red-800 px-2 py-1"
                                                 @click="removeProduct(product)"><i
@@ -318,7 +318,7 @@ async function formSubmit() {
                                         <td colspan="5" class="py-4 text-center text-gray-500">No products selected</td>
                                     </tr>
                                     <tr class="border-b border-gray-200 font-bold bg-gray-100">
-                                        <td colspan="5" class="p-2 text-right">Grand Total</td>
+                                        <td colspan="4" class="p-2 text-right">Grand Total</td>
                                         <td class="p-2 text-right">
                                             {{
                                                 selectedProducts.reduce((sum, p) => {
@@ -326,6 +326,7 @@ async function formSubmit() {
                                                 }, 0).toLocaleString()
                                             }}
                                         </td>
+                                        <td>&nbsp;</td>
                                         <td class="p-2 text-right">
                                             {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity) * Number(product.purchase_price)), 0).toLocaleString('en-us') }}
                                         </td>

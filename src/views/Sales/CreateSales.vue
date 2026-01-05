@@ -151,6 +151,7 @@ watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.va
 });
 
 async function confirmProductSelection() {
+    selectedProducts.value = [];
     selectionBuffer.value.forEach(async (p) => {
         const checkPromo = await axios.get(`/promotions/checkprice/${p.id}`);
         if (checkPromo.data.promotion_id) {
@@ -158,16 +159,16 @@ async function confirmProductSelection() {
                 ...selectedProducts.value,
                 {
                     id: p.id,
-                    productName: p.name,
+                    name: p.name,
                     barcode: p.barcode,
                     quantity: 1,
-                    image: p.image_url,
+                    image_url: p.image_url,
                     price: Number(p.price),
-                    promotionId: checkPromo.data.promotion_id,
-                    discountAmount: checkPromo.data.discount_amount,
-                    discountPrice: p.price - checkPromo.data.discount_amount,
-                    discountValue: checkPromo.data.discount_value,
-                    discountType: checkPromo.data.discount_type,
+                    promotion_id: checkPromo.data.promotion_id,
+                    discount_amount: checkPromo.data.discount_amount,
+                    discount_price: p.price - checkPromo.data.discount_amount,
+                    discount_value: checkPromo.data.discount_value,
+                    discount_type: checkPromo.data.discount_type,
                 }
             ]
         } else {
@@ -175,16 +176,16 @@ async function confirmProductSelection() {
                 ...selectedProducts.value,
                 {
                     id: p.id,
-                    productName: p.name,
+                    name: p.name,
                     barcode: p.barcode,
                     quantity: 1,
-                    image: p.image_url,
+                    image_url: p.image_url,
                     price: Number(p.price),
-                    promotionId: null,
-                    discountAmount: 0,
-                    discountPrice: 0,
-                    discountValue: 0,
-                    discountType: '',
+                    promotion_id: null,
+                    discount_amount: 0,
+                    discount_price: 0,
+                    discount_value: 0,
+                    discount_type: '',
                 }
             ]
         }
@@ -221,9 +222,9 @@ async function formSubmit(isPrint = false) {
             product_id: p.id,
             quantity: p.quantity,
             price: p.price,
-            promotion_id: p.promotionId || null,
-            discount_amount: p.discountAmount || 0,
-            discount_price: p.discountPrice || 0,
+            promotion_id: p.promotion_id || null,
+            discount_amount: p.discount_amount || 0,
+            discount_price: p.discount_price || 0,
         }))
     }
     await useSales.addSales(payload);
@@ -452,26 +453,26 @@ function printSlip() {
                                         class="border-b border-gray-200 hover:bg-blue-50">
                                         <td class="p-2">
                                             <div class="w-12 h-12 overflow-hidden rounded">
-                                                <img :src="product.image" alt="product"
+                                                <img :src="product.image_url" alt="product"
                                                     class="w-full h-full object-cover" />
                                             </div>
                                         </td>
-                                        <td class="p-2">{{ product.productName }}</td>
+                                        <td class="p-2">{{ product.name }}</td>
                                         <td class="p-2">{{ product.barcode }}</td>
                                         <td class="p-2 text-right">
                                             <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.price" @input="onChangePrice(product)" />
                                             <!-- {{ Number(product.price).toLocaleString() }} -->
                                         </td>
                                         <td class="p-2 text-right">
-                                            {{ product.promotionId ? product.discountValue + (product.discountType === 'percent' ? '%' : '') : 0 }}
+                                            {{ product.promotion_id ? product.discount_value + (product.discount_type === 'percent' ? '%' : '') : 0 }}
                                         </td>
                                         <td class="p-2 text-right">
-                                            {{ product.promotionId ? Number(product.discountPrice).toLocaleString() : Number(product.price).toLocaleString() }}
+                                            {{ product.promotion_id ? Number(product.discount_price).toLocaleString() : Number(product.price).toLocaleString() }}
                                         </td>
                                         <td class="p-2 text-right">
                                             <input type="number" min="0" class="w-20 text-right px-1 py-1 border rounded" v-model.number="product.quantity" @input="onChangeQty(product)" />
                                         </td>
-                                        <td class="p-2 text-right">{{ product.promotionId ? Number(product.discountPrice) * product.quantity : Number(product.price) * product.quantity }}</td>
+                                        <td class="p-2 text-right">{{ product.promotion_id ? Number(product.discount_price) * product.quantity : Number(product.price) * product.quantity }}</td>
                                         <td class="p-2 text-right">
                                             <button class="text-red-600 hover:text-red-800 px-2 py-1"
                                                 @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)"><i
@@ -493,7 +494,7 @@ function printSlip() {
                                         <td class="p-2 text-right">
                                             {{
                                                 selectedProducts.reduce((sum, p) => {
-                                                    const price = p.promotionId ? p.discountPrice : p.price;
+                                                    const price = p.promotion_id ? p.discount_price : p.price;
                                                     return sum + (Number(price) * p.quantity);
                                                 }, 0).toLocaleString()
                                             }}

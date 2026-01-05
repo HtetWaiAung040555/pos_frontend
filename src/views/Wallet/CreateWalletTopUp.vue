@@ -269,8 +269,8 @@ function onCustomerFilter(e) {
           <BaseTextarea v-model="data.remark" placeholder="Write Remark" autoResize class="w-full text-black" />
         </div>
         <div class="flex gap-3 mt-5 col-span-2">
-          <BaseButton label="Submit" @click="formSubmit" />
-          <BaseButton label="Submit & Print" @click="formSubmitAndPrint" />
+          <BaseButton label="Submit" @click="formSubmit" :icon="useWallet.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'"  :isLoading="useWallet.loading" :disabled="useWallet.loading" />
+          <BaseButton label="Submit & Print" @click="formSubmitAndPrint" :icon="useWallet.loading ? 'fa fa-spinner' : 'fa fa-print'"  :isLoading="useWallet.loading" :disabled="useWallet.loading" />
         </div>
       </div>
 

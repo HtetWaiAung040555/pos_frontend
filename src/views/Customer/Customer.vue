@@ -33,7 +33,7 @@ onMounted(async () => {
 const columns = [
     { key: 'id', label: 'ID' },
     { key: 'name', label: 'Name' },
-    { key: 'balance', label: 'Balance' },
+    { key: 'balance', label: 'Balance', formatter: (row) => Number(row.balance).toLocaleString('en-us') ?? 0 },
     { key: 'phone', label: 'Phone' },
     { key: 'address', label: 'Address' },
     { key: 'created_by', label: 'Created By', formatter: (row) => row.created_by.name },
@@ -60,6 +60,7 @@ const filteredRows = computed(() => {
         const bal = Number(row.balance ?? 0);
         if (balanceSign.value === 'positive') return bal > 0;
         if (balanceSign.value === 'negative') return bal < 0;
+        if (balanceSign.value === 'zero') return bal === 0;
         return true;
     });
 });
@@ -112,6 +113,7 @@ async function deleteHandle(id) {
                         height="h-[35px]" />
                     <select v-model="balanceSign" class="h-[35px] px-2 border rounded bg-white">
                         <option value="all">All balances</option>
+                        <option value="zero">Zero (0)</option>
                         <option value="positive">Positive (+)</option>
                         <option value="negative">Negative (-)</option>
                     </select>

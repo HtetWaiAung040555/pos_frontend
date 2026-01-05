@@ -169,8 +169,8 @@ async function formSubmit() {
                     <tr class="bg-gray-100 text-right">
                         <th class="px-2 py-2 text-center">Product Name</th>
                         <th class="px-2 py-2 text-center">Expired Date</th>
-                        <th class="px-2 py-2">Purchase Price</th>
                         <th class="px-2 py-2">Purchase Qty</th>
+                        <th class="px-2 py-2">Purchase Price</th>
                         <th class="px-2 py-2">Total</th>
                     </tr>
                 </thead>
@@ -183,17 +183,17 @@ async function formSubmit() {
                             <input type="date" min="0" class="w-44 text-right px-1 -1 border rounded" v-model="product.expiredDate" @input="onChangeExpiredDate(product)" />
                         </td>
                         <td class="border-b border-gray-200 p-2">
-                            <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.purchasePrice" @input="onChangePrice(product)" />
+                            <input type="number" min="0" class="w-20 text-right px-1 py-1 border rounded" v-model.number="product.quantity" @input="onChangeQty(product)" />
                         </td>
                         <td class="border-b border-gray-200 p-2">
-                            <input type="number" min="0" class="w-20 text-right px-1 py-1 border rounded" v-model.number="product.quantity" @input="onChangeQty(product)" />
+                            <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.purchasePrice" @input="onChangePrice(product)" />
                         </td>
                         <td class="border-b border-gray-200 p-2">{{ Number(Number(product.quantity) * Number(product.purchasePrice)).toLocaleString('en-us') }}</td>
                     </tr>
                     <tr 
                         class="text-right"
                     >
-                        <td colspan="3" class="border-b border-gray-200 px-2 py-2">
+                        <td colspan="2" class="border-b border-gray-200 px-2 py-2">
                             <strong>Total:</strong>
                         </td>
                         <td class="border-b border-gray-200 px-2 py-2">
@@ -201,6 +201,7 @@ async function formSubmit() {
                                 {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity)), 0).toLocaleString('en-us') }}
                             </strong>
                         </td>
+                        <td>&nbsp;</td>
                         <td class="border-b border-gray-200 px-2 py-2">
                             <strong>
                                 {{ selectedProducts.reduce((sum, product) => sum + (Number(product.quantity) * Number(product.purchasePrice)), 0).toLocaleString('en-us') }}
