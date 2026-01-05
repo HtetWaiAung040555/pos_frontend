@@ -559,12 +559,12 @@ function onCustomerFilter(e) {
 
           <!-- Fixed bottom button group -->
           <div class="shrink-0 mt-4 flex justify-end gap-x-2 items-center">
-            <BaseButton label="Reset" severity="danger" icon="fa fa-rotate-left"
-              :disabled="selectedProducts.length === 0" @click="resetData" />
-            <BaseButton label="Hold" severity="secondary" icon="fa fa-hand" :disabled="selectedProducts.length === 0 || selectedHold.length != 0"
+            <BaseButton label="Reset" severity="danger" :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-rotate-left'"
+              :disabled="selectedProducts.length === 0 || useSales.loading" @click="resetData" />
+            <BaseButton label="Hold" severity="secondary" :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-hand'" :disabled="selectedProducts.length === 0 || selectedHold.length != 0 || useSales.loading"
               @click="holdSale" />
-            <BaseButton label="Pay" severity="primary" icon="fa fa-credit-card"
-              :disabled="selectedProducts.length === 0" @click="onPayClick" />
+            <BaseButton label="Pay" severity="primary" :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-credit-card'"
+              :disabled="selectedProducts.length === 0 || useSales.loading" @click="onPayClick" />
           </div>
         </div>
       </div>
@@ -609,16 +609,16 @@ function onCustomerFilter(e) {
                 </div>
             </div>
 
-            <div v-else>
-              <table class="table-auto w-full border-collapse">
-                <thead class="bg-gray-100 text-sm">
+            <div v-else class="max-h-[450px] overflow-y-auto">
+              <table class="w-full border-collapse">
+                <thead class="bg-gray-100 text-sm top-0 sticky">
                   <tr>
                     <th class="p-2 text-left">#</th>
                     <th class="p-2 text-left">Hold ID</th>
                     <th class="p-2 text-left">Customer</th>
                     <th class="p-2 text-right">Total</th>
                     <th class="p-2 text-left">Date</th>
-                    <th class="p-2 w-[80px]"></th>
+                    <th class="p-2 w-[40px]"></th>
                   </tr>
                 </thead>
                 <tbody>
