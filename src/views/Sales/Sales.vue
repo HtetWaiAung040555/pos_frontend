@@ -3,8 +3,8 @@
     import PageTitle from '@/components/PageTitle.vue';
     import DataTable from '@/components/DataTable.vue';
     import BaseButton from '@/components/BaseButton.vue';
-    import { useRouter } from 'vue-router';
-    import { onMounted, ref, computed } from 'vue';
+    import { useRouter, useRoute } from 'vue-router';
+    import { onMounted, ref, computed, watch } from 'vue';
     import { useToast } from 'primevue';
     import moment from 'moment';
     import BaseInput from '@/components/BaseInput.vue';
@@ -13,6 +13,7 @@
 import DashboardCard from '@/components/DashboardCard.vue';
 
     const router = useRouter();
+    const route = useRoute();
     const useSales = useSaleStore();
     const toast = useToast();
     const usePermission = usePermissionStore();
@@ -24,6 +25,14 @@ import DashboardCard from '@/components/DashboardCard.vue';
         endDateTimeLocal: ''
     });
 
+    // Calendar selection: year, month, day
+    const selectedYear = ref(String(new Date().getFullYear()));
+    const selectedMonth = ref(String(new Date().getMonth() + 1).padStart(2, '0'));
+    const selectedDay = ref('');
+    // Carousel window for days
+    const dayWindowStart = ref(0);
+    const windowSize = ref(7); // show 7 days at once
+
     // Client-side filters (apply on date-range fetched data)
     const selectedStatus = ref('');
     const selectedPayment = ref('');
@@ -33,6 +42,17 @@ import DashboardCard from '@/components/DashboardCard.vue';
         // default date-time range: start of current month at 00:00 to now
         filteredData.value.startDateTimeLocal = moment().startOf('month').format('YYYY-MM-DDTHH:mm');
         filteredData.value.endDateTimeLocal = moment().format('YYYY-MM-DDTHH:mm');
+
+        // If route contains saved filters (from Create page), apply them
+        if (route && route.query) {
+            if (route.query.start) filteredData.value.startDateTimeLocal = route.query.start;
+            if (route.query.end) filteredData.value.endDateTimeLocal = route.query.end;
+            if (route.query.status) selectedStatus.value = route.query.status;
+            if (route.query.payment) selectedPayment.value = route.query.payment;
+            if (route.query.year) selectedYear.value = route.query.year;
+            if (route.query.month) selectedMonth.value = route.query.month;
+            if (route.query.day) selectedDay.value = route.query.day;
+        }
 
         await fetchSalesByDate();
     });
@@ -54,6 +74,79 @@ import DashboardCard from '@/components/DashboardCard.vue';
         selectedStatus.value = '';
         selectedPayment.value = '';
         searchValue.value = '';
+    }
+
+    // Helper: list of years for selection (e.g., 2020..current+2)
+    const years = computed(() => {
+        const cur = new Date().getFullYear();
+        const start = cur - 3;
+        const end = cur + 2;
+        const arr = [];
+        for (let y = start; y <= end; y++) arr.push(String(y));
+        return arr;
+    });
+
+    const months = [
+        { v: '01', name: 'January' },
+        { v: '02', name: 'February' },
+        { v: '03', name: 'March' },
+        { v: '04', name: 'April' },
+        { v: '05', name: 'May' },
+        { v: '06', name: 'June' },
+        { v: '07', name: 'July' },
+        { v: '08', name: 'August' },
+        { v: '09', name: 'September' },
+        { v: '10', name: 'October' },
+        { v: '11', name: 'November' },
+        { v: '12', name: 'December' },
+    ];
+
+    // Compute all days for selected month-year with weekday labels
+    const monthDays = computed(() => {
+        const y = Number(selectedYear.value);
+        const m = Number(selectedMonth.value) - 1; // JS month index
+        const first = new Date(y, m, 1);
+        const daysInMonth = new Date(y, m + 1, 0).getDate();
+        const arr = [];
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dt = new Date(y, m, d);
+            const dayName = moment(dt).format('ddd').toUpperCase(); // MON, TUE, ...
+            arr.push({
+                day: dayName,
+                date: String(d).padStart(2, '0'),
+                iso: moment(dt).format('YYYY-MM-DD')
+            });
+        }
+        return arr;
+    });
+
+    const maxWindowStart = computed(() => Math.max(0, monthDays.value.length - windowSize.value));
+
+    const monthDaysSlice = computed(() => {
+        return monthDays.value.slice(dayWindowStart.value, dayWindowStart.value + windowSize.value);
+    });
+
+    function prevDays() {
+        dayWindowStart.value = Math.max(0, dayWindowStart.value - windowSize.value);
+    }
+
+    function nextDays() {
+        dayWindowStart.value = Math.min(maxWindowStart.value, dayWindowStart.value + windowSize.value);
+    }
+
+    // reset window when month or year changes
+    watch([selectedYear, selectedMonth], () => {
+        dayWindowStart.value = 0;
+        selectedDay.value = '';
+    });
+
+    function selectMonthDay(dayObj) {
+        selectedDay.value = dayObj.iso;
+        // set datetime-local values for full day
+        filteredData.value.startDateTimeLocal = `${dayObj.iso}T00:00`;
+        filteredData.value.endDateTimeLocal = `${dayObj.iso}T23:59`;
+        // trigger fetch for the selected day
+        fetchSalesByDate();
     }
 
     const columns = [
@@ -148,6 +241,21 @@ import DashboardCard from '@/components/DashboardCard.vue';
         router.push(pathname);
     }
 
+    function goCreateWithFilters() {
+        router.push({
+            path: '/sales/create',
+            query: {
+                start: filteredData.value.startDateTimeLocal || '',
+                end: filteredData.value.endDateTimeLocal || '',
+                status: selectedStatus.value || '',
+                payment: selectedPayment.value || '',
+                year: selectedYear.value || '',
+                month: selectedMonth.value || '',
+                day: selectedDay.value || ''
+            }
+        });
+    }
+
     // Sales delete function
     async function deleteHandle(id) {
         await useSales.deleteSales({void_by: JSON.parse(localStorage.getItem('user')).id}, id);
@@ -170,6 +278,33 @@ import DashboardCard from '@/components/DashboardCard.vue';
     <div class="p-4">
         <PageTitle title="Sales List">
             <template #titleButtons>
+                <!-- Calendar picker: year, month, days -->
+                    <div class="flex items-center gap-2 text-black">
+                        <select v-model="selectedYear" class="border p-2 rounded text-sm">
+                            <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+                        </select>
+                        <select v-model="selectedMonth" class="border p-2 rounded text-sm">
+                            <option v-for="m in months" :key="m.v" :value="m.v">{{ m.name }}</option>
+                        </select>
+                        <div class="flex items-center gap-x-2">
+                            <button @click="prevDays" :disabled="dayWindowStart === 0" class=" rounded bg-white flex items-center justify-center cursor-pointer">
+                                <i class="fa fa-chevron-circle-left text-xl"></i>
+                            </button>
+                            <div class="flex gap-1 px-1">
+                                <button
+                                    v-for="d in monthDaysSlice"
+                                    :key="d.iso"
+                                    @click="selectMonthDay(d)"
+                                    :class="['px-2 py-1 rounded text-sm whitespace-nowrap cursor-pointer', selectedDay === d.iso ? 'bg-blue-600 text-white' : 'bg-white border']"
+                                >
+                                    {{ d.day }} - {{ d.date }}
+                                </button>
+                            </div>
+                            <button @click="nextDays" :disabled="dayWindowStart >= maxWindowStart" class="rounded bg-white flex items-center justify-center cursor-pointer">
+                                <i class="fa fa-chevron-circle-right text-xl"></i>
+                            </button>
+                        </div>
+                    </div>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton 
                         v-if="usePermission.can('Sales', 'Create')"
