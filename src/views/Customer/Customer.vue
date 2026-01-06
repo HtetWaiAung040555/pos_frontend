@@ -51,6 +51,7 @@ function changeRoute(pathname) {
 const filteredRows = computed(() => {
     const searchedData = filter.searchFunction(dataList.value, searchValue.value, [
         "name",
+        "id"
     ]);
     const dateFiltered = filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value });
 

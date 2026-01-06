@@ -12,6 +12,7 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
 import BaseInput from '@/components/BaseInput.vue';
 
 import { useWalletStore } from '@/stores/useWalletStore';
+import DashboardCard from '@/components/DashboardCard.vue';
 
 const router = useRouter();
 const toast = useToast();
@@ -54,6 +55,7 @@ async function fetchTransaction() {
 // Table headers
 const columns = [
     { key: 'id', label: 'ID' },
+    { key: 'customer.id', label: 'Customer ID', formatter: (row) => row.customer?.id },
     { key: 'customer.name', label: 'Name', formatter: (row) => row.customer?.name },
     { key: 'amount', label: 'Amount' },
     { key: 'payment_method.name', label: 'Payment Method', formatter: (row) => row.payment_method?.name },
@@ -92,13 +94,37 @@ const filteredRows = computed(() => {
     }
     if (searchValue.value && searchValue.value.trim() !== '') {
         const q = searchValue.value.toLowerCase().trim();
+        
         list = list.filter(w => {
             const customer = w.customer?.name || '';
-            return customer.toLowerCase().includes(q)
+            const id = w.customer_id || '';
+            return customer.toLowerCase().includes(q) || id.toLowerCase().includes(q);
         });
     }
     return list;
 });
+
+const totalAmount = computed(() => {
+        return filteredRows.value.reduce((sum, wallet) => sum + (Number(wallet.amount) || 0), 0);
+    });
+
+    const totalCashAmount = computed(() => {
+        return filteredRows.value.reduce((sum, wallet) => {
+            if (wallet.payment_method && wallet.payment_method.name === 'Cash') {
+                return sum + (Number(wallet.amount) || 0);
+            }
+            return sum;
+        }, 0);
+    });
+
+    const totalKpayAmount = computed(() => {
+        return filteredRows.value.reduce((sum, wallet) => {
+            if (wallet.payment_method && wallet.payment_method.name === 'Kpay') {
+                return sum + (Number(wallet.amount) || 0);
+            }
+            return sum;
+        }, 0);
+    });
 
 //  Delete function
 async function deleteHandle(id) {
@@ -133,6 +159,12 @@ async function deleteHandle(id) {
                 </div>
             </template>
         </PageTitle>
+        <div class="grid grid-cols-5 my-3 gap-x-4">
+            <DashboardCard title="Total" :value="filteredRows.length" icon="fa fa-receipt" color="green" />
+            <DashboardCard title="Total Amount" :value="totalAmount.toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
+            <DashboardCard title="Total Cash" :value="totalCashAmount.toLocaleString('en-us')" icon="fa fa-hand-holding-dollar" color="gray" />
+            <DashboardCard title="Total Kpay" :value="totalKpayAmount.toLocaleString('en-us')" icon="fa fa-credit-card" color="blue" />
+        </div>
         <!-- DataTable -->
         <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Wallet Top Up'"
             :isLoading="useWallet.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
