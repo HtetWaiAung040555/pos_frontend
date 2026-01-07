@@ -88,7 +88,10 @@
 
     const syncFromCloud = async () => {
         try {
-            await useProduct.syncFromCloud();
+            let payload = {
+                updated_by: JSON.parse(localStorage.getItem('user')).id,
+            }
+            await useProduct.syncFromCloud(payload);
             await useProduct.fetchAllProduct();
             dataList.value = useProduct.productList;
             toast.add({ severity: 'success', summary: 'Success', detail: 'Data synced from cloud successfully', life: 3000 });
