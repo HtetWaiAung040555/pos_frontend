@@ -78,6 +78,7 @@ import CreateSales from './views/Sales/CreateSales.vue';
 import PriceChange from './views/Price_Change/PriceChange.vue';
 import CreatePriceChange from './views/Price_Change/CreatePriceChange.vue';
 import UpdatePriceChange from './views/Price_Change/UpdatePriceChange.vue';
+import LocalInventory from './views/Local_Inventory/LocalInventory.vue';
 
 
 
@@ -105,7 +106,7 @@ const router = createRouter({
         {path: '/product', name: 'Product', component: Product, meta: { requiresAuth: true, permission: { resource: 'Product', action: 'View' } }},
         {path: '/product/create', name: 'Create Product', component: CreateProduct, meta: { requiresAuth: true, permission: { resource: 'Product', action: 'Create' } }},
         {path: '/product/update', name: 'Update Product', component: UpdateProduct, meta: { requiresAuth: true, permission: { resource: 'Product', action: 'Update' } }},
-        {path: '/inventory', name: 'Inventory', component: Inventory, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'View' } }},
+        {path: '/inventory', name: 'Inventory', component: LocalInventory, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'View' } }},
         {path: '/inventory/create', name: 'Create Inventory', component: CreateInventory, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'Create' } }},
         {path: '/inventory/update', name: 'Update Inventory', component: UpdateInventory, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'Update' } }},
         {path: '/stock_adjustment', name: 'Adjustment', component: StockAdjustment, meta: { requiresAuth: true, permission: { resource: 'Stock adjustment', action: 'View' } }},
