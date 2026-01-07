@@ -97,7 +97,19 @@ export const useCustomerStore = defineStore('customer', {
             } finally {
                 this.loading = false;
             }
-        }
+        },
+        async syncFromCloud(formData) {
+            this.loading = true;
+            this.error = [];
+            try {
+                const response = await axios.post(`/customers/sync`, formData);
+                this.customerList = response.data.data;
+            } catch(err) {
+                this.error = normalizeApiError(err);
+            } finally {
+                this.loading = false;
+            }
+        },
 
     }
 

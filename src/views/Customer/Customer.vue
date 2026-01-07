@@ -87,6 +87,29 @@ async function deleteHandle(id) {
     }
 }
 
+const syncFromCloud = async () => {
+    let payload = {
+        updated_by: JSON.parse(localStorage.getItem('user')).id,
+    }
+    await useCustomer.syncFromCloud(payload);
+    if (useCustomer.error.length) {
+        useCustomer.error.forEach((msg) => {
+            toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+            });
+        });
+        return
+    }
+    if (useCustomer.customerList) {
+        toast.add({ severity: 'success', summary: 'Success', detail: 'Data synced from cloud successfully', life: 3000 });
+    }
+    await useCustomer.fetchAllCustomer();
+    dataList.value = useCustomer.customerList;
+}
+
 </script>
 
 <template>
@@ -95,8 +118,11 @@ async function deleteHandle(id) {
         <PageTitle title="Customer List">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
-                    <BaseButton v-if="usePermission.can('Customer', 'Create')" icon="fa fa-circle-plus" label="Create"
-                        severity="primary" @click="changeRoute('/customer/create')" />
+                    <BaseButton 
+                        icon="fa fa-cloud-download" 
+                        label="Sync from Cloud"
+                        severity="primary" 
+                        @click="syncFromCloud" />
                 </div>
             </template>
         </PageTitle>
