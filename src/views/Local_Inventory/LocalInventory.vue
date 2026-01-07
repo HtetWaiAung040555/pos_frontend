@@ -66,6 +66,7 @@ const pullCloudData = async () => {
             created_by: JSON.parse(localStorage.getItem('user')).id
         }
         await useLocalInventory.addCloudStock(payload);
+        await useLocalInventory.fetchAllStock();
         dataList.value = useLocalInventory.stockList;
         toast.add({ severity: 'success', summary: 'Success', detail: 'Data pulled from cloud successfully', life: 3000 });
     } catch (error) {
