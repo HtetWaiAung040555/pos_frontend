@@ -86,6 +86,17 @@
         }
     }
 
+    const syncFromCloud = async () => {
+        try {
+            await useProduct.syncFromCloud();
+            await useProduct.fetchAllProduct();
+            dataList.value = useProduct.productList;
+            toast.add({ severity: 'success', summary: 'Success', detail: 'Data synced from cloud successfully', life: 3000 });
+        } catch (error) {
+            toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to sync data from cloud', life: 3000 });
+        }
+    }
+
 </script>
 
 <template>
@@ -95,11 +106,10 @@
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton 
-                        v-if="usePermission.can('Product', 'Create')"
-                        icon="fa fa-circle-plus" 
-                        label="Create" 
+                        icon="fa fa-cloud-download" 
+                        label="Sync from cloud" 
                         severity="primary" 
-                        @click="changeRoute('/product/create')"  
+                        @click="syncFromCloud"  
                     />
                 </div>
             </template>
@@ -110,7 +120,7 @@
             :rows="filteredRows"
             :editPath="'Update Product'"
             :isLoading="useProduct.loading"
-            :defaultSort="{key: 'created_at', order: 'desc'}"
+            :defaultSort="{key: 'id', order: 'asc'}"
             :isEdit="!usePermission.can('Product', 'Update')"
             :isDelete="!usePermission.can('Product', 'Delete')"
             @delete="deleteHandle"

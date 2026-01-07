@@ -84,5 +84,17 @@ export const useProductStore = defineStore('product', {
                 this.loading = false;
             }
         },
+        async syncFromCloud(formData) {
+            this.loading = true;
+            this.error = [];
+            try {
+                const response = await axios.post(`/products/sync`, formData);
+                this.productList = response.data.data;
+            } catch(err) {
+                this.error = normalizeApiError(err);
+            } finally {
+                this.loading = false;
+            }
+        },
     }
 });
