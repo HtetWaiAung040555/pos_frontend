@@ -33,7 +33,7 @@ const columns = [
     { key: 'id', label: 'Product ID' },
     {
         key: 'image_url', label: 'Image', formatter: (row) => {
-            return `<img class="object-cover w-10 h-10 rounded" src="${row.image_rul}" alt="${row.name}" />`;
+            return `<img class="object-cover w-10 h-10 rounded" src="${row.image_url}" alt="${row.name}" />`;
         }
     },
     { key: 'barcode', label: 'Barcode' },
@@ -61,7 +61,11 @@ const filteredRows = computed(() => {
 
 const pullCloudData = async () => {
     try {
-        await useLocalInventory.addCloudStock();
+        let payload = {
+            warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id,
+            created_by: JSON.parse(localStorage.getItem('user')).id
+        }
+        await useLocalInventory.addCloudStock(payload);
         dataList.value = useLocalInventory.stockList;
         toast.add({ severity: 'success', summary: 'Success', detail: 'Data pulled from cloud successfully', life: 3000 });
     } catch (error) {
