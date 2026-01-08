@@ -153,12 +153,15 @@ async function addWallet() {
     created_by: userData.value.id
   }
   await useWallet.addWallet(payload);
-  if (useWallet.error) {
-    Object.values(useWallet.error).forEach((err) => {
-      err.forEach((msg) => {
-        toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-      })
-    })
+  if (useWallet.error.length) {
+    useWallet.error.forEach((msg) => {
+      toast.add({
+        severity: 'error',
+        summary: 'Error Message',
+        detail: msg,
+        life: 3000
+      });
+    });
     return
   }
   if (useWallet.walletList) {
@@ -516,14 +519,14 @@ function printSlip() {
               <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
                 v-model="data.walletPaymentId" @change="changePaymentMethod">
                 <option value="1" v-if="usePaymentMethod.loading">Loading. . .</option>
-                <option v-for="pm in usePaymentMethod.paymentMethodList" :value="pm.id">
+                <option v-for="pm in usePaymentMethod.paymentMethodList?.filter(p => p.id !== 2 && p.id !== 3)" :value="pm.id">
                   {{ pm.name }}
                 </option>
               </select>
             </div>
             <BaseTextarea class="col-span-2" v-model="data.walletRemark" label="Remark" autoResize />
             <div class="col-span-2 flex justify-end items-center">
-              <BaseButton label="Add Wallet" @click="addWallet" />
+              <BaseButton label="Add Wallet" @click="addWallet" :disabled="useWallet.loading || useSales.loading" />
             </div>
           </div>
         </div>
