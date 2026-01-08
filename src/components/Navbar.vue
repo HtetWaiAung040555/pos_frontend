@@ -9,6 +9,7 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
 import { Dialog, useToast } from 'primevue';
 import BaseInput from './BaseInput.vue';
 import SubTitle from './SubTitle.vue';
+import { useSaleStore } from '@/stores/useSalesStore';
 
 const collapseSidebar = useCollapseSidebar();
 const openDropdown = ref(false);
@@ -17,6 +18,7 @@ const router = useRouter();
 const route = useRoute();
 const useUser = useUserStore();
 const usePermission = usePermissionStore();
+const useSale = useSaleStore();
 const toast = useToast();
 const userData = ref({});
 const errorMsg = ref({
@@ -111,6 +113,26 @@ async function formSubmit() {
   }
 }
 
+const syncSales = async () => {
+    let payload = {
+        updated_by: JSON.parse(localStorage.getItem('user')).id,
+    }
+    await useSale.syncToCloud(payload);
+    if (useSale.error.length) {
+        useSale.error.forEach((msg) => {
+            toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+            });
+        });
+        return
+    }else {
+        toast.add({ severity: 'success', summary: 'Success', detail: 'Data synced from cloud successfully', life: 3000 });
+    }
+}
+
 </script>
 
 <template>
@@ -128,7 +150,7 @@ async function formSubmit() {
     </div>
 
     <div ref="dropdownRef" class="flex items-center gap-x-2">
-      <BaseButton class="" severity="primary" variant="outlined" label="Sync Sales" icon="fa fa-file-arrow-up" rounded />
+      <BaseButton class="" severity="primary" variant="outlined" label="Sync Sales" icon="fa fa-file-arrow-up" rounded @click="syncSales" />
       <BaseButton class="w-10 h-10" severity="primary" variant="solid" icon="pi pi-bell" rounded />
     <div class="relative overflow-visible">
           <div

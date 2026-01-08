@@ -50,6 +50,7 @@ export const useWalletStore = defineStore('wallet', {
             this.error = [];
             try {
                 const response = await axios.post(`/customers_transactions`, formData);
+                console.log(response);
                 this.walletList = response.data.data;
             } catch (err) {
                 this.error = normalizeApiError(err);
