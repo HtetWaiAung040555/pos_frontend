@@ -39,7 +39,7 @@
         { key: 'unit_id.name', label: 'Unit', formatter: (row) => row.unit_id.name },
         { key: 'category_id.name', label: 'Category', formatter: (row) => row.category_id.name },
         { key: 'sec_prop', label: 'Property' },
-        { key: 'price', label: 'Sales Price' },
+        { key: 'price', label: 'Sales Price', formatter: (row) => Number(row.price).toLocaleString('en-us') },
         //{ key: 'purchase_price', label: 'Purchase Price' },
         { key: 'status', label: 'Status', formatter: (row) => {
             const color = row.status.name === 'Active' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';

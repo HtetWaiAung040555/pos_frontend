@@ -29,7 +29,7 @@ const selectedPaymentMethod = ref(null);
 
 const data = ref({
   customer_id: "",
-  amount: "",
+  amount: 0,
   payment_id: "",
   remark: "",
   pay_date: moment().format('YYYY-MM-DD HH:mm:ss'),
@@ -40,7 +40,8 @@ const data = ref({
 
 const errorMsg = ref({
   paymentMethod: "",
-  customer: ""
+  customer: "",
+  amount: ""
 });
 
 // Change route function
@@ -73,13 +74,28 @@ const afterBalance = computed(() => {
 
 
 async function formSubmit() {
-  if (!selectedPaymentMethod.value) {
+  if (!selectedCustomer.value) {
     errorMsg.value = {
-      paymentMethod: errMsgList.paymentMethod,
-      customer: ""
+      paymentMethod: "",
+      customer: "Select a customer.",
+      amount: ""
     }
     return
-  } else if ("") { }
+  } else if (!data.value.amount || Number(data.value.amount) <= 0) {
+    errorMsg.value = {
+      paymentMethod: "",
+      customer: "",
+      amount: "Amount must be greater than 0."
+    }
+    return
+  } else if (!selectedPaymentMethod.value) {
+    errorMsg.value = {
+      paymentMethod: errMsgList.paymentMethod,
+      customer: "",
+      amount: ""
+    }
+    return
+  }
 
   const topup = {
     customer_id: selectedCustomer.value.id,
@@ -253,7 +269,14 @@ function onCustomerFilter(e) {
         <!-- Amount -->
         <div class="flex flex-col">
           <BaseLabel label="Top Up Amount :" />
-          <BaseInput size="sm" v-model="data.amount" type="number" height="h-[35px]" />
+          <BaseInput 
+            size="sm" 
+            v-model="data.amount" 
+            type="number" 
+            height="h-[35px]" 
+            :isRequire="true" 
+            :error="errorMsg.amount"  
+          />
         </div>
         <!-- Payment Method Select -->
         <div class="flex flex-col gap-y-1">

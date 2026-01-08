@@ -31,7 +31,7 @@
         { key: 'id', label: 'ID' },
         { key: 'name', label: 'Name' },
         { key: 'discount_type', label: 'Type' },
-        { key: 'discount_value', label: 'Discount Value' },
+        { key: 'discount_value', label: 'Discount Value', formatter: (row) => `${Number(row.discount_value).toLocaleString('en-us')}${row.discount_type === 'Percentage' ? '%' : ''}` },
         { key: 'start_at', label: 'Start', formatter: (row) => moment(row.start_at).format('DD-MM-YY hh:mm') },
         { key: 'end_at', label: 'End', formatter: (row) => moment(row.end_at).format('DD-MM-YY hh:mm') },
         { key: 'status', label: 'Status', formatter: (row) => {

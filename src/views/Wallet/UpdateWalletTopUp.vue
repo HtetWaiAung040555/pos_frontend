@@ -35,7 +35,8 @@ const errorMessage = ref('');
 const updateAllowed = ref(true);
 const errorMsg = ref({
   paymentMethod: "",
-  customer: ""
+  customer: "",
+  amount: ""
 });
 
 // Change route function
@@ -93,6 +94,28 @@ const afterBalance = computed(() => {
 
 // Update function
 async function formSubmit() {
+  if (!selectedCustomer.value) {
+    errorMsg.value = {
+      paymentMethod: "",
+      customer: "Select a customer.",
+      amount: ""
+    }
+    return
+  } else if (!data.value.amount || Number(data.value.amount) <= 0) {
+    errorMsg.value = {
+      paymentMethod: "",
+      customer: "",
+      amount: "Amount must be greater than 0."
+    }
+    return
+  } else if (!selectedPaymentMethod.value) {
+    errorMsg.value = {
+      paymentMethod: errMsgList.paymentMethod,
+      customer: "",
+      amount: ""
+    }
+    return
+  }
 
   let updatedData = {
     customer_id: selectedCustomer.value.id,
@@ -265,13 +288,14 @@ function onCustomerFilter(e) {
         <!-- Amount -->
         <div class="flex flex-col">
           <BaseLabel label="Top Up Amount :" />
-          <BaseInput size="sm" v-model="data.amount" type="number" height="h-[35px]" />
+          <BaseInput size="sm" v-model="data.amount" type="number" height="h-[35px]" :isRequire="true" :error="errorMsg.amount"/>
         </div>
         <!-- Payment Method Select -->
         <div class="flex flex-col gap-y-1">
           <BaseLabel label="Payment Method" :isRequire="true" />
-          <Select v-model="selectedPaymentMethod" :options="usePaymentMethod.paymentMethodList" showClear filter
+          <Select v-model="selectedPaymentMethod" :options="usePaymentMethod.paymentMethodList?.filter(p => p.id !== 2 && p.id !== 3)" showClear filter
             optionLabel="name" placeholder="Select a payment method" class="h-[35px] items-center" />
+          <BaseErrorLabel v-if="errorMsg.paymentMethod" :label="errorMsg.paymentMethod" />
         </div>
 
         <!-- Remark -->

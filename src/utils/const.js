@@ -14,5 +14,6 @@ export const errMsgList = {
     sec_prop: "Secondary property is required.",
     warehouse: "Warehouse is required.",
     product: "Product is required.",
-    qty: "Stock qty must be greater than 0."
+    qty: "Stock qty must be greater than 0.",
+    paymentMethod: "Payment method is required.",
 }

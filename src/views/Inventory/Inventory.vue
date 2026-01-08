@@ -22,6 +22,7 @@
     const startDate = ref('');
     const endDate = ref('');
     const dataList = ref([]);
+    const nearlyExpire = ref(false);
 
     onMounted(async () => {
         await useInventory.fetchAllStock();
@@ -55,6 +56,13 @@
         const searchedData = filter.searchFunction(dataList.value, searchValue.value, [
             "product.name",
         ]);
+
+        if (nearlyExpire.value) {
+            const today = moment().startOf('day');
+            const twoMonths = moment().add(2, 'months').endOf('day');
+            return searchedData.filter(item => item.expired_date && moment(item.expired_date).isBetween(today, twoMonths, undefined, '[]'));
+        }
+
         return filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value })
     });
 
@@ -76,6 +84,14 @@
             toast.add({ severity: 'success', summary: 'Success Message', detail: 'Inventory deleted successfully.', life: 3000 });
             await useUser.fetchAllUsers();
             dataList.value = useUser.users;
+        }
+    }
+
+    function handleNearlyExpire() {
+        nearlyExpire.value = !nearlyExpire.value;
+        if (nearlyExpire.value) {
+            startDate.value = '';
+            endDate.value = '';
         }
     }
 
@@ -134,6 +150,7 @@
                         height="h-[35px]"
                         icon="pi pi-search"
                     />
+                    <BaseButton label="Nearly Expire" severity="secondary" @click="handleNearlyExpire" />
                 </div>
             </template>
         </DataTable>
