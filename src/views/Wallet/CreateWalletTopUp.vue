@@ -105,8 +105,26 @@ async function formSubmit() {
   }
 
   if (useWallet.walletList) {
+    console.log(useWallet.walletList);
     toast.add({ severity: 'success', summary: 'Success Message', detail: 'Wallet top up successfully.', life: 3000 });
-    router.push('/wallet');
+    await useCustomer.editCustomer(useWallet.customer.id, {
+      balance: useWallet.customer.balance,
+      updated_by: userData.value.id,
+    });
+    if (useCustomer.error.length) {
+      useCustomer.error.forEach((msg) => {
+        toast.add({
+          severity: 'error',
+          summary: 'Error Message',
+          detail: msg,
+          life: 3000
+        });
+      });
+      return;
+    }
+    if (useCustomer.customerList) {
+      router.push('/wallet');
+    }
   }
 }
 

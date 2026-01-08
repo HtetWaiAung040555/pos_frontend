@@ -128,7 +128,7 @@ async function formSubmit() {
     </div>
 
     <div ref="dropdownRef" class="flex items-center gap-x-2">
-      <BaseButton class="w-10 h-10" severity="primary" variant="outlined" icon="fa fa-question" rounded />
+      <BaseButton class="" severity="primary" variant="outlined" label="Sync Sales" icon="fa fa-file-arrow-up" rounded />
       <BaseButton class="w-10 h-10" severity="primary" variant="solid" icon="pi pi-bell" rounded />
     <div class="relative overflow-visible">
           <div

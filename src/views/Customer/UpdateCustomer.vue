@@ -135,6 +135,8 @@ async function formSubmit() {
                     <!-- Phone number input -->
                     <BaseInput size="sm" v-model="formData.phone" label="Phone Number" placeholder="Phone" width="300px"
                         height="h-[35px]" />
+                    <BaseInput size="sm" v-model="formData.balance" label="Balance" placeholder="Balance" width="300px"
+                        height="h-[35px]" disabled/>
 
                 </div>
                 <div class="flex gap-x-4 mt-4">
