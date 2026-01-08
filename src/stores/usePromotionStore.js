@@ -74,6 +74,18 @@ export const usePromotionStore = defineStore('wallet', {
             } finally {
                 this.deleteLoading = false;
             }
-        }
+        },
+        async syncFromCloud(formData) {
+            this.loading = true;
+            this.error = [];
+            try {
+                const response = await axios.post(`/promotions/sync`, formData);
+                this.promoList = response.data.data;
+            } catch(err) {
+                this.error = normalizeApiError(err);
+            } finally {
+                this.loading = false;
+            }
+        },
     }
 });

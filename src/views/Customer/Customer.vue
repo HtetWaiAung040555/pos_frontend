@@ -102,12 +102,11 @@ const syncFromCloud = async () => {
             });
         });
         return
-    }
-    if (useCustomer.customerList) {
+    }else {
         toast.add({ severity: 'success', summary: 'Success', detail: 'Data synced from cloud successfully', life: 3000 });
     }
     await useCustomer.fetchAllCustomer();
-    dataList.value = useCustomer.customerList;
+    dataList.value = useCustomer.customerList; 
 }
 
 </script>
