@@ -12,6 +12,7 @@ import moment from 'moment';
 import axios from 'axios';
 import { useProductStore } from '@/stores/useProductStore';
 import BaseSearchSelect from '@/components/BaseSearchSelect.vue';
+import { useLocalInventoryStore } from '@/stores/useLocalInventory';
 
 const toast = useToast();
 const router = useRouter();
@@ -19,6 +20,7 @@ const useCustomer = useCustomerStore();
 const useStatus = useStatusStore();
 const useSales = useSaleStore();
 const useProduct = useProductStore();
+const useLocalInventory = useLocalInventoryStore();
 
 const productList = ref([]);
 const userData = ref({});
@@ -50,8 +52,10 @@ onMounted(async () => {
   userData.value = JSON.parse(localStorage.getItem('user'));
   selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
   // productList.value = inventory;
-  await useProduct.fetchSalesProduct({warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id});
-  productList.value = useProduct.productList;
+  // await useProduct.fetchSalesProduct({warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id});
+  // productList.value = useProduct.productList;
+  await useLocalInventory.fetchAllStock();
+  productList.value = useLocalInventory.stockList;
   await useStatus.fetchAllStatus();
 });
 
