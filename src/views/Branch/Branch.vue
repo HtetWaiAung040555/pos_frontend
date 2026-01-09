@@ -99,7 +99,7 @@ async function deleteHandle(id) {
         <!-- DataTable -->
         <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Branch'"
             :isLoading="useBranch.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
-            :isEdit="!usePermission.can('Branch', 'Update')" :isDelete="!usePermission.can('Branch', 'Delete')">
+            :isEdit="!usePermission.can('Branch', 'Update')" :isDelete="!usePermission.can('Branch', 'Delete')" filename="Branch">
             <!-- Filter Section -->
             <template #filters>
                 <div class="flex gap-2">

@@ -89,7 +89,7 @@ async function deleteHandle(id) {
         <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Payment Method'"
             :isLoading="usePaymentMethod.loading" @delete="deleteHandle"
             :defaultSort="{ key: 'created_at', order: 'desc' }" :isEdit="!usePermission.can('Payment method', 'Update')"
-            :isDelete="!usePermission.can('Payment method', 'Delete')">
+            :isDelete="!usePermission.can('Payment method', 'Delete')" filename="Payment_Method">
             <template #filters>
                 <div class="flex gap-2">
                     <BaseInput size="sm" v-model="startDate" type="date" placeholder="Start Date" width="200px"

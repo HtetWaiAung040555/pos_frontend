@@ -150,7 +150,7 @@ async function deleteHandle(id) {
         </PageTitle>
         <DataTable :columns="columns" :rows="displayedSalesReturn" :editPath="'Update Sales Return'"
             :isLoading="useSalesReturn.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
-            :isEdit="!usePermission.can('Sales return', 'Update')" :isDelete="!usePermission.can('Sales return', 'Delete')">
+            :isEdit="!usePermission.can('Sales return', 'Update')" :isDelete="!usePermission.can('Sales return', 'Delete')" filename="Sales_Return">
             <template #filters>
                 <div class="flex gap-2 items-center">
                     <BaseInput size="sm" v-model="filteredData.startedDate" type="datetime-local"

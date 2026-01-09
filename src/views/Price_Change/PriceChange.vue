@@ -33,7 +33,7 @@
         { key: 'type', label: 'Type'},
         { key: 'start_at', label: 'Start', formatter: (row) => moment(row.start_at).format('DD-MM-YY hh:mm') },
         { key: 'end_at', label: 'End', formatter: (row) => moment(row.end_at).format('DD-MM-YY hh:mm') },
-        { key: 'status', label: 'Status', formatter: (row) => {
+        { key: 'status.name', label: 'Status', formatter: (row) => {
             const color = row.status.name === 'Active' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';
             return `<span class="text-white px-2 py-1 rounded ${color}">${row.status.name}</span>`;
         } },
@@ -102,6 +102,7 @@
             :defaultSort="{key: 'id', order: 'desc'}"
             :isEdit="!usePermission.can('Price change', 'Update')"
             :isDelete="!usePermission.can('Price change', 'Delete')"
+            filename="Price_Change"
         >
             <template #filters>
                 <div class="flex gap-2">

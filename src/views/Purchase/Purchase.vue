@@ -184,7 +184,7 @@ async function deleteHandle(id) {
         </div>
         <DataTable :columns="columns" :rows="displayedPurchase" :editPath="'Update Purchase'"
             :isLoading="usePurchase.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
-            :isEdit="!usePermission.can('Purchase', 'Update')" :isDelete="!usePermission.can('Purchase', 'Delete')">
+            :isEdit="!usePermission.can('Purchase', 'Update')" :isDelete="!usePermission.can('Purchase', 'Delete')" filename="Purchase">
             <template #filters>
                 <div class="flex gap-2 items-center">
                     <BaseInput size="sm" v-model="filteredData.startedDate" type="datetime-local"

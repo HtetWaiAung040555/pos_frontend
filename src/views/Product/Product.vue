@@ -114,6 +114,7 @@
             :isEdit="!usePermission.can('Product', 'Update')"
             :isDelete="!usePermission.can('Product', 'Delete')"
             @delete="deleteHandle"
+            filename="Product"
         >
             <!-- Filter Section -->
             <template #filters>

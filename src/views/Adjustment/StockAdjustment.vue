@@ -45,8 +45,8 @@ const columns = [
             return `<img class="object-cover w-10 h-10 rounded" src="${row.inventory.product.image_url}" alt="${row.inventory.product.name}" />`;
         }
     },
-    { key: 'product.name', label: 'Product', formatter: (row) => row.inventory.product.name },
-    { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.inventory.warehouse.name },
+    { key: 'inventory.product.name', label: 'Product', formatter: (row) => row.inventory.product.name },
+    { key: 'inventory.warehouse.name', label: 'Warehouse', formatter: (row) => row.inventory.warehouse.name },
     { key: 'quantity_change', label: 'Qty' },
     { key: 'type', label: 'In/Out',  formatter: (row) => {
             const color = row.type === 'in' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';

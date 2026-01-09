@@ -105,6 +105,7 @@
             :defaultSort="{key: 'start_at', order: 'desc'}"
             :isEdit="!usePermission.can('Promotion', 'Update')"
             :isDelete="!usePermission.can('Promotion', 'Delete')"
+            filename="Promotion"
         >
             <template #filters>
                 <div class="flex gap-2">

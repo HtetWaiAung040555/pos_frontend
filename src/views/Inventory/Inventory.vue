@@ -126,6 +126,7 @@
             :isDelete="!usePermission.can('Inventory', 'Delete')"
             :isAdjust="true"
             @delete="deleteHandle"
+            filename="Inventory_Stock"
         >
             <!-- Filter Section -->
             <template #filters>

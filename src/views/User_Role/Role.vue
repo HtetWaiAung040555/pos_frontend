@@ -94,7 +94,7 @@ async function deleteHandle(id) {
         <!-- Displaying role data -->
         <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Role'"
             :isLoading="useRole.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
-            :isEdit="!usePermission.can('Role', 'Update')" :isDelete="!usePermission.can('Role', 'Delete')">
+            :isEdit="!usePermission.can('Role', 'Update')" :isDelete="!usePermission.can('Role', 'Delete')" filename="Role">
             <template #filters>
                 <div class="flex gap-2">
                     <BaseInput size="sm" type="date" v-model="startDate" placeholder="Search" width="200px"

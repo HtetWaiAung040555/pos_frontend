@@ -168,7 +168,7 @@ async function deleteHandle(id) {
         <!-- DataTable -->
         <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Wallet Top Up'"
             :isLoading="useWallet.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
-            :isEdit="!usePermission.can('Wallet', 'Update')" :isDelete="!usePermission.can('Wallet', 'Delete')">
+            :isEdit="!usePermission.can('Wallet', 'Update')" :isDelete="!usePermission.can('Wallet', 'Delete')" filename="Customer_Transaction">
             <!-- Filter Section -->
             <template #filters>
                 <div class="flex gap-2">
