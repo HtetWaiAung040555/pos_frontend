@@ -28,6 +28,7 @@
         await useInventory.fetchAllStock();
         const inventory = useInventory.stockList.filter(item => item.warehouse.id === JSON.parse(localStorage.getItem('user')).branch.warehouse_id);
         dataList.value = inventory;
+        console.log('Inventory List:', dataList.value);
     });
 
     // Table headers
@@ -36,6 +37,7 @@
         { key: 'image_url', label: 'Image', formatter: (row) => {
             return `<img class="object-cover w-10 h-10 rounded" src="${row.product.image_url}" alt="${row.product.name}" />`;
         } },
+        { key: 'product.barcode', label: 'Barcode', formatter: (row) => row.product.barcode },
         { key: 'product.name', label: 'Product', formatter: (row) => row.product.name },
         { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.warehouse.name },
         { key: 'qty', label: 'Qty' },

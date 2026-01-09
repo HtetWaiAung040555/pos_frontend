@@ -145,11 +145,6 @@ function exportToExcel() {
 
     const formatParentValues = (row) => {
       return props.columns.map(col => {
-        try {
-          if (col.formatter) return String(col.formatter(row));
-        } catch (e) {
-          // ignore formatter errors and fallback to raw value
-        }
         const val = getByPath(row, col.key);
         return val === undefined || val === null ? '' : String(val);
       });
