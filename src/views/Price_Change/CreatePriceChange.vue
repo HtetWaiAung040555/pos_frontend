@@ -15,6 +15,7 @@ import SubTitle from '@/components/SubTitle.vue';
 
 import { useProductStore } from '@/stores/useProductStore';
 import { usePriceChangeStore } from '@/stores/usePriceChangeStore';
+import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
 
 const router = useRouter();
 const toast = useToast();
@@ -28,9 +29,9 @@ const formData = ref({
     description: '',
     type: '',
     startDate: moment().format('YYYY-MM-DD HH:mm:ss'),
-    endDate: moment().add(1, 'days').format('YYYY-MM-DD HH:mm:ss'),
+    endDate: moment().add(1, 'years').format('YYYY-MM-DD HH:mm:ss'),
     priceValueType: '',
-    priceChangeValue: '',
+    priceChangeValue: 0,
 });
 
 const selectedProducts = ref([]);
@@ -241,19 +242,11 @@ const hasManualPrice = computed(() => {
 async function formSubmit() {
     if (formData.value.type === "") {
         errorMsg.value = {
-            type: errMsgList.type,
+            type: "Please select a price change type.",
             priceChangeValue: "",
             products: "",
         }
         return
-    } else if (!formData.value.priceChangeValue && !hasManualPrice.value) {
-        errorMsg.value = {
-            type: "",
-            priceChangeValue: "Please enter a price change value or manually set new prices.",
-            products: "",
-        };
-        return;
-
     } else if (selectedProducts.value.length === 0) {
         errorMsg.value = {
             type: "",
@@ -261,7 +254,16 @@ async function formSubmit() {
             products: errMsgList.product,
         }
         return
-    }
+    } else if (!formData.value.priceChangeValue && !hasManualPrice.value) {
+        console.log('No price change value or manual prices inputted');
+        errorMsg.value = {
+            type: "",
+            priceChangeValue: "Some product prices must be changed. Please input a price change value or set new prices manually.",
+            products: "",
+        };
+        return;
+
+    } 
 
     const payload = {
         description: formData.value.description,
@@ -326,7 +328,7 @@ async function formSubmit() {
                             <option value="sale">Sale</option>
                             <option value="purchase">Purchase</option>
                         </select>
-
+                        <BaseErrorLabel v-if="errorMsg.type" :label="errorMsg.type" />
                     </div>
                     <!-- Status -->
                     <div class="flex flex-col gap-y-1 w-[200px]">
@@ -357,7 +359,6 @@ async function formSubmit() {
                 <!--  Price change value -->
                 <div class="flex flex-col gap-1 mt-6 w-[420px]">
                     <BaseLabel label="Price Change Value" />
-
                     <div class="flex gap-x-2 items-center">
                         <select
                             class="text-md border border-gray-500 rounded-sm p-2 text-black w-[120px] h-[35px]"
@@ -367,7 +368,6 @@ async function formSubmit() {
                             <option value="INCREASE">Increase</option>
                             <option value="DECREASE">Decrease</option>
                         </select>
-
                         <BaseInput 
                             size="sm" 
                             v-model="formData.priceChangeValue"
@@ -393,6 +393,8 @@ async function formSubmit() {
                         class="w-fit mt-4 mb-4"
                         @click="openProductDialog()"
                     />
+                    <span v-if="errorMsg.products" class="text-red-600 text-sm">{{ errorMsg.products }}</span>
+                    <span v-if="errorMsg.priceChangeValue" class="text-red-600 text-sm">{{ errorMsg.priceChangeValue }}</span>
                     <!-- Selected Products Table (scrollable with fixed header) -->
                     <div class="mt-4">
                         <div class="max-h-[350px] overflow-y-auto rounded">
@@ -416,7 +418,7 @@ async function formSubmit() {
                                         <td class="py-2">{{ product.name }}</td>
                                         
                                         <td class="py-2 text-right">{{ formatPrice(product.old_price || 0) }}</td>
-                                        <td class="border-b border-gray-200 px-2 py-2 text-right">
+                                        <td class="border-b px-2 py-2 text-right">
                                             <input
                                                 type="number"
                                                 class="w-24 text-right px-1 py-1 border rounded"

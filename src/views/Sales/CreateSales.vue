@@ -482,7 +482,7 @@ function printSlip() {
                                     <tr v-if="selectedProducts.length === 0">
                                         <td colspan="5" class="py-4 text-center text-gray-500">No products selected</td>
                                     </tr>
-                                    <tr class="border-b border-gray-200 font-bold bg-gray-100">
+                                    <tr class="border-b border-gray-200 font-bold bg-gray-100 sticky bottom-0">
                                         <td colspan="6" class="p-2 text-right">Grand Total</td>
                                         <td class="p-2 text-right">
                                             {{
