@@ -75,7 +75,6 @@ async function formSubmit() {
         updated_by: userData.value.id,
         status_id: customerStatus.value ? '1' : '2'
     };
-    console.log("Updated Data:", updatedData);
     await useCustomer.editCustomer(route.query.id, updatedData);
     if (useCustomer.error.length) {
         useCustomer.error.forEach((msg) => {

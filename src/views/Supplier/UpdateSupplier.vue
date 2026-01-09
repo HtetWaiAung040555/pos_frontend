@@ -75,7 +75,6 @@ async function formSubmit() {
         updated_by: userData.value.id,
         status_id: supplierStatus.value ? '1' : '2'
     };
-    console.log(updatedData);
     await useSupplier.editSupplier(route.query.id, updatedData);
     if (useSupplier.error.length) {
         useSupplier.error.forEach((msg) => {

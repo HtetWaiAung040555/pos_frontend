@@ -55,7 +55,6 @@ onMounted(async () => {
         salesDate: moment(useSales.salesList.sale_date).format('YYYY-MM-DDTHH:mm'),
     };
     selectedProducts.value = useSales.salesList.details;
-    console.log('sales: ', useSales.salesList);
     await usePaymentMethod.fetchAllPaymentMethod();
 });
 

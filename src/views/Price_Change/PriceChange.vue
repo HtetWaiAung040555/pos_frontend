@@ -24,7 +24,6 @@
 
     onMounted(async () => {
       await usePriceChange.fetchAllPriceChange();
-      console.log('Fetched price changes:', usePriceChange.priceChangeList); 
       priceChangeList.value = usePriceChange.priceChangeList;
     });
 

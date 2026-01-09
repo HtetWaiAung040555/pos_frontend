@@ -338,6 +338,9 @@ import DashboardCard from '@/components/DashboardCard.vue';
             :defaultSort="{key: 'created_at', order: 'desc'}"
             :isEdit="!usePermission.can('Sales', 'Update')"
             :isDelete="!usePermission.can('Sales', 'Delete')"
+            :detailHeaders="['Product ID', 'Product Name', 'Price', 'Discount Amount', 'Discount Price', 'Qty', 'Total']"
+            detailField="details"
+            :detailKeys="['product.id', 'product.name', 'price', 'discount_amount', 'discount_price', 'quantity', 'total']"
         >
             <template #filters>
                     <div class="flex gap-2 items-center">

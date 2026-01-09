@@ -19,7 +19,13 @@ const props = defineProps({
   isEdit: {type: Boolean, default: true},
   isDelete: {type: Boolean, default: true},
   isAdjust: {type: Boolean, default: false},
-  filename: {type: String, default: 'export'}
+  filename: {type: String, default: 'export'},
+  // detailHeaders: array of column labels for detail rows. If empty, details won't be exported.
+  detailHeaders: { type: Array, default: () => [] },
+  // detailField: path on each row where detail(s) live (object or array). Default 'details'
+  detailField: { type: String, default: 'details' },
+  // detailKeys: array of key paths to extract from each detail object, matching detailHeaders order
+  detailKeys: { type: Array, default: () => ['product.id', 'product.name', 'price', 'quantity', 'total'] }
 });
 
 const emit = defineEmits(['delete']);
@@ -117,16 +123,72 @@ function confirmDelete() {
 
 function exportToExcel() {
   try {
-    const headers = props.columns.map(c => (c.label || c.key));
+    // Parent headers come from provided columns
+    const parentHeaders = props.columns.map(c => (c.label || c.key));
+    // Use configured detail headers/keys. If none provided, no detail columns will be exported.
+    const configuredDetailHeaders = Array.isArray(props.detailHeaders) ? props.detailHeaders : [];
+    const configuredDetailKeys = Array.isArray(props.detailKeys) ? props.detailKeys : [];
+
+    // Determine whether to include details: only if headers provided and at least one row has the detail field
+    const getByPath = (obj, path) => {
+      return path.split('.').reduce((acc, k) => acc?.[k], obj);
+    };
+
+    const includeDetails = configuredDetailHeaders.length > 0 && props.rows.some(r => {
+      const d = getByPath(r, props.detailField);
+      return d !== undefined && d !== null && (Array.isArray(d) ? d.length > 0 : true);
+    });
+
+    const headers = includeDetails ? parentHeaders.concat(configuredDetailHeaders) : parentHeaders;
 
     const data = [headers];
-    props.rows.forEach(r => {
-      const rowArr = props.columns.map(col => {
-        const dataPath = col.key.split('.');
-        const val = dataPath.reduce((acc, key) => acc?.[key], r);
-        return val === undefined || val === null ? '' : val;
+
+    const formatParentValues = (row) => {
+      return props.columns.map(col => {
+        try {
+          if (col.formatter) return String(col.formatter(row));
+        } catch (e) {
+          // ignore formatter errors and fallback to raw value
+        }
+        const val = getByPath(row, col.key);
+        return val === undefined || val === null ? '' : String(val);
       });
-      data.push(rowArr);
+    };
+
+    const formatDetailValues = (d) => {
+      // Use configured detailKeys to extract values from detail object
+      if (!includeDetails) return [];
+      return configuredDetailKeys.map(k => {
+        const v = getByPath(d, k);
+        return v === undefined || v === null ? '' : String(v);
+      });
+    };
+
+    props.rows.forEach(r => {
+      const parentVals = formatParentValues(r);
+      const details = getByPath(r, props.detailField);
+
+      if (includeDetails) {
+        if (Array.isArray(details) && details.length > 0) {
+          // First detail row contains parent values
+          data.push(parentVals.concat(formatDetailValues(details[0])));
+          // Subsequent detail rows contain blanks for parent columns
+          for (let i = 1; i < details.length; i++) {
+            const blankParents = parentVals.map(() => '');
+            data.push(blankParents.concat(formatDetailValues(details[i])));
+          }
+        } else if (details && typeof details === 'object') {
+          // Single detail object
+          data.push(parentVals.concat(formatDetailValues(details)));
+        } else {
+          // No details: push parent row with empty detail columns
+          const emptyDetails = configuredDetailKeys.map(() => '');
+          data.push(parentVals.concat(emptyDetails));
+        }
+      } else {
+        // Not exporting details: push only parent values
+        data.push(parentVals);
+      }
     });
 
     const ws = XLSX.utils.aoa_to_sheet(data);

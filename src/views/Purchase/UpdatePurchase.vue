@@ -95,7 +95,6 @@ async function formSubmit() {
             inventory_id: p.inventoryId
         }))
     }
-    console.log(payload);
     await usePurchase.editPurchase(payload, route.query.id);
     if (usePurchase.error.length) {
         usePurchase.error.forEach((msg) => {

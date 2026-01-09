@@ -80,7 +80,6 @@ const filteredProducts = computed(() => {
 function openProductDialog() {
     // create a shallow copy buffer to allow canceling
     selectionBuffer.value = selectedProducts.value.slice();
-    console.log('selectionBuffer', selectionBuffer.value);
     searchTerm.value = '';
     isProductDialogVisible.value = true;
 }
@@ -200,7 +199,6 @@ async function formSubmit() {
             purchase_price: p.purchase_price
         }))
     }
-    console.log(payload);
     await usePurchase.addPurchase(payload);
     if (usePurchase.error.length) {
         usePurchase.error.forEach((msg) => {

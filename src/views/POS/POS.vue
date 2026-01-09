@@ -341,7 +341,6 @@ async function onPayClick() {
       status_id: useStatus.statusList.find(el => el.name === 'Hold').id,
       updated_by: JSON.parse(localStorage.getItem('user')).id
     }
-    console.log('Payload for editing hold:', payload);
     await useSales.editSales(payload, selectedHold.value.id);
     if (useSales.error.length) {
       useSales.error.forEach((msg) => {
