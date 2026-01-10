@@ -27,7 +27,7 @@ const userData = ref({});
 
 const formData = ref({
     description: '',
-    type: '',
+    type: 'purchase',
     startDate: moment().format('YYYY-MM-DD HH:mm:ss'),
     endDate: moment().add(1, 'years').format('YYYY-MM-DD HH:mm:ss'),
     priceValueType: '',
@@ -197,8 +197,8 @@ watch([() => formData.value.priceChangeValue, () => formData.value.priceValueTyp
 function confirmProductSelection() {
     selectedProducts.value = selectionBuffer.value.map(p => ({
         ...p,
-        old_price: Number(p.price) || 0, 
-        new_price: Number(p.price) || 0, 
+        old_purchase_price: Number(p.purchase_price) || 0, 
+        new_purchase_price: Number(p.purchase_price) || 0, 
         individual_new_price: false,
     }));
 
@@ -220,8 +220,8 @@ function calculateNewPrices() {
 
     selectedProducts.value.forEach(product => {
         if (!product.individual_new_price) {  
-            const base = Number(product.old_price) || 0;
-            product.new_price = isIncrease
+            const base = Number(product.old_purchase_price) || 0;
+            product.new_purchase_price = isIncrease
                 ? base + changeValue
                 : Math.max(0, base - changeValue);
         }
@@ -233,8 +233,8 @@ const hasManualPrice = computed(() => {
     return selectedProducts.value.some(
         p =>
             p.individual_new_price === true &&
-            Number(p.new_price) >= 0 &&
-            Number(p.new_price) !== Number(p.old_price)
+            Number(p.new_purchase_price) >= 0 &&
+            Number(p.new_purchase_price) !== Number(p.old_purchase_price)
     );
 });
 
@@ -274,8 +274,8 @@ async function formSubmit() {
         created_by: userData.value.id,
         products: selectedProducts.value.map(p => ({
             product_id: p.id,
-            old_price: p.old_price,  
-            new_price: p.new_price   
+            old_price: p.old_purchase_price,  
+            new_price: p.new_purchase_price   
         }))
 
     };
@@ -296,8 +296,8 @@ async function formSubmit() {
     }
 
     if (usePriceChange.priceChangeList) {
-        toast.add({ severity: 'success', summary: 'Success Message', detail: 'Create price change successfully.', life: 3000 });
-        router.push('/price_change');
+        toast.add({ severity: 'success', summary: 'Success Message', detail: 'Create purchase price change successfully.', life: 3000 });
+        router.push('/purchase_price_change');
     }
 }
 </script>
@@ -305,7 +305,7 @@ async function formSubmit() {
 <template>
     <div class="p-4">
         <!-- Page Title -->
-        <PageTitle title="Create Price Change">
+        <PageTitle title="Create Purchase Price Change">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary"
@@ -324,8 +324,8 @@ async function formSubmit() {
                         <BaseLabel label="Price Change Type" />
                         <select
                             class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
-                            v-model="formData.type">
-                            <option value="sale">Sale</option>
+                            v-model="formData.type">  
+                            <!-- <option value="sale">Sales</option> -->
                             <option value="purchase">Purchase</option>
                         </select>
                         <BaseErrorLabel v-if="errorMsg.type" :label="errorMsg.type" />
@@ -403,8 +403,8 @@ async function formSubmit() {
                                     <tr class="text-left text-gray-600">
                                         <th class="py-2 sticky top-0 bg-white z-10 border-b">Image</th>
                                         <th class="py-2 sticky top-0 bg-white z-10 border-b">Product Name</th>
-                                        <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Old Price</th>
-                                        <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">New Price</th>
+                                        <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Purchase Old Price</th>
+                                        <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Purchase New Price</th>
                                         <th class="py-2 sticky top-0 bg-white z-10 border-b">&nbsp;</th>
                                     </tr>
                                 </thead>
@@ -417,12 +417,12 @@ async function formSubmit() {
                                         </td>
                                         <td class="py-2">{{ product.name }}</td>
                                         
-                                        <td class="py-2 text-right">{{ formatPrice(product.old_price || 0) }}</td>
+                                        <td class="py-2 text-right">{{ formatPrice(product.purchase_price || 0) }}</td>
                                         <td class="border-b px-2 py-2 text-right">
                                             <input
                                                 type="number"
                                                 class="w-24 text-right px-1 py-1 border rounded"
-                                                v-model.number="product.new_price"
+                                                v-model.number="product.new_purchase_price"
                                                 @input="product.individual_new_price = true"
                                             />
                                         </td>
@@ -475,7 +475,7 @@ async function formSubmit() {
                                         </td>
                                         <td class="py-2">{{ product.name }}</td>
                                         <td class="py-2">{{ product.barcode }}</td>
-                                        <td class="py-2 text-end">{{ Number(product.price).toLocaleString() || 0 }}</td>
+                                        <td class="py-2 text-end">{{ Number(product.purchase_price).toLocaleString() || 0 }}</td>
                                     </tr>
                                     <tr v-if="(filteredProducts || []).length === 0">
                                         <td colspan="4" class="py-4 text-center text-gray-500">No products found</td>

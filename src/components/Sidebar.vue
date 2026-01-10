@@ -50,11 +50,11 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             permission: {name: 'Promotion', action: "View"}
           },
           { 
-            name: 'Price Change', 
+            name: 'Sales Price Change', 
             icon: 'fas fa-arrow-up-right-dots',
-            pathname: "/price_change",
-            permission: {name: 'Price change', action: "View"}
-          },
+            pathname: "/sales_price_change",
+            permission: {name: 'Sales price change', action: "View"}
+          }
         ],
       },
       {
@@ -80,6 +80,12 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             icon: 'fa fa-users ', 
             pathname: "/supplier",
             permission: {name: 'Supplier', action: "View"}
+          },
+          { 
+            name: 'Purchase Price Change', 
+            icon: 'fas fa-arrow-up-right-dots',
+            pathname: "/purchase_price_change",
+            permission: {name: 'Purchase price change', action: "View"}
           }
         ]
       },

@@ -26,7 +26,7 @@ const priceChangeId = ref(route.query.id || route.params.id || null);
 const userData = ref({});
 const formData = ref({
   description: '',
-  type: '',
+  type: 'sale',
   startDate: moment().format('YYYY-MM-DDTHH:mm'),
   endDate: moment().add(1, 'days').format('YYYY-MM-DDTHH:mm'),
   priceValueType: '',
@@ -83,7 +83,7 @@ onMounted(async () => {
     formData.value.startDate = priceChange.start_at ? moment(priceChange.start_at).format('YYYY-MM-DDTHH:mm') : formData.value.startDate;
     formData.value.endDate = priceChange.end_at ? moment(priceChange.end_at).format('YYYY-MM-DDTHH:mm') : formData.value.endDate;
     priceChangeStatus.value = String(priceChange.status_id || '1') === '1';
-
+   
   }
 });
 
@@ -200,13 +200,15 @@ watch([() => formData.value.priceChangeValue, () => formData.value.priceValueTyp
 function confirmProductSelection() {
   selectedProducts.value = selectionBuffer.value.map(p => ({
     ...p,
-    old_price: Number(p.old_price) || 0,
+    //old_price: Number(p.old_price) || 0,
     new_price: Number(p.price) || Number(p.old_price),
 
     individual_new_price: false, 
   }));
   isProductDialogVisible.value = false;
 }
+
+
 
 
 function cancelProductSelection() { isProductDialogVisible.value = false; }
@@ -222,6 +224,7 @@ function calculateNewPrices() {
     if (!product.individual_new_price) {
       const base = Number(product.old_price) || 0;
       product.new_price = isIncrease ? base + changeValue : Math.max(0, base - changeValue);
+      
     }
   });
 }
@@ -240,7 +243,7 @@ async function formSubmit() {
   } else if (!formData.value.priceChangeValue && !hasManualPrice.value) {
     errorMsg.value = { type: "", priceChangeValue: "Please enter a price change value or manually set new prices.", products: "" };
     return;
-  } else if (selectedProducts.value.length === 0) {
+  } else if (selectedProducts.value.length === 0 ) {
     errorMsg.value = { type: "", priceChangeValue: "", products: errMsgList.product };
     return;
   }
@@ -254,8 +257,8 @@ async function formSubmit() {
     updated_by: userData.value.id,
     products: selectedProducts.value.map(p => ({
       product_id: p.id,
-      old_price: p.old_price,
-      new_price: p.new_price
+      old_price: p.old_price,   
+      new_price: p.new_price    
     }))
   };
 
@@ -271,17 +274,17 @@ async function formSubmit() {
     return;
   }
 
-  toast.add({ severity: 'success', summary: 'Success Message', detail: 'Price change updated successfully.', life: 3000 });
-  router.push('/price_change');
+  toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales price change updated successfully.', life: 3000 });
+  router.push('/sales_price_change');
 }
 </script>
 
 <template>
 <div class="p-4">
-  <PageTitle title="Update Price Change">
+  <PageTitle title="Update Sale Price Change">
     <template #titleButtons>
       <div class="flex gap-x-2 items-center">
-        <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary" @click="changeRoute('/price_change')" />
+        <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary" @click="changeRoute('/sales_price_change')" />
       </div>
     </template>
   </PageTitle>
@@ -295,7 +298,7 @@ async function formSubmit() {
           <BaseLabel label="Price Change Type" />
           <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]" v-model="formData.type">
             <option value="sale">Sale</option>
-            <option value="purchase">Purchase</option>
+            <!-- <option value="purchase">Purchase</option> -->
           </select>
         </div>
         <div class="flex flex-col gap-y-1 w-[200px]">
@@ -339,8 +342,8 @@ async function formSubmit() {
                 <tr class="text-left text-gray-600">
                   <th class="py-2 sticky top-0 bg-white z-10 border-b">Image</th>
                   <th class="py-2 sticky top-0 bg-white z-10 border-b">Product Name</th>
-                  <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Old Price</th>
-                  <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">New Price</th>
+                  <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Sales Old Price</th>
+                  <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Sales New Price</th>
                   <th class="py-2 sticky top-0 bg-white z-10 border-b">&nbsp;</th>
                 </tr>
               </thead>
