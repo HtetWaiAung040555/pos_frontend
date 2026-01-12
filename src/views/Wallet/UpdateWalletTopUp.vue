@@ -93,7 +93,7 @@ const afterBalance = computed(() => {
 
 
 // Update function
-async function formSubmit() {
+async function formSubmit(isPrint = false) {
   if (!selectedCustomer.value) {
     errorMsg.value = {
       paymentMethod: "",
@@ -142,17 +142,11 @@ async function formSubmit() {
 
   if (useWallet.walletList) {
     toast.add({ severity: 'success', summary: 'Success Message', detail: 'Wallet top up updated successfully.', life: 3000 });
+    if(isPrint) {
+      printSlip();
+    }
     router.push('/wallet');
   }
-}
-
-async function formSubmitAndPrint() {
-  try {
-    await formSubmit();
-  } catch (err) {
-    console.error('Error submitting before print', err);
-  }
-  printSlip();
 }
 
 function printSlip() {
@@ -311,7 +305,7 @@ function onCustomerFilter(e) {
 
         <div class="flex gap-3 mt-5 col-span-2">
           <BaseButton label="Update" @click="formSubmit" :icon="useWallet.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'"  :isLoading="useWallet.loading" :disabled="useWallet.loading" />
-          <BaseButton label="Submit & Print" @click="formSubmitAndPrint" :icon="useWallet.loading ? 'fa fa-spinner' : 'fa fa-print'"  :isLoading="useWallet.loading" :disabled="useWallet.loading"/>
+          <BaseButton label="Submit & Print" @click="formSubmit(true)" :icon="useWallet.loading ? 'fa fa-spinner' : 'fa fa-print'"  :isLoading="useWallet.loading" :disabled="useWallet.loading"/>
         </div>
       </div>
 
