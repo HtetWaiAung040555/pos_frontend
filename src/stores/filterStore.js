@@ -10,8 +10,29 @@ function endOfDay(d) {
 }
 
 export const useFilterStore = defineStore('filter', {
-    state: () => ({}),
+    state: () => ({
+        pageFilters: {}
+    }),
     actions: {
+        setPageFilter(pageKey, payload) {
+            this.pageFilters = {
+                ...this.pageFilters,
+                [pageKey]: payload
+            };
+        },
+        getPageFilter(pageKey) {
+            return this.pageFilters?.[pageKey] || null;
+        },
+        clearPageFilter(pageKey) {
+            if (!pageKey) {
+                this.pageFilters = {};
+                return;
+            }
+            const next = { ...this.pageFilters };
+            delete next[pageKey];
+            this.pageFilters = next;
+        },
+
         searchFunction(data, searchValue, fields) {
             if (!searchValue) return data;
             const query = searchValue.toLowerCase();

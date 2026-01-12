@@ -4,7 +4,7 @@ import PageTitle from '@/components/PageTitle.vue';
 import DataTable from '@/components/DataTable.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import { useRouter } from 'vue-router';
-import { onMounted, ref, computed } from 'vue';
+import { onMounted, ref, computed, watch } from 'vue';
 import { useToast } from 'primevue';
 import moment from 'moment'
 import { useFilterStore } from '@/stores/filterStore';
@@ -24,11 +24,31 @@ const walletList = ref([]);
 const selectedPaymentMethod = ref('');
 const selectedType = ref('');
 const filteredData = ref({
-    startedDate: moment().startOf('month').format('YYYY-MM-DDTHH:mm'),
-    endedDate: moment().format('YYYY-MM-DDTHH:mm')
+    startedDate: "",
+    endedDate: ""
 });
 
+// Persist filters for this page under the key 'wallet'
+function saveFilters() {
+    filter.setPageFilter('wallet', {
+        startedDate: filteredData.value.startedDate,
+        endedDate: filteredData.value.endedDate,
+        selectedPaymentMethod: selectedPaymentMethod.value,
+        selectedType: selectedType.value,
+        searchValue: searchValue.value,
+    });
+}
+
 onMounted(async () => {
+    // restore saved filters if present
+    const saved = filter.getPageFilter('wallet');
+    if (saved) {
+        if (saved.startedDate) filteredData.value.startedDate = saved.startedDate;
+        if (saved.endedDate) filteredData.value.endedDate = saved.endedDate;
+        if (saved.selectedPaymentMethod) selectedPaymentMethod.value = saved.selectedPaymentMethod;
+        if (saved.selectedType) selectedType.value = saved.selectedType;
+        if (saved.searchValue) searchValue.value = saved.searchValue;
+    }
     await fetchTransaction();
 });
 
@@ -38,19 +58,29 @@ async function fetchTransaction() {
     // convert local datetime-local strings to backend friendly format (YYYY-MM-DD HH:mm:ss)
     const start = filteredData.value.startedDate
         ? moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss')
-        : null;
+        : "";
     const end = filteredData.value.endedDate
         ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss')
-        : null;
+        : "";
     await useWallet.fetchAllWallet({
         start_date: start,
         end_date: end
     });
     walletList.value = useWallet.walletList || [];
-    selectedType.value = '';
-    selectedPaymentMethod.value = '';
-    searchValue.value = '';
+    // persist current filters after fetch
+    saveFilters();
 }
+
+// watch filter inputs and persist changes so coming back restores them
+watch([
+    () => filteredData.value.startedDate,
+    () => filteredData.value.endedDate,
+    () => selectedPaymentMethod.value,
+    () => selectedType.value,
+    () => searchValue.value
+], () => {
+    saveFilters();
+});
 
 // Table headers
 const columns = [
