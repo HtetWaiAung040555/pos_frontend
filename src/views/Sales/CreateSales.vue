@@ -153,7 +153,7 @@ watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.va
 async function confirmProductSelection() {
     selectedProducts.value = [];
     selectionBuffer.value.forEach(async (p) => {
-        const checkPromo = await axios.get(`/promotions/checkprice/${p.id}`);
+        const checkPromo = await axios.post(`/promotions/checkprice`,{product_id: p.id, sale_date: formData.value.salesDate});
         if (checkPromo.data.promotion_id) {
             selectedProducts.value = [
                 ...selectedProducts.value,

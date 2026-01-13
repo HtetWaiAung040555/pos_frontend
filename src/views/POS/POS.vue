@@ -93,7 +93,7 @@ async function addProduct(product) {
     //visible.value = true;
     return;
   }
-  const checkPromo = await axios.get(`/promotions/checkprice/${product.id}`);
+  const checkPromo = await axios.post(`/promotions/checkprice`, { product_id: product.id });
   if (checkPromo.data.promotion_id) {
     selectedProducts.value = [
       ...selectedProducts.value,
