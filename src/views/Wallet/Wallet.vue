@@ -87,15 +87,15 @@ const columns = [
     { key: 'id', label: 'ID' },
     { key: 'customer.id', label: 'Customer ID', formatter: (row) => row.customer?.id },
     { key: 'customer.name', label: 'Name', formatter: (row) => row.customer?.name },
-    { key: 'amount', label: 'Amount' },
+    { key: 'amount', label: 'Amount', formatter: (row) => Number(row.amount).toLocaleString('end-us') },
     { key: 'payment_method.name', label: 'Payment Method', formatter: (row) => row.payment_method?.name },
     { key: 'pay_date', label: 'Date', formatter: (row) => moment(row.pay_date).format('DD-MM-YY hh:mm') },
     { key: 'sale_id', label: 'Sales ID' },
     { key: 'type', label: 'Type' },
     { key: 'created_by', label: 'Created By', },
     { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
-    { key: 'updated_by', label: 'Updated By', },
-    { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
+    // { key: 'updated_by', label: 'Updated By', },
+    // { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
 ];
 
 // Route change function: need to pass route path.
@@ -197,7 +197,7 @@ async function deleteHandle(id) {
         </div>
         <!-- DataTable -->
         <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Wallet Top Up'"
-            :isLoading="useWallet.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
+            :isLoading="useWallet.loading" @delete="deleteHandle" :defaultSort="{ key: 'pay_date', order: 'desc' }"
             :isEdit="!usePermission.can('Wallet', 'Update')" :isDelete="!usePermission.can('Wallet', 'Delete')" filename="Customer_Transaction">
             <!-- Filter Section -->
             <template #filters>

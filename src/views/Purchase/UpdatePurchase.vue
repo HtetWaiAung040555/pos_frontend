@@ -140,7 +140,7 @@ async function formSubmit() {
                     <BaseInput size="sm" v-model="formData.warehouseName" label="Warehouse"
                         placeholder="Warehouse" height="h-[35px]" disabled />
                     <!-- Expired date input -->
-                    <BaseInput size="sm" v-model="formData.purchaseDate" label="Sales Date"
+                    <BaseInput size="sm" v-model="formData.purchaseDate" label="Purchase Date"
                         height="h-[35px]" type="datetime-local"
                     />
                     <div class="flex flex-col gap-1">

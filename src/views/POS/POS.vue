@@ -12,6 +12,7 @@ import moment from 'moment';
 import axios from 'axios';
 import { useProductStore } from '@/stores/useProductStore';
 import BaseSearchSelect from '@/components/BaseSearchSelect.vue';
+import { usePromotionStore } from '@/stores/usePromotionStore';
 
 const toast = useToast();
 const router = useRouter();
@@ -19,6 +20,7 @@ const useCustomer = useCustomerStore();
 const useStatus = useStatusStore();
 const useSales = useSaleStore();
 const useProduct = useProductStore();
+const usePromo = usePromotionStore();
 
 const productList = ref([]);
 const userData = ref({});
@@ -53,6 +55,8 @@ onMounted(async () => {
   await useProduct.fetchSalesProduct({warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id});
   productList.value = useProduct.productList;
   await useStatus.fetchAllStatus();
+  await usePromo.fetchAllPromo();
+  
 });
 
 const filteredProducts = computed(() => {
@@ -434,7 +438,7 @@ function onCustomerFilter(e) {
           <!-- Scrollable product grid -->
           <div class="flex-1 overflow-y-auto mt-4 pr-1">
             <div class="grid grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-              <div v-if="useProduct.loading || useCustomer.loading" v-for="n in 18" :key="n" class="w-full rounded-md p-4">
+              <div v-if="useProduct.loading || useCustomer.loading || usePromo.loading" v-for="n in 18" :key="n" class="w-full rounded-md p-4">
                 <div class="flex animate-pulse space-x-4">
                   <div class="flex-1 space-y-6 py-1">
                       <div class="h-2 rounded bg-gray-300"></div>

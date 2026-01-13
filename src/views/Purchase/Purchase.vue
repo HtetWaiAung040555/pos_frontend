@@ -147,7 +147,7 @@ function changeRoute(pathname) {
     router.push(pathname);
 }
 
-// Sales delete function
+// Purchase delete function
 async function deleteHandle(id) {
     await usePurchase.deletePurchase({ void_by: JSON.parse(localStorage.getItem('user')).id }, id);
     if (usePurchase.error.length) {

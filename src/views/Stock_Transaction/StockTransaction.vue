@@ -34,6 +34,7 @@ onMounted(async () => {
         end_date: moment(filteredData.value.endedData).format('YYYY-MM-DD HH:mm:ss')
     });
     dataList.value = useStockTransaction.list;
+    console.log('Fetched Stock Transactions', dataList.value);
 });
 
 // Table headers
@@ -46,6 +47,7 @@ const columns = [
     },
     { key: 'inventory.product.name', label: 'Product', formatter: (row) => row.inventory.product.name },
     { key: 'reference_id', label: 'Reference Id'},
+    { key: 'reference_date', label: 'Reference Date', formatter: (row) => moment(row.reference_date).format('DD-MM-YY HH:mm') },
     { key: 'inventory.warehouse.name', label: 'Warehouse', formatter: (row) => row.inventory.warehouse.name },
     { key: 'quantity_change', label: 'Qty' },
     { key: 'type', label: 'Type',  formatter: (row) => {
@@ -55,8 +57,8 @@ const columns = [
     },
     { key: 'reference_type', label: 'Reference Type', formatter: (row) => row.reference_type.toUpperCase() },
     { key: 'inventory.expired_date', label: 'Expire', formatter: (row) => row.inventory.expired_date ? moment(row.inventory.expired_date).format('DD-MM-YY') : "N/A" },
-    { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
-    { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY HH:mm') },
+    // { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
+    // { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY HH:mm') },
 ];
 
 async function fetchSalesByDate() {

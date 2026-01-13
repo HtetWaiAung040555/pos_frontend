@@ -158,8 +158,8 @@ import DashboardCard from '@/components/DashboardCard.vue';
         { key: 'status.name', label: 'Status', formatter: (row) => row.status.name },
         { key: 'created_by', label: 'Created By', formatter: (row) => row.created_by },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
-        { key: 'updated_by', label: 'Updated By', formatter: (row) => row.updated_by },
-        { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
+        // { key: 'updated_by', label: 'Updated By', formatter: (row) => row.updated_by },
+        // { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
     ];
 
     // Derived options from fetched data for client-side filters
@@ -239,21 +239,6 @@ import DashboardCard from '@/components/DashboardCard.vue';
 
     function changeRoute(pathname) {
         router.push(pathname);
-    }
-
-    function goCreateWithFilters() {
-        router.push({
-            path: '/sales/create',
-            query: {
-                start: filteredData.value.startDateTimeLocal || '',
-                end: filteredData.value.endDateTimeLocal || '',
-                status: selectedStatus.value || '',
-                payment: selectedPayment.value || '',
-                year: selectedYear.value || '',
-                month: selectedMonth.value || '',
-                day: selectedDay.value || ''
-            }
-        });
     }
 
     // Sales delete function

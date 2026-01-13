@@ -100,7 +100,7 @@ async function toggleProductInBuffer(event, product) {
     if (idx !== -1) { selectionBuffer.value.splice(idx, 1); return; }
 
     try {
-        const response = await axios.get(`/promotions/checkprice/${product.id}`);
+        const response = await axios.post(`/promotions/checkprice`, {product_id: product.id});
         const data = response.data;
         if (data && data.promotion_id) {
             try { if (event && event.target) event.target.checked = false; } catch(e){}
@@ -128,7 +128,7 @@ async function selectAllInBuffer() {
         if (candidates.length === 0) return;
 
         const checks = await Promise.allSettled(
-            candidates.map(p => axios.get(`/promotions/checkprice/${p.id}`))
+            candidates.map(p => axios.get(`/promotions/checkprice`, {product_id: p.id}))
         );
 
         const skipped = [];
