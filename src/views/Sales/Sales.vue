@@ -364,6 +364,36 @@
     <div class="p-4">
         <PageTitle title="Sales List">
             <template #titleButtons>
+                <div class="border-t flex gap-x-2 items-center">
+                    <div class="flex items-center gap-2 text-black mb-2">
+                        <select v-model="selectedYear" class="border p-2 rounded text-sm">
+                            <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+                        </select>
+                        <select v-model="selectedMonth" class="border p-2 rounded text-sm" :disabled="selectedYear === 'All'">
+                            <option v-for="m in months" :key="m.v" :value="m.v">{{ m.name }}</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-x-2">
+                        <button @click="prevDays" :disabled="dayWindowStart === 0" class=" rounded text-black flex items-center justify-center cursor-pointer">
+                            <i class="fa fa-chevron-circle-left text-xl"></i>
+                        </button>
+                        <div class="flex gap-1 px-1 flex-wrap">
+                            <button
+                                v-for="d in monthDaysSlice"
+                                :key="d.iso"
+                                @click="selectMonthDay(d)"
+                                :class="['px-3 py-2 rounded text-sm whitespace-nowrap cursor-pointer text-black', selectedDay === d.iso ? 'bg-blue-500 text-white' : 'bg-white border border-gray-300']"
+                            >
+                                <div class="text-xs">{{ d.day }}</div>
+                                <div class="font-semibold">{{ d.date }}</div>
+                            </button>
+                        </div>
+                        <button @click="nextDays" :disabled="dayWindowStart >= maxWindowStart" class="rounded text-black flex items-center justify-center cursor-pointer">
+                            <i class="fa fa-chevron-circle-right text-xl"></i>
+                        </button>
+                    </div>
+                </div>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton 
                         v-if="usePermission.can('Sales', 'Create')"

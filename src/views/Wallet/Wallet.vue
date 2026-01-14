@@ -87,7 +87,11 @@ const columns = [
     { key: 'id', label: 'ID' },
     { key: 'customer.id', label: 'Customer ID', formatter: (row) => row.customer?.id },
     { key: 'customer.name', label: 'Name', formatter: (row) => row.customer?.name },
-    { key: 'amount', label: 'Amount', formatter: (row) => Number(row.amount).toLocaleString('end-us') },
+    { key: 'amount', label: 'Amount', formatter: (row) => {
+        return `<span class="${Number(row.amount) < 0 ? 'text-red-700' : 'text-blue-700'}">
+            ${Number(row.amount).toLocaleString('en-us')}
+        </span>`
+    } },
     { key: 'payment_method.name', label: 'Payment Method', formatter: (row) => row.payment_method?.name },
     { key: 'pay_date', label: 'Date', formatter: (row) => moment(row.pay_date).format('DD-MM-YY hh:mm') },
     { key: 'sale_id', label: 'Sales ID' },
