@@ -4,7 +4,7 @@
     import DataTable from '@/components/DataTable.vue';
     import BaseButton from '@/components/BaseButton.vue';
     import { useRouter } from 'vue-router';
-    import { onMounted, ref, computed } from 'vue';
+    import { onMounted, ref, computed, watch } from 'vue';
     import { useToast } from 'primevue';
     import moment from 'moment'
     import { useFilterStore } from '@/stores/filterStore';
@@ -25,11 +25,41 @@
     const nearlyExpire = ref(false);
 
     onMounted(async () => {
+        // restore saved filters
+        const saved = filter.getPageFilter('inventory');
+        if (saved) {
+            if (saved.startDate) startDate.value = saved.startDate;
+            if (saved.endDate) endDate.value = saved.endDate;
+            if (saved.searchValue) searchValue.value = saved.searchValue;
+            if (typeof saved.nearlyExpire !== 'undefined') nearlyExpire.value = saved.nearlyExpire;
+        }
+
         await useInventory.fetchAllStock();
         const inventory = useInventory.stockList.filter(item => item.warehouse.id === JSON.parse(localStorage.getItem('user')).branch.warehouse_id);
         dataList.value = inventory;
         console.log('Inventory List:', dataList.value);
+        // persist current filters
+        saveFilters();
     });
+
+// persist filters for this page
+function saveFilters() {
+    filter.setPageFilter('inventory', {
+        startDate: startDate.value,
+        endDate: endDate.value,
+        searchValue: searchValue.value,
+        nearlyExpire: nearlyExpire.value,
+    });
+}
+
+watch([
+    () => startDate.value,
+    () => endDate.value,
+    () => searchValue.value,
+    () => nearlyExpire.value
+], () => {
+    saveFilters();
+});
 
     // Table headers
     const columns = [

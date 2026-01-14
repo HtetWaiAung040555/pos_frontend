@@ -6,15 +6,18 @@
     import { useRouter, useRoute } from 'vue-router';
     import { onMounted, ref, computed, watch } from 'vue';
     import { useToast } from 'primevue';
+    import { Dialog } from 'primevue';
     import moment from 'moment';
     import BaseInput from '@/components/BaseInput.vue';
     import { usePermissionStore } from '@/stores/usePermissionStore';
     import { useSaleStore } from '@/stores/useSalesStore';
-import DashboardCard from '@/components/DashboardCard.vue';
+    import { useFilterStore } from '@/stores/filterStore';
+    import DashboardCard from '@/components/DashboardCard.vue';
 
     const router = useRouter();
     const route = useRoute();
     const useSales = useSaleStore();
+    const filter = useFilterStore();
     const toast = useToast();
     const usePermission = usePermissionStore();
     const salesList = ref([]);
@@ -32,6 +35,8 @@ import DashboardCard from '@/components/DashboardCard.vue';
     // Carousel window for days
     const dayWindowStart = ref(0);
     const windowSize = ref(7); // show 7 days at once
+    // Date filter modal visibility
+    const visibleDateFilter = ref(false);
 
     // Client-side filters (apply on date-range fetched data)
     const selectedStatus = ref('');
@@ -43,15 +48,17 @@ import DashboardCard from '@/components/DashboardCard.vue';
         filteredData.value.startDateTimeLocal = moment().startOf('month').format('YYYY-MM-DDTHH:mm');
         filteredData.value.endDateTimeLocal = moment().format('YYYY-MM-DDTHH:mm');
 
-        // If route contains saved filters (from Create page), apply them
-        if (route && route.query) {
-            if (route.query.start) filteredData.value.startDateTimeLocal = route.query.start;
-            if (route.query.end) filteredData.value.endDateTimeLocal = route.query.end;
-            if (route.query.status) selectedStatus.value = route.query.status;
-            if (route.query.payment) selectedPayment.value = route.query.payment;
-            if (route.query.year) selectedYear.value = route.query.year;
-            if (route.query.month) selectedMonth.value = route.query.month;
-            if (route.query.day) selectedDay.value = route.query.day;
+        // restore saved filters for this page if present
+        const saved = filter.getPageFilter('sales');
+        if (saved) {
+            if (saved.startDateTimeLocal) filteredData.value.startDateTimeLocal = saved.startDateTimeLocal;
+            if (saved.endDateTimeLocal) filteredData.value.endDateTimeLocal = saved.endDateTimeLocal;
+            if (saved.selectedStatus) selectedStatus.value = saved.selectedStatus;
+            if (saved.selectedPayment) selectedPayment.value = saved.selectedPayment;
+            if (saved.searchValue) searchValue.value = saved.searchValue;
+            if (saved.selectedYear) selectedYear.value = saved.selectedYear;
+            if (saved.selectedMonth) selectedMonth.value = saved.selectedMonth;
+            if (saved.selectedDay) selectedDay.value = saved.selectedDay;
         }
 
         await fetchSalesByDate();
@@ -61,32 +68,59 @@ import DashboardCard from '@/components/DashboardCard.vue';
         // convert local datetime-local strings to backend friendly format (YYYY-MM-DD HH:mm:ss)
         const start = filteredData.value.startDateTimeLocal
             ? moment(filteredData.value.startDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
-            : null;
+            : '';
         const end = filteredData.value.endDateTimeLocal
             ? moment(filteredData.value.endDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
-            : null;
+            : '';
         await useSales.fetchAllSales({
             start_date: start,
             end_date: end
         });
         salesList.value = useSales.salesList || [];
-        // reset client-side filters when new date-range data fetched (optional)
-        selectedStatus.value = '';
-        selectedPayment.value = '';
-        searchValue.value = '';
+        // persist current filters after fetch
+        saveFilters();
     }
+
+    // Persist filters for this page under the key 'sales'
+    function saveFilters() {
+        filter.setPageFilter('sales', {
+            startDateTimeLocal: filteredData.value.startDateTimeLocal,
+            endDateTimeLocal: filteredData.value.endDateTimeLocal,
+            selectedStatus: selectedStatus.value,
+            selectedPayment: selectedPayment.value,
+            searchValue: searchValue.value,
+            selectedYear: selectedYear.value,
+            selectedMonth: selectedMonth.value,
+            selectedDay: selectedDay.value,
+        });
+    }
+
+    // watch filter inputs and persist changes so coming back restores them
+    watch([
+        () => filteredData.value.startDateTimeLocal,
+        () => filteredData.value.endDateTimeLocal,
+        () => selectedStatus.value,
+        () => selectedPayment.value,
+        () => searchValue.value,
+        () => selectedYear.value,
+        () => selectedMonth.value,
+        () => selectedDay.value
+    ], () => {
+        saveFilters();
+    });
 
     // Helper: list of years for selection (e.g., 2020..current+2)
     const years = computed(() => {
         const cur = new Date().getFullYear();
         const start = cur - 3;
         const end = cur + 2;
-        const arr = [];
+        const arr = ["All"];
         for (let y = start; y <= end; y++) arr.push(String(y));
         return arr;
     });
 
     const months = [
+        { v: "All", name: "All" },
         { v: '01', name: 'January' },
         { v: '02', name: 'February' },
         { v: '03', name: 'March' },
@@ -139,6 +173,73 @@ import DashboardCard from '@/components/DashboardCard.vue';
         dayWindowStart.value = 0;
         selectedDay.value = '';
     });
+
+    // When year changes, fetch that whole year
+    watch(selectedYear, async (newYear) => {
+        if (!newYear) return;
+        // Case 1: ALL years – show all data
+        if (newYear === "All") {
+            filteredData.value.startDateTimeLocal = "";
+            filteredData.value.endDateTimeLocal = "";
+            selectedMonth.value = "All"; 
+            await fetchSalesByDate();
+            return;
+        }
+
+        // Case 2: Year selected but month = ALL → show full year
+        if (selectedMonth.value === "All") {
+            filteredData.value.startDateTimeLocal = `${newYear}-01-01T00:00`;
+            filteredData.value.endDateTimeLocal = `${newYear}-12-31T23:59`;
+            await fetchSalesByDate();
+            return;
+        }
+
+        // Case 3: Year changed but month is still specific
+        const m = selectedMonth.value;
+        const daysInMonth = new Date(Number(newYear), Number(m), 0).getDate();
+        filteredData.value.startDateTimeLocal = `${newYear}-${m}-01T00:00`;
+        filteredData.value.endDateTimeLocal = `${newYear}-${m}-${String(daysInMonth).padStart(2, '0')}T23:59`;
+
+        await fetchSalesByDate();
+    });
+
+    // When month changes, fetch that month within selectedYear
+    watch(selectedMonth, async (newMonth) => {
+        if (!newMonth || !selectedYear.value) return;
+        const y = selectedYear.value;
+        // Case 1: ALL Months + ALL Years
+        if (newMonth === "All" && y === "All") {
+            filteredData.value.startDateTimeLocal = "";
+            filteredData.value.endDateTimeLocal = "";
+            await fetchSalesByDate();
+            return;
+        }
+
+        // Case 2: ALL Months but specific year
+        if (newMonth === "All") {
+            filteredData.value.startDateTimeLocal = `${y}-01-01T00:00`;
+            filteredData.value.endDateTimeLocal = `${y}-12-31T23:59`;
+            await fetchSalesByDate();
+            return;
+        }
+
+        // Case 3: Specific month + specific year
+        const daysInMonth = new Date(Number(y), Number(newMonth), 0).getDate();
+        filteredData.value.startDateTimeLocal = `${y}-${newMonth}-01T00:00`;
+        filteredData.value.endDateTimeLocal = `${y}-${newMonth}-${String(daysInMonth).padStart(2, '0')}T23:59`;
+
+        await fetchSalesByDate();
+    });
+
+    function openDateFilterDialog() {
+        visibleDateFilter.value = true;
+    }
+
+    function applyRangeAndClose() {
+        // use existing filteredData values and fetch
+        fetchSalesByDate();
+        visibleDateFilter.value = false;
+    }
 
     function selectMonthDay(dayObj) {
         selectedDay.value = dayObj.iso;
@@ -263,33 +364,6 @@ import DashboardCard from '@/components/DashboardCard.vue';
     <div class="p-4">
         <PageTitle title="Sales List">
             <template #titleButtons>
-                <!-- Calendar picker: year, month, days -->
-                    <div class="flex items-center gap-2 text-black">
-                        <select v-model="selectedYear" class="border p-2 rounded text-sm">
-                            <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
-                        </select>
-                        <select v-model="selectedMonth" class="border p-2 rounded text-sm">
-                            <option v-for="m in months" :key="m.v" :value="m.v">{{ m.name }}</option>
-                        </select>
-                        <div class="flex items-center gap-x-2">
-                            <button @click="prevDays" :disabled="dayWindowStart === 0" class=" rounded bg-white flex items-center justify-center cursor-pointer">
-                                <i class="fa fa-chevron-circle-left text-xl"></i>
-                            </button>
-                            <div class="flex gap-1 px-1">
-                                <button
-                                    v-for="d in monthDaysSlice"
-                                    :key="d.iso"
-                                    @click="selectMonthDay(d)"
-                                    :class="['px-2 py-1 rounded text-sm whitespace-nowrap cursor-pointer', selectedDay === d.iso ? 'bg-blue-600 text-white' : 'bg-white border']"
-                                >
-                                    {{ d.day }} - {{ d.date }}
-                                </button>
-                            </div>
-                            <button @click="nextDays" :disabled="dayWindowStart >= maxWindowStart" class="rounded bg-white flex items-center justify-center cursor-pointer">
-                                <i class="fa fa-chevron-circle-right text-xl"></i>
-                            </button>
-                        </div>
-                    </div>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton 
                         v-if="usePermission.can('Sales', 'Create')"
@@ -307,6 +381,72 @@ import DashboardCard from '@/components/DashboardCard.vue';
                 </div>
             </template>
         </PageTitle>
+        <!-- Date Filter Dialog -->
+        <Dialog v-model:visible="visibleDateFilter" :style="{ width: '700px' }" :modal="true" :draggable="false">
+            <template #container="{ closeCallback }">
+                <div class="p-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-black">Date Filter</h3>
+                        <div class="flex gap-x-2">
+                            <BaseButton severity="secondary" variant="outlined" @click="() => { filteredData.startDateTimeLocal = ''; filteredData.endDateTimeLocal = ''; }" icon="pi pi-refresh" />
+                            <BaseButton severity="secondary" @click="visibleDateFilter = false" icon="fa fa-x" />
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2 items-center mb-4">
+                        <BaseInput
+                            size="sm"
+                            v-model="filteredData.startDateTimeLocal"
+                            type="datetime-local"
+                            placeholder="Start DateTime"
+                            width="250px"
+                            height="h-[35px]"
+                        />
+                        <BaseInput
+                            size="sm"
+                            v-model="filteredData.endDateTimeLocal"
+                            type="datetime-local"
+                            placeholder="End DateTime"
+                            width="250px"
+                            height="h-[35px]"
+                        />
+                        <BaseButton label="Apply Range" severity="primary" @click="applyRangeAndClose" />
+                    </div>
+
+                    <div class="border-t pt-3">
+                        <div class="flex items-center gap-2 text-black mb-2">
+                            <select v-model="selectedYear" class="border p-2 rounded text-sm">
+                                <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+                            </select>
+                            <select v-model="selectedMonth" class="border p-2 rounded text-sm" :disabled="selectedYear === 'All'">
+                                <option v-for="m in months" :key="m.v" :value="m.v">{{ m.name }}</option>
+                            </select>
+                        </div>
+
+                        <div class="flex items-center gap-x-2">
+                            <button @click="prevDays" :disabled="dayWindowStart === 0" class=" rounded bg-white flex items-center justify-center cursor-pointer">
+                                <i class="fa fa-chevron-circle-left text-xl"></i>
+                            </button>
+                            <div class="flex gap-1 px-1 flex-wrap">
+                                <button
+                                    v-for="d in monthDaysSlice"
+                                    :key="d.iso"
+                                    @click="selectMonthDay(d)"
+                                    :class="['px-3 py-2 rounded text-sm whitespace-nowrap cursor-pointer', selectedDay === d.iso ? 'bg-blue-400 text-white' : 'bg-white border']"
+                                >
+                                    <div class="text-xs text-gray-500">{{ d.day }}</div>
+                                    <div class="font-semibold">{{ d.date }}</div>
+                                </button>
+                            </div>
+                            <button @click="nextDays" :disabled="dayWindowStart >= maxWindowStart" class="rounded bg-white flex items-center justify-center cursor-pointer">
+                                <i class="fa fa-chevron-circle-right text-xl"></i>
+                            </button>
+                        </div>
+                        <div class="text-sm text-gray-500 mt-2">Select year → month → day to filter. Year/month selection auto-applies.</div>
+                    </div>
+                </div>
+            </template>
+        </Dialog>
         <div class="grid grid-cols-5 my-3 gap-x-4">
             <DashboardCard title="Total Sales" :value="displayedSales.length" icon="fa fa-receipt" color="green" />
             <DashboardCard title="Total Sales Amount" :value="totalSalesAmount.toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
@@ -330,23 +470,7 @@ import DashboardCard from '@/components/DashboardCard.vue';
         >
             <template #filters>
                     <div class="flex gap-2 items-center">
-                        <BaseInput 
-                            size="sm"
-                            v-model="filteredData.startDateTimeLocal"
-                            type="datetime-local"
-                            placeholder="Start DateTime"
-                            width="240px"
-                            height="h-[35px]"
-                        />
-                        <BaseInput 
-                            size="sm"
-                            v-model="filteredData.endDateTimeLocal"
-                            type="datetime-local"
-                            placeholder="End DateTime"
-                            width="240px"
-                            height="h-[35px]"
-                        />
-                        <BaseButton label="Fetch" severity="primary" @click="fetchSalesByDate" />
+                        <BaseButton label="Date Filter" severity="secondary" icon="fa fa-calendar" @click="openDateFilterDialog" />
 
                         <select v-model="selectedStatus" class="border p-2 rounded text-sm">
                           <option value="">All Status</option>

@@ -4,19 +4,23 @@ import PageTitle from '@/components/PageTitle.vue';
 import DataTable from '@/components/DataTable.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import { useRouter } from 'vue-router';
-import { onMounted, ref, computed } from 'vue';
-import { useToast } from 'primevue';
+import { onMounted, ref, computed, watch } from 'vue';
+import { Dialog, useToast } from 'primevue';
 import moment from 'moment';
 import BaseInput from '@/components/BaseInput.vue';
 import { usePermissionStore } from '@/stores/usePermissionStore';
+import { useFilterStore } from '@/stores/filterStore';
 import { usePurchaseStore } from '@/stores/usePurchaseStore';
 import DashboardCard from '@/components/DashboardCard.vue';
 
 const router = useRouter();
 const usePurchase = usePurchaseStore();
+const filter = useFilterStore();
 const toast = useToast();
 const usePermission = usePermissionStore();
 const purchaseList = ref([]);
+// Date filter dialog visibility
+const visibleDateFilter = ref(false);
 // Date range for API fetch
 const filteredData = ref({
     // Local values bound to datetime-local inputs (format: YYYY-MM-DDTHH:mm)
@@ -28,8 +32,25 @@ const filteredData = ref({
 const selectedStatus = ref('');
 const selectedPayment = ref('');
 const searchValue = ref('');
+// Carousel window for days
+const dayWindowStart = ref(0);
+const windowSize = ref(7); // show 7 days at once
+// Year/month/day selection for DateRangeFilter
+const selectedDay = ref('');
+const selectedYear = ref(String(new Date().getFullYear()));
+const selectedMonth = ref(String(new Date().getMonth() + 1).padStart(2, '0'));
 
 onMounted(async () => {
+
+    // restore saved filters for this page if present
+    const saved = filter.getPageFilter('purchase');
+    if (saved) {
+        if (saved.startedDate) filteredData.value.startedDate = saved.startedDate;
+        if (saved.endedDate) filteredData.value.endedDate = saved.endedDate;
+        if (saved.selectedStatus) selectedStatus.value = saved.selectedStatus;
+        if (saved.selectedPayment) selectedPayment.value = saved.selectedPayment;
+        if (saved.searchValue) searchValue.value = saved.searchValue;
+    }
 
     await fetchPurchaseByDate();
 });
@@ -38,10 +59,10 @@ async function fetchPurchaseByDate() {
     // convert local datetime-local strings to backend friendly format (YYYY-MM-DD HH:mm:ss)
     const start = filteredData.value.startedDate
         ? moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss')
-        : null;
+        : "";
     const end = filteredData.value.endedDate
         ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss')
-        : null;
+        : "";
 
     // pass plain object to store method (server should accept datetime strings)
     await usePurchase.fetchAllPurchase({
@@ -49,9 +70,161 @@ async function fetchPurchaseByDate() {
         end_date: end
     });
     purchaseList.value = usePurchase.purchaseList || [];
-    selectedStatus.value = '';
-    selectedPayment.value = '';
-    searchValue.value = '';
+    // persist current filters after fetch
+    saveFilters();
+}
+
+// persist filters for this page
+function saveFilters() {
+    filter.setPageFilter('purchase', {
+        startedDate: filteredData.value.startedDate,
+        endedDate: filteredData.value.endedDate,
+        selectedStatus: selectedStatus.value,
+        selectedPayment: selectedPayment.value,
+        searchValue: searchValue.value,
+    });
+}
+
+// watch filter inputs and persist changes
+watch([
+    () => filteredData.value.startedDate,
+    () => filteredData.value.endedDate,
+    () => selectedStatus.value,
+    () => selectedPayment.value,
+    () => searchValue.value
+], () => {
+    saveFilters();
+});
+
+// Helper: list of years for selection (e.g., 2020..current+2)
+const years = computed(() => {
+    const cur = new Date().getFullYear();
+    const start = cur - 3;
+    const end = cur + 2;
+    const arr = ["All"];
+    for (let y = start; y <= end; y++) arr.push(String(y));
+    return arr;
+});
+
+const months = [
+    { v: "All", name: "All" },
+    { v: '01', name: 'January' },
+    { v: '02', name: 'February' },
+    { v: '03', name: 'March' },
+    { v: '04', name: 'April' },
+    { v: '05', name: 'May' },
+    { v: '06', name: 'June' },
+    { v: '07', name: 'July' },
+    { v: '08', name: 'August' },
+    { v: '09', name: 'September' },
+    { v: '10', name: 'October' },
+    { v: '11', name: 'November' },
+    { v: '12', name: 'December' },
+];
+
+// Compute all days for selected month-year with weekday labels
+const monthDays = computed(() => {
+    const y = Number(selectedYear.value);
+    const m = Number(selectedMonth.value) - 1; // JS month index
+    const first = new Date(y, m, 1);
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const arr = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dt = new Date(y, m, d);
+        const dayName = moment(dt).format('ddd').toUpperCase(); // MON, TUE, ...
+        arr.push({
+            day: dayName,
+            date: String(d).padStart(2, '0'),
+            iso: moment(dt).format('YYYY-MM-DD')
+        });
+    }
+    return arr;
+});
+
+const maxWindowStart = computed(() => Math.max(0, monthDays.value.length - windowSize.value));
+
+const monthDaysSlice = computed(() => {
+    return monthDays.value.slice(dayWindowStart.value, dayWindowStart.value + windowSize.value);
+});
+
+function prevDays() {
+    dayWindowStart.value = Math.max(0, dayWindowStart.value - windowSize.value);
+}
+
+function nextDays() {
+    dayWindowStart.value = Math.min(maxWindowStart.value, dayWindowStart.value + windowSize.value);
+}
+
+// reset window when month or year changes
+watch([selectedYear, selectedMonth], () => {
+    dayWindowStart.value = 0;
+    selectedDay.value = '';
+});
+
+// When year changes, fetch that whole year
+watch(selectedYear, async (newYear) => {
+    if (!newYear) return;
+    if (newYear === 'All') {
+        filteredData.value.startedDate = '';
+        filteredData.value.endedDate = '';
+        selectedMonth.value = 'All';
+        await fetchPurchaseByDate();
+        return;
+    }
+
+    if (selectedMonth.value === 'All') {
+        filteredData.value.startedDate = `${newYear}-01-01T00:00`;
+        filteredData.value.endedDate = `${newYear}-12-31T23:59`;
+        await fetchPurchaseByDate();
+        return;
+    }
+
+    const m = selectedMonth.value;
+    const daysInMonth = new Date(Number(newYear), Number(m), 0).getDate();
+    filteredData.value.startedDate = `${newYear}-${m}-01T00:00`;
+    filteredData.value.endedDate = `${newYear}-${m}-${String(daysInMonth).padStart(2, '0')}T23:59`;
+    await fetchPurchaseByDate();
+});
+
+// When month changes, fetch that month within selectedYear
+watch(selectedMonth, async (newMonth) => {
+    if (!newMonth || !selectedYear.value) return;
+    const y = selectedYear.value;
+    if (newMonth === 'All' && y === 'All') {
+        filteredData.value.startedDate = '';
+        filteredData.value.endedDate = '';
+        await fetchPurchaseByDate();
+        return;
+    }
+    if (newMonth === 'All') {
+        filteredData.value.startedDate = `${y}-01-01T00:00`;
+        filteredData.value.endedDate = `${y}-12-31T23:59`;
+        await fetchPurchaseByDate();
+        return;
+    }
+    const daysInMonth = new Date(Number(y), Number(newMonth), 0).getDate();
+    filteredData.value.startedDate = `${y}-${newMonth}-01T00:00`;
+    filteredData.value.endedDate = `${y}-${newMonth}-${String(daysInMonth).padStart(2, '0')}T23:59`;
+    await fetchPurchaseByDate();
+});
+
+function openDateFilterDialog() {
+    visibleDateFilter.value = true;
+}
+
+function applyRangeAndClose() {
+    // use existing filteredData values and fetch
+    fetchPurchaseByDate();
+    visibleDateFilter.value = false;
+}
+
+function selectMonthDay(dayObj) {
+    selectedDay.value = dayObj.iso;
+    // set datetime-local values for full day
+    filteredData.value.startedDate = `${dayObj.iso}T00:00`;
+    filteredData.value.endedDate = `${dayObj.iso}T23:59`;
+    // trigger fetch for the selected day
+    fetchPurchaseByDate();
 }
 
 const columns = [
@@ -175,6 +348,72 @@ async function deleteHandle(id) {
                 </div>
             </template>
         </PageTitle>
+        <!-- Date Filter Dialog -->
+        <Dialog v-model:visible="visibleDateFilter" :style="{ width: '700px' }" :modal="true" :draggable="false">
+            <template #container="{ closeCallback }">
+                <div class="p-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold text-black">Date Filter</h3>
+                        <div class="flex gap-x-2">
+                            <BaseButton severity="secondary" variant="outlined" @click="() => { filteredData.startedDate = ''; filteredData.endedDate = ''; }" icon="pi pi-refresh" />
+                            <BaseButton severity="secondary" @click="visibleDateFilter = false" icon="fa fa-x" />
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2 items-center mb-4">
+                        <BaseInput
+                            size="sm"
+                            v-model="filteredData.startedDate"
+                            type="datetime-local"
+                            placeholder="Start DateTime"
+                            width="250px"
+                            height="h-[35px]"
+                        />
+                        <BaseInput
+                            size="sm"
+                            v-model="filteredData.endedDate"
+                            type="datetime-local"
+                            placeholder="End DateTime"
+                            width="250px"
+                            height="h-[35px]"
+                        />
+                        <BaseButton label="Apply Range" severity="primary" @click="applyRangeAndClose" />
+                    </div>
+
+                    <div class="border-t pt-3">
+                        <div class="flex items-center gap-2 text-black mb-2">
+                            <select v-model="selectedYear" class="border p-2 rounded text-sm">
+                                <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+                            </select>
+                            <select v-model="selectedMonth" class="border p-2 rounded text-sm" :disabled="selectedYear === 'All'">
+                                <option v-for="m in months" :key="m.v" :value="m.v">{{ m.name }}</option>
+                            </select>
+                        </div>
+
+                        <div class="flex items-center gap-x-2">
+                            <button @click="prevDays" :disabled="dayWindowStart === 0" class=" rounded bg-white flex items-center justify-center cursor-pointer">
+                                <i class="fa fa-chevron-circle-left text-xl"></i>
+                            </button>
+                            <div class="flex gap-1 px-1 flex-wrap">
+                                <button
+                                    v-for="d in monthDaysSlice"
+                                    :key="d.iso"
+                                    @click="selectMonthDay(d)"
+                                    :class="['px-3 py-2 rounded text-sm whitespace-nowrap cursor-pointer', selectedDay === d.iso ? 'bg-blue-400 text-white' : 'bg-white border']"
+                                >
+                                    <div class="text-xs text-gray-500">{{ d.day }}</div>
+                                    <div class="font-semibold">{{ d.date }}</div>
+                                </button>
+                            </div>
+                            <button @click="nextDays" :disabled="dayWindowStart >= maxWindowStart" class="rounded bg-white flex items-center justify-center cursor-pointer">
+                                <i class="fa fa-chevron-circle-right text-xl"></i>
+                            </button>
+                        </div>
+                        <div class="text-sm text-gray-500 mt-2">Select year → month → day to filter. Year/month selection auto-applies.</div>
+                    </div>
+                </div>
+            </template>
+        </Dialog>
         <div class="grid grid-cols-5 my-3 gap-x-4">
             <DashboardCard title="Total Purchase" :value="displayedPurchase.length" icon="fa fa-receipt" color="green" />
             <DashboardCard title="Total Purchase Amount" :value="totalPurchaseAmount.toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
@@ -187,12 +426,7 @@ async function deleteHandle(id) {
             :isEdit="!usePermission.can('Purchase', 'Update')" :isDelete="!usePermission.can('Purchase', 'Delete')" filename="Purchase">
             <template #filters>
                 <div class="flex gap-2 items-center">
-                    <BaseInput size="sm" v-model="filteredData.startedDate" type="datetime-local"
-                        placeholder="Start DateTime" width="240px" height="h-[35px]" />
-                    <BaseInput size="sm" v-model="filteredData.endedDate" type="datetime-local"
-                        placeholder="End DateTime" width="240px" height="h-[35px]" />
-                    <BaseButton label="Fetch" severity="primary" @click="fetchPurchaseByDate" />
-
+                        <BaseButton label="Date Filter" severity="secondary" icon="fa fa-calendar" @click="openDateFilterDialog" />
                     <select v-model="selectedStatus" class="border p-2 rounded text-sm">
                         <option value="">All Status</option>
                         <option v-for="opt in statusOptions" :key="opt.id" :value="opt.id">{{ opt.name }}</option>

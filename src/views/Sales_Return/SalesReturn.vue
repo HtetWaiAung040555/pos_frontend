@@ -4,17 +4,19 @@ import PageTitle from '@/components/PageTitle.vue';
 import DataTable from '@/components/DataTable.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import { useRouter } from 'vue-router';
-import { onMounted, ref, computed } from 'vue';
+import { onMounted, ref, computed, watch } from 'vue';
 import { useToast } from 'primevue';
 import moment from 'moment';
 import BaseInput from '@/components/BaseInput.vue';
 import { usePermissionStore } from '@/stores/usePermissionStore';
 import { useSalesReturnStore } from '@/stores/useSalesReturnStore';
+import { useFilterStore } from '@/stores/filterStore';
 
 const router = useRouter();
 const useSalesReturn = useSalesReturnStore();
 const toast = useToast();
 const usePermission = usePermissionStore();
+const filter = useFilterStore();
 const returnList = ref([]);
 // Date range for API fetch
 const filteredData = ref({
@@ -29,6 +31,16 @@ const selectedPayment = ref('');
 const searchValue = ref('');
 
 onMounted(async () => {
+    // restore saved filters for this page if present
+    const saved = filter.getPageFilter('sales_return');
+    if (saved) {
+        if (saved.startedDate) filteredData.value.startedDate = saved.startedDate;
+        if (saved.endedDate) filteredData.value.endedDate = saved.endedDate;
+        if (saved.selectedStatus) selectedStatus.value = saved.selectedStatus;
+        if (saved.selectedPayment) selectedPayment.value = saved.selectedPayment;
+        if (saved.searchValue) searchValue.value = saved.searchValue;
+    }
+
     await fetchSalesReturn();
 });
 
@@ -46,10 +58,31 @@ async function fetchSalesReturn() {
         end_date: end
     });
     returnList.value = useSalesReturn.returnList || [];
-    selectedStatus.value = '';
-    selectedPayment.value = '';
-    searchValue.value = '';
+    // persist current filters after fetch
+    saveFilters();
 }
+
+// persist filters for this page
+function saveFilters() {
+    filter.setPageFilter('sales_return', {
+        startedDate: filteredData.value.startedDate,
+        endedDate: filteredData.value.endedDate,
+        selectedStatus: selectedStatus.value,
+        selectedPayment: selectedPayment.value,
+        searchValue: searchValue.value,
+    });
+}
+
+// watch filter inputs and persist changes
+watch([
+    () => filteredData.value.startedDate,
+    () => filteredData.value.endedDate,
+    () => selectedStatus.value,
+    () => selectedPayment.value,
+    () => searchValue.value
+], () => {
+    saveFilters();
+});
 
 const columns = [
     { key: 'id', label: 'Return No.' },
