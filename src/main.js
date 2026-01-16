@@ -84,6 +84,7 @@ import UpdatePurchasePriceChange from './views/Purchase_Price_Change/UpdatePurch
 import SalesPriceChange from './views/Sales_Price_Change/SalesPriceChange.vue';
 import CreateSalesPriceChange from './views/Sales_Price_Change/CreateSalesPriceChange.vue';
 import UpdateSalesPriceChange from './views/Sales_Price_Change/UpdateSalesPriceChange.vue';
+import ViewSales from './views/Sales/ViewSales.vue';
 
 
 
@@ -130,6 +131,7 @@ const router = createRouter({
         {path: '/sales', name: 'Sales', component: Sales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'View' } }},
         {path: '/sales/create', name: 'Create Sales', component: CreateSales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'Create' } }},
         {path: '/sales/update', name: 'Update Sales', component: UpdateSales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'Update' } }},
+        {path: '/sales/view', name: 'View Sales', component: ViewSales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'View' } }},
         {path: '/category', name: 'Category', component: Category, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'View' } }},
         {path: '/category/create', name: 'Create Category', component: CreateCategory, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'Create' } }},
         {path: '/category/update', name: 'Update Category', component: UpdateCategory, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'Update' } }},

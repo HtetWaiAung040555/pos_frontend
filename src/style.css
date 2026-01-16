@@ -54,9 +54,62 @@ input.p-inputtext.p-component.p-select-filter:focus {
 }
 
 input[type="number"] {
-    text-align: right;
+  text-align: right;
 }
 
 .p-select-empty-message {
   font-size: 13px !important;
+}
+
+/* --- Custom Blue Theme for PrimeVue DatePicker --- */
+
+.p-datepicker {
+  border-radius: 8px !important;
+  padding: 4px !important;
+}
+
+/* Today button highlight */
+.p-datepicker-today>span {
+  background-color: #e1ebf9 !important;
+  /* lighter blue */
+  border: 1px solid #2563eb !important;
+}
+
+/* Selected date */
+.p-datepicker .p-highlight {
+  background-color: #2563eb !important;
+  /* blue-600 */
+  color: white !important;
+  border-radius: 6px !important;
+}
+
+.p-datepicker-day.p-datepicker-day-selected {
+  background-color: #2563eb !important;
+  /* blue-600 */
+}
+
+.p-datepicker-day.p-datepicker-day-selected-range {
+  background-color: #e1ebf9 !important;
+  color: black !important;
+}
+
+.p-datepicker-month.p-datepicker-month-selected {
+  background-color: #2563eb !important;
+  /* blue-600 */
+  color: white !important;
+}
+
+.p-datepicker-year.p-datepicker-year-selected {
+  background-color: #2563eb !important;
+  /* blue-600 */
+  color: white !important;
+}
+
+
+/* Range background (start/end selection) */
+.p-datepicker-range-start,
+.p-datepicker-range-end {
+  background-color: #1d4ed8 !important;
+  /* blue-700 */
+  color: white !important;
 }
