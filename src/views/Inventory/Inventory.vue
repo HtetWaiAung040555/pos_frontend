@@ -4,7 +4,7 @@
     import DataTable from '@/components/DataTable.vue';
     import BaseButton from '@/components/BaseButton.vue';
     import { useRouter } from 'vue-router';
-    import { onMounted, ref, computed } from 'vue';
+    import { onMounted, ref, computed, watch } from 'vue';
     import { useToast } from 'primevue';
     import moment from 'moment'
     import { useFilterStore } from '@/stores/filterStore';
@@ -22,12 +22,44 @@
     const startDate = ref('');
     const endDate = ref('');
     const dataList = ref([]);
+    const nearlyExpire = ref(false);
 
     onMounted(async () => {
+        // restore saved filters
+        const saved = filter.getPageFilter('inventory');
+        if (saved) {
+            if (saved.startDate) startDate.value = saved.startDate;
+            if (saved.endDate) endDate.value = saved.endDate;
+            if (saved.searchValue) searchValue.value = saved.searchValue;
+            if (typeof saved.nearlyExpire !== 'undefined') nearlyExpire.value = saved.nearlyExpire;
+        }
+
         await useInventory.fetchAllStock();
         const inventory = useInventory.stockList.filter(item => item.warehouse.id === JSON.parse(localStorage.getItem('user')).branch.warehouse_id);
         dataList.value = inventory;
+        console.log('Inventory List:', dataList.value);
+        // persist current filters
+        saveFilters();
     });
+
+// persist filters for this page
+function saveFilters() {
+    filter.setPageFilter('inventory', {
+        startDate: startDate.value,
+        endDate: endDate.value,
+        searchValue: searchValue.value,
+        nearlyExpire: nearlyExpire.value,
+    });
+}
+
+watch([
+    () => startDate.value,
+    () => endDate.value,
+    () => searchValue.value,
+    () => nearlyExpire.value
+], () => {
+    saveFilters();
+});
 
     // Table headers
     const columns = [
@@ -35,6 +67,7 @@
         { key: 'image_url', label: 'Image', formatter: (row) => {
             return `<img class="object-cover w-10 h-10 rounded" src="${row.product.image_url}" alt="${row.product.name}" />`;
         } },
+        { key: 'product.barcode', label: 'Barcode', formatter: (row) => row.product.barcode },
         { key: 'product.name', label: 'Product', formatter: (row) => row.product.name },
         { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.warehouse.name },
         { key: 'qty', label: 'Qty' },
@@ -55,6 +88,13 @@
         const searchedData = filter.searchFunction(dataList.value, searchValue.value, [
             "product.name",
         ]);
+
+        if (nearlyExpire.value) {
+            const today = moment().startOf('day');
+            const twoMonths = moment().add(2, 'months').endOf('day');
+            return searchedData.filter(item => item.expired_date && moment(item.expired_date).isBetween(today, twoMonths, undefined, '[]'));
+        }
+
         return filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value })
     });
 
@@ -76,6 +116,14 @@
             toast.add({ severity: 'success', summary: 'Success Message', detail: 'Inventory deleted successfully.', life: 3000 });
             await useUser.fetchAllUsers();
             dataList.value = useUser.users;
+        }
+    }
+
+    function handleNearlyExpire() {
+        nearlyExpire.value = !nearlyExpire.value;
+        if (nearlyExpire.value) {
+            startDate.value = '';
+            endDate.value = '';
         }
     }
 
@@ -108,6 +156,7 @@
             :isDelete="!usePermission.can('Inventory', 'Delete')"
             :isAdjust="true"
             @delete="deleteHandle"
+            filename="Inventory_Stock"
         >
             <!-- Filter Section -->
             <template #filters>
@@ -134,6 +183,7 @@
                         height="h-[35px]"
                         icon="pi pi-search"
                     />
+                    <BaseButton label="Nearly Expire" severity="secondary" @click="handleNearlyExpire" />
                 </div>
             </template>
         </DataTable>

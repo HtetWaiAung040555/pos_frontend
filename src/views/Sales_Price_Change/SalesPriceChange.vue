@@ -10,31 +10,30 @@
     import { useFilterStore } from '@/stores/filterStore';
     import BaseInput from '@/components/BaseInput.vue';
     import { usePermissionStore } from '@/stores/usePermissionStore';
-    import { usePromotionStore } from '@/stores/usePromotionStore';
+    import { usePriceChangeStore } from '@/stores/usePriceChangeStore';
 
     const router = useRouter();
-    const usePromo = usePromotionStore();
+    const usePriceChange = usePriceChangeStore();
     const toast = useToast();
     const filter = useFilterStore();
     const searchValue = ref('');
     const startDate = ref('');
     const endDate = ref('');
     const usePermission = usePermissionStore();
-    const promoList = ref([]);
+    const priceChangeList = ref([]);
 
     onMounted(async () => {
-      await usePromo.fetchAllPromo();
-      promoList.value = usePromo.promoList;
+      await usePriceChange.fetchAllPriceChange();
+      priceChangeList.value = usePriceChange.priceChangeList;
     });
 
     const columns = [
         { key: 'id', label: 'ID' },
-        { key: 'name', label: 'Name' },
-        { key: 'discount_type', label: 'Type' },
-        { key: 'discount_value', label: 'Discount Value', formatter: (row) => `${Number(row.discount_value).toLocaleString('en-us')}${row.discount_type === 'Percentage' ? '%' : ''}` },
+        { key: 'description', label: 'Description' },
+        { key: 'type', label: 'Type'},
         { key: 'start_at', label: 'Start', formatter: (row) => moment(row.start_at).format('DD-MM-YY hh:mm') },
         { key: 'end_at', label: 'End', formatter: (row) => moment(row.end_at).format('DD-MM-YY hh:mm') },
-        { key: 'status', label: 'Status', formatter: (row) => {
+        { key: 'status.name', label: 'Status', formatter: (row) => {
             const color = row.status.name === 'Active' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';
             return `<span class="text-white px-2 py-1 rounded ${color}">${row.status.name}</span>`;
         } },
@@ -49,20 +48,21 @@
     }
 
     const filteredRows = computed(() => {
-        const searchedData = filter.searchFunction(promoList.value, searchValue.value, [
-            "name",
-            // "phone",
-            // "location"
+        const saleOnly = priceChangeList.value.filter(
+            row => row.type === 'sale'
+        );
+
+        const searchedData = filter.searchFunction( saleOnly, searchValue.value, [
+            "description",
         ]);
         return filter.dateRangeFilter(searchedData, { dateField: 'start_at', startDate: startDate.value, endDate: endDate.value })
     });
 
     // Delete function
     async function deleteHandle(id) {
-
-        await usePromo.deletePromo({void_by: JSON.parse(localStorage.getItem('user')).id}, id);
-        if(usePromo.error.length) {
-            usePromo.error.forEach((msg) => {
+        await usePriceChange.deletePriceChange({void_by: JSON.parse(localStorage.getItem('user')).id}, id);
+        if(usePriceChange.error.length) {
+            usePriceChange.error.forEach((msg) => {
                 toast.add({
                 severity: 'error',
                 summary: 'Error Message',
@@ -71,10 +71,10 @@
                 });
             });
         }
-        if (usePromo.data.status === 200) {
-            toast.add({ severity: 'success', summary: 'Success Message', detail: 'Promotion deleted successfully.', life: 3000 });
-            await usePromo.fetchAllPromo();
-            promoList.value = usePromo.promoList;
+        if (usePriceChange.data.status === 200) {
+            toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sale price change deleted successfully.', life: 3000 });
+            await usePriceChange.fetchAllPriceChange();
+            priceChangeList.value = usePriceChange.priceChangeList;
         }
     }
 
@@ -84,28 +84,29 @@
 
 <template>
     <div class="p-4">
-        <PageTitle title="Promotion List">
+        <PageTitle title="Sales Price Change List">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton 
-                        v-if="usePermission.can('Promotion', 'Create')"
+                        v-if="usePermission.can('Sales price change', 'Create')"
                         icon="fa fa-circle-plus" 
                         label="Create" 
                         severity="primary" 
-                        @click="changeRoute('/promotion/create')"  />
+                        @click="changeRoute('/sales_price_change/create')"  />
                 </div>
             </template>
         </PageTitle>
         <DataTable 
             :columns="columns" 
             :rows="filteredRows" 
-            :editPath="'Update Promotion'" 
-            :isLoading="usePromo.loading" 
+            :pageSize="5" 
+            :editPath="'Update Sales Price Change'" 
+            :isLoading="usePriceChange.loading"
             @delete="deleteHandle"
-            :defaultSort="{key: 'start_at', order: 'desc'}"
-            :isEdit="!usePermission.can('Promotion', 'Update')"
-            :isDelete="!usePermission.can('Promotion', 'Delete')"
-            filename="Promotion"
+            :defaultSort="{key: 'id', order: 'desc'}"
+            :isEdit="!usePermission.can('Sales price change', 'Update')"
+            :isDelete="!usePermission.can('Sales price change', 'Delete')"
+            filename="Sales_Price_Change"
         >
             <template #filters>
                 <div class="flex gap-2">

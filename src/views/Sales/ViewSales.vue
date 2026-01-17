@@ -4,20 +4,16 @@ import PageTitle from '@/components/PageTitle.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import BaseCard from '@/components/BaseCard.vue';
 import SubTitle from '@/components/SubTitle.vue';
+import DetailRow from '@/components/DetailRow.vue';
+import { statusBadgeHtml } from '@/utils/const';
 import { useRoute, useRouter } from 'vue-router';
-import BaseInput from '@/components/BaseInput.vue';
-import { onMounted, ref, warn, watch } from 'vue';
-import { useToast } from 'primevue/usetoast';
-import BaseLabel from '@/components/BaseLabel.vue';
+import { onMounted, ref } from 'vue';
 import { useSaleStore } from '@/stores/useSalesStore';
 import moment from 'moment';
-import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
 
 const router = useRouter();
 const route = useRoute();
-const toast = useToast();
 const useSales = useSaleStore();
-const usePaymentMethod = usePaymentMethodStore();
 
 const userData = ref({});
 const selectedProducts = ref([]);
@@ -55,35 +51,7 @@ onMounted(async () => {
         salesDate: moment(useSales.salesList.sale_date).format('YYYY-MM-DDTHH:mm'),
     };
     selectedProducts.value = useSales.salesList.details;
-    await usePaymentMethod.fetchAllPaymentMethod();
 });
-
-// Form Submit function
-async function formSubmit(isPrint = false) {
-    let payload = {
-        remark: formData.value.remark,
-        sale_date: formData.value.salesDate,
-        updated_by: userData.value.id,
-        payment_id: formData.value.paymentId,
-        status_id: formData.value.statusId,
-        paid_amount: formData.value.paidAmount,
-    }
-    await useSales.editSales(payload, route.query.id);
-    if (useSales.error.length) {
-        useSales.error.forEach((msg) => {
-            toast.add({
-              severity: 'error',
-              summary: 'Error Message',
-              detail: msg,
-              life: 3000
-            });
-        });
-        return;
-    }
-    toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales update successfully.', life: 3000 });
-    if (isPrint) printSlip();
-    router.push('/sales');
-}
 
 // Print only the slip section between the markers
 function printSlip() {
@@ -158,9 +126,13 @@ function printSlip() {
 <template>
     <div class="p-4">
         <!-- Page Title -->
-        <PageTitle title="Update Sales">
+        <PageTitle title="Sales Details">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
+                    <BaseButton label="Print Slip" :isLoading="useSales.loading"
+                        :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-print'" severity="primary"
+                        @click="printSlip" :disabled="useSales.loading" 
+                    />
                     <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary"
                         @click="changeRoute('/sales')" />
                 </div>
@@ -171,64 +143,56 @@ function printSlip() {
             <template #cardElements>
                 <!-- Form section subtitle -->
                 <SubTitle label="Basic Info" />
-                <div class="grid lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
-                    <!-- Sales Id Select -->
-                    <BaseInput size="sm" v-model="formData.salesId" label="Sales ID"
-                        placeholder="Sales ID" height="h-[35px]" disabled />
-                    <!-- Customer -->
-                    <BaseInput size="sm" v-model="formData.customerName" label="Customer"
-                        placeholder="Customer" height="h-[35px]" disabled />
-                    <!-- Warehouse -->
-                    <BaseInput size="sm" v-model="formData.warehouseName" label="Warehouse"
-                        placeholder="Warehouse" height="h-[35px]" disabled />
-                    <!-- Expired date input -->
-                    <BaseInput size="sm" v-model="formData.salesDate" label="Sales Date"
-                        height="h-[35px]" type="datetime-local"
-                    />
-                    <div class="flex flex-col gap-1">
-                        <BaseLabel label="Payment Method:" />
-                        <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
-                            v-model="formData.paymentId">
-                            <option v-for="payment in usePaymentMethod.paymentMethodList" :value="payment.id">{{ payment.name }}</option>
-                        </select>
+                <div class="grid lg:grid-cols-3 gap-x-4 mt-6">
+                    <div class="col-span-2 grid grid-cols-2 gap-2 h-fit">
+                        <DetailRow label="Sales ID:" :value="useSales.salesList.id" />
+                        <DetailRow label="Customer Name:" :value="useSales.salesList.customer?.name" />
+                        <DetailRow label="Warehouse:" :value="useSales.salesList.warehouse?.name" />
+                        <DetailRow label="Sales Date" :value="useSales.salesList.sale_date" :formatter="v => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
+                        <DetailRow label="Payment Method" :value="useSales.salesList.payment_method?.name" />
+                        <DetailRow label="Remark" :value="useSales.salesList.remark" />
                     </div>
-                    <!-- Remark input -->
-                    <BaseInput class="col-span-2" size="sm" v-model="formData.remark" label="Remark"
-                        placeholder="Reason for adjustment" height="h-[35px]" type="text" />
+                    <div class="grid grid-cols-1 gap-2 h-fit">
+                        <DetailRow label="Status:">
+                          <span v-html="statusBadgeHtml(useSales.salesList.status?.name)"></span>
+                        </DetailRow>
+                        <DetailRow label="Created By" :value="useSales.salesList.created_by" />
+                        <DetailRow label="Created At" :value="useSales.salesList.created_at" :formatter="v => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
+                        <DetailRow label="Updated By" :value="useSales.salesList.updated_by" />
+                        <DetailRow label="Updated At" :value="useSales.salesList.updated_at" :formatter="v => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
+                    </div>
                 </div>
-                <div class="flex justify-end mt-4 gap-x-2">
-                    <!-- Save Button -->
-                    <BaseButton label="Save" :isLoading="useSales.loading"
-                        :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary"
-                        @click="formSubmit" :disabled="useSales.loading" />
+                <!-- <div class="flex justify-end mt-4 gap-x-2">
                     <BaseButton label="Save & Print" :isLoading="useSales.loading"
                         :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-print'" severity="primary"
                         @click="formSubmit(true)" :disabled="useSales.loading" />
-                </div>
+                </div> -->
             </template>
         </BaseCard>
         <div class="mt-3 max-h-[250px] overflow-y-auto">
             <table class="text-black w-full border-collapse border border-gray-200">
                 <thead class="sticky top-0">
                     <tr class="bg-gray-100 text-right">
-                        <th class="px-2 py-2 text-center">Product Name</th>
-                        <th class="px-2 py-2">Unit Price</th>
-                        <th class="px-2 py-2">Discount Amt</th>
-                        <th class="px-2 py-2">Sales Price</th>
-                        <th class="px-2 py-2">Sales Qty</th>
-                        <th class="px-2 py-2">Subtotal</th>
+                        <th class="p-2 w-[50px]"></th>
+                        <th class="p-2 text-center">Product Name</th>
+                        <th class="p-2">Unit Price</th>
+                        <th class="p-2">Discount Amt</th>
+                        <th class="p-2">Sales Price</th>
+                        <th class="p-2">Sales Qty</th>
+                        <th class="p-2">Subtotal</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr 
                         class="hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.id"
                     >
-                        <td class="border-b border-gray-200 px-2 py-2 text-center">{{ product.product.name }}</td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.price).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.discount_amount).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.discount_price).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ product.quantity }}</td>
-                        <td class="border-b border-gray-200 px-2 py-2">{{ Number(product.total).toLocaleString('en-us') }}</td>
+                        <td class="border-b border-gray-200 p-2 text-center w-[50px]">{{ index + 1 }}.</td>
+                        <td class="border-b border-gray-200 p-2 text-center">{{ product.product.name }}</td>
+                        <td class="border-b border-gray-200 p-2">{{ Number(product.price).toLocaleString('en-us') }}</td>
+                        <td class="border-b border-gray-200 p-2">{{ Number(product.discount_amount).toLocaleString('en-us') }}</td>
+                        <td class="border-b border-gray-200 p-2">{{ Number(product.discount_price).toLocaleString('en-us') }}</td>
+                        <td class="border-b border-gray-200 p-2">{{ product.quantity }}</td>
+                        <td class="border-b border-gray-200 p-2">{{ Number(product.total).toLocaleString('en-us') }}</td>
                     </tr>
                 </tbody>
             </table>

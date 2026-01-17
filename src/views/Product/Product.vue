@@ -4,7 +4,7 @@
     import DataTable from '@/components/DataTable.vue';
     import BaseButton from '@/components/BaseButton.vue';
     import { useRouter } from 'vue-router';
-    import { onMounted, ref, computed } from 'vue';
+    import { onMounted, ref, computed, watch } from 'vue';
     import { useToast } from 'primevue';
     import moment from 'moment'
     import { useFilterStore } from '@/stores/filterStore';
@@ -24,8 +24,31 @@
     const dataList = ref([]);
 
     onMounted(async () => {
+        // restore saved filters
+        const saved = filter.getPageFilter('product');
+        if (saved) {
+            if (saved.startDate) startDate.value = saved.startDate;
+            if (saved.endDate) endDate.value = saved.endDate;
+            if (saved.searchValue) searchValue.value = saved.searchValue;
+        }
+
         await useProduct.fetchAllProduct();
         dataList.value = useProduct.productList;
+        // persist current filters
+        saveFilters();
+    });
+
+    // persist filters for this page
+    function saveFilters() {
+        filter.setPageFilter('product', {
+            startDate: startDate.value,
+            endDate: endDate.value,
+            searchValue: searchValue.value,
+        });
+    }
+
+    watch([() => startDate.value, () => endDate.value, () => searchValue.value], () => {
+        saveFilters();
     });
 
     // Table headers
@@ -39,8 +62,8 @@
         { key: 'unit_id.name', label: 'Unit', formatter: (row) => row.unit_id.name },
         { key: 'category_id.name', label: 'Category', formatter: (row) => row.category_id.name },
         { key: 'sec_prop', label: 'Property' },
-        { key: 'price', label: 'Sales Price' },
-        { key: 'purchase_price', label: 'Purchase Price' },
+        { key: 'price', label: 'Sales Price', formatter: (row) => Number(row.price).toLocaleString('en-us') },
+        //{ key: 'purchase_price', label: 'Purchase Price' },
         { key: 'status', label: 'Status', formatter: (row) => {
             const color = row.status.name === 'Active' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';
             return `<span class="text-white px-2 py-1 rounded ${color}">${row.status.name}</span>`;
@@ -114,6 +137,7 @@
             :isEdit="!usePermission.can('Product', 'Update')"
             :isDelete="!usePermission.can('Product', 'Delete')"
             @delete="deleteHandle"
+            filename="Product"
         >
             <!-- Filter Section -->
             <template #filters>

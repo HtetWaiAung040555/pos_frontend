@@ -24,7 +24,6 @@
 
     onMounted(async () => {
       await usePriceChange.fetchAllPriceChange();
-      console.log('Fetched price changes:', usePriceChange.priceChangeList); 
       priceChangeList.value = usePriceChange.priceChangeList;
     });
 
@@ -34,7 +33,7 @@
         { key: 'type', label: 'Type'},
         { key: 'start_at', label: 'Start', formatter: (row) => moment(row.start_at).format('DD-MM-YY hh:mm') },
         { key: 'end_at', label: 'End', formatter: (row) => moment(row.end_at).format('DD-MM-YY hh:mm') },
-        { key: 'status', label: 'Status', formatter: (row) => {
+        { key: 'status.name', label: 'Status', formatter: (row) => {
             const color = row.status.name === 'Active' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';
             return `<span class="text-white px-2 py-1 rounded ${color}">${row.status.name}</span>`;
         } },
@@ -49,7 +48,10 @@
     }
 
     const filteredRows = computed(() => {
-        const searchedData = filter.searchFunction(priceChangeList.value, searchValue.value, [
+        const purchaseOnly = priceChangeList.value.filter(
+            row => row.type === 'purchase'
+        );
+        const searchedData = filter.searchFunction( purchaseOnly, searchValue.value, [
             "description",
         ]);
         return filter.dateRangeFilter(searchedData, { dateField: 'start_at', startDate: startDate.value, endDate: endDate.value })
@@ -69,7 +71,7 @@
             });
         }
         if (usePriceChange.data.status === 200) {
-            toast.add({ severity: 'success', summary: 'Success Message', detail: 'Price change deleted successfully.', life: 3000 });
+            toast.add({ severity: 'success', summary: 'Success Message', detail: 'Purchase price change deleted successfully.', life: 3000 });
             await usePriceChange.fetchAllPriceChange();
             priceChangeList.value = usePriceChange.priceChangeList;
         }
@@ -81,15 +83,15 @@
 
 <template>
     <div class="p-4">
-        <PageTitle title="Price Change List">
+        <PageTitle title="Purchase Price Change List">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton 
-                        v-if="usePermission.can('Price change', 'Create')"
+                        v-if="usePermission.can('Purchase price change', 'Create')"
                         icon="fa fa-circle-plus" 
                         label="Create" 
                         severity="primary" 
-                        @click="changeRoute('/price_change/create')"  />
+                        @click="changeRoute('/purchase_price_change/create')"  />
                 </div>
             </template>
         </PageTitle>
@@ -97,12 +99,13 @@
             :columns="columns" 
             :rows="filteredRows" 
             :pageSize="5" 
-            :editPath="'Update Price Change'" 
-            :isLoading="usePriceChange.loading" 
+            :editPath="'Update Purchase Price Change'" 
+            :isLoading="usePriceChange.loading"
             @delete="deleteHandle"
-            :defaultSort="{key: 'start_at', order: 'desc'}"
-            :isEdit="!usePermission.can('Price change', 'Update')"
-            :isDelete="!usePermission.can('Price change', 'Delete')"
+            :defaultSort="{key: 'id', order: 'desc'}"
+            :isEdit="!usePermission.can('Purchase price change', 'Update')"
+            :isDelete="!usePermission.can('Purchase price change', 'Delete')"
+            filename="Purchase_Price_Change"
         >
             <template #filters>
                 <div class="flex gap-2">

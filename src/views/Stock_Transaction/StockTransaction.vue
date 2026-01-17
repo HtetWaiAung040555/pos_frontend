@@ -3,19 +3,16 @@
 import PageTitle from '@/components/PageTitle.vue';
 import DataTable from '@/components/DataTable.vue';
 import BaseButton from '@/components/BaseButton.vue';
-import { useRouter } from 'vue-router';
 import { onMounted, ref, computed } from 'vue';
 import { useToast } from 'primevue';
 import moment from 'moment'
 import { useFilterStore } from '@/stores/filterStore';
-import { usePermissionStore } from '@/stores/usePermissionStore';
 import BaseInput from '@/components/BaseInput.vue';
 import { useStockTransactionStore } from '@/stores/useStockTransactionStore';
+import { watch } from 'vue';
 
-const router = useRouter();
 const toast = useToast();
 const filter = useFilterStore();
-const usePermission = usePermissionStore();
 const useStockTransaction = useStockTransactionStore();
 
 const searchValue = ref('');
@@ -29,11 +26,23 @@ const filteredData = ref({
 });
 
 onMounted(async () => {
+    // restore saved filters for this page if present
+    const saved = filter.getPageFilter('stock_transaction');
+    if (saved) {
+        if (saved.startedDate) filteredData.value.startedDate = saved.startedDate;
+        if (saved.endedData) filteredData.value.endedData = saved.endedData;
+        if (saved.selectedReference) selectedReference.value = saved.selectedReference;
+        if (saved.selectedType) selectedType.value = saved.selectedType;
+        if (saved.searchValue) searchValue.value = saved.searchValue;
+    }
+
     await useStockTransaction.fetchStockTransactions({
         start_date: moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss'),
         end_date: moment(filteredData.value.endedData).format('YYYY-MM-DD HH:mm:ss')
     });
     dataList.value = useStockTransaction.list;
+    // persist current filters
+    saveFilters();
 });
 
 // Table headers
@@ -46,6 +55,7 @@ const columns = [
     },
     { key: 'inventory.product.name', label: 'Product', formatter: (row) => row.inventory.product.name },
     { key: 'reference_id', label: 'Reference Id'},
+    { key: 'reference_date', label: 'Reference Date', formatter: (row) => moment(row.reference_date).format('DD-MM-YY HH:mm') },
     { key: 'inventory.warehouse.name', label: 'Warehouse', formatter: (row) => row.inventory.warehouse.name },
     { key: 'quantity_change', label: 'Qty' },
     { key: 'type', label: 'Type',  formatter: (row) => {
@@ -55,8 +65,8 @@ const columns = [
     },
     { key: 'reference_type', label: 'Reference Type', formatter: (row) => row.reference_type.toUpperCase() },
     { key: 'inventory.expired_date', label: 'Expire', formatter: (row) => row.inventory.expired_date ? moment(row.inventory.expired_date).format('DD-MM-YY') : "N/A" },
-    { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
-    { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY HH:mm') },
+    // { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
+    // { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY HH:mm') },
 ];
 
 async function fetchSalesByDate() {
@@ -73,16 +83,31 @@ async function fetchSalesByDate() {
         end_date: end
     });
     dataList.value = useStockTransaction.list || [];
-    // reset client-side filters when new date-range data fetched (optional)
-    selectedReference.value = '';
-    selectedType.value = '';
-    searchValue.value = '';
+    // persist current filters after fetch
+    saveFilters();
 }
 
-// Route change function: need to pass route path.
-function changeRoute(pathname) {
-    router.push(pathname);
+// Persist filters for this page under the key 'stock_transaction'
+function saveFilters() {
+    filter.setPageFilter('stock_transaction', {
+        startedDate: filteredData.value.startedDate,
+        endedData: filteredData.value.endedData,
+        selectedReference: selectedReference.value,
+        selectedType: selectedType.value,
+        searchValue: searchValue.value,
+    });
 }
+
+// watch filter inputs and persist changes so coming back restores them
+watch([
+    () => filteredData.value.startedDate,
+    () => filteredData.value.endedData,
+    () => selectedReference.value,
+    () => selectedType.value,
+    () => searchValue.value
+], () => {
+    saveFilters();
+});
 
 // Derived options from fetched data for client-side filters
 const referenceTypes = computed(() => {

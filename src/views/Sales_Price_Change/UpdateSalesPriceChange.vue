@@ -26,11 +26,11 @@ const priceChangeId = ref(route.query.id || route.params.id || null);
 const userData = ref({});
 const formData = ref({
   description: '',
-  type: '',
+  type: 'sale',
   startDate: moment().format('YYYY-MM-DDTHH:mm'),
   endDate: moment().add(1, 'days').format('YYYY-MM-DDTHH:mm'),
-  priceValueType: '',
-  priceChangeValue: '',
+  priceValueType: 'INCREASE',
+  priceChangeValue: 0,
 });
 
 const selectedProducts = ref([]);
@@ -42,7 +42,6 @@ const selectionBuffer = ref([]);
 const headerCheckboxRef = ref(null);
 const isCheckingAll = ref(false);
 const isSelectAllLoading = ref(false);
-const individual_new_price=ref(false);
 
 
 const errorMsg = ref({
@@ -78,12 +77,14 @@ onMounted(async () => {
         }
     });
 
+    console.log(priceChange);
+
     formData.value.description = priceChange.description || '';
     formData.value.type = priceChange.type || '';
     formData.value.startDate = priceChange.start_at ? moment(priceChange.start_at).format('YYYY-MM-DDTHH:mm') : formData.value.startDate;
     formData.value.endDate = priceChange.end_at ? moment(priceChange.end_at).format('YYYY-MM-DDTHH:mm') : formData.value.endDate;
-    priceChangeStatus.value = String(priceChange.status_id || '1') === '1';
-
+    priceChangeStatus.value = priceChange.status.id  === 1;
+   
   }
 });
 
@@ -110,7 +111,7 @@ async function toggleProductInBuffer(event, product) {
   if (idx !== -1) { selectionBuffer.value.splice(idx, 1); return; }
 
   try {
-    const response = await axios.get(`/promotions/checkprice/${product.id}`);
+    const response = await axios.post(`/promotions/checkprice`, { product_id: product.id });
     const data = response.data;
     if (data && data.promotion_id) {
       try { if (event && event.target) event.target.checked = false; } catch(e){}
@@ -140,7 +141,7 @@ async function selectAllInBuffer() {
     if (candidates.length === 0) return;
 
     const checks = await Promise.allSettled(
-      candidates.map(p => axios.get(`/promotions/checkprice/${p.id}`))
+      candidates.map(p => axios.post(`/promotions/checkprice`, { product_id: p.id }))
     );
 
     const skipped = [];
@@ -198,15 +199,17 @@ watch([() => formData.value.priceChangeValue, () => formData.value.priceValueTyp
 });
 
 function confirmProductSelection() {
+  const changeValue = Number(formData.value.priceChangeValue);
+  const isIncrease = formData.value.priceValueType === 'INCREASE';
   selectedProducts.value = selectionBuffer.value.map(p => ({
     ...p,
-    old_price: Number(p.old_price) || 0,
-    new_price: Number(p.price) || Number(p.old_price),
-
-    individual_new_price: false, 
+    //old_price: Number(p.old_price) || 0,
+    new_price: changeValue > 0 ? isIncrease ? Number(p.old_price) + changeValue : Number(p.old_price) - changeValue : p.new_price  || Number(p.old_price),
   }));
   isProductDialogVisible.value = false;
 }
+
+
 
 
 function cancelProductSelection() { isProductDialogVisible.value = false; }
@@ -219,17 +222,15 @@ function calculateNewPrices() {
 
   const isIncrease = formData.value.priceValueType === 'INCREASE';
   selectedProducts.value.forEach(product => {
-    if (!product.individual_new_price) {
       const base = Number(product.old_price) || 0;
-      product.new_price = isIncrease ? base + changeValue : Math.max(0, base - changeValue);
-    }
+      product.new_price = isIncrease ? base + changeValue : Math.max(0, base - changeValue);   
   });
 }
 
 function formatPrice(value) { return Number(value).toLocaleString(); }
 
 const hasManualPrice = computed(() => selectedProducts.value.some(
-  p => p.individual_new_price && Number(p.new_price) >= 0 && Number(p.new_price) !== Number(p.old_price)
+  p => p.new_price && Number(p.new_price) > 0 && Number(p.new_price) !== Number(p.old_price)
 ));
 
 // Submit form
@@ -237,10 +238,10 @@ async function formSubmit() {
   if (formData.value.type === "") {
     errorMsg.value = { type: errMsgList.type, priceChangeValue: "", products: "" };
     return;
-  } else if (!formData.value.priceChangeValue && !hasManualPrice.value) {
-    errorMsg.value = { type: "", priceChangeValue: "Please enter a price change value or manually set new prices.", products: "" };
+  } else if (!hasManualPrice.value) {
+    errorMsg.value = { type: "", priceChangeValue: "New price and Old price are same in the selected products.", products: "" };
     return;
-  } else if (selectedProducts.value.length === 0) {
+  } else if (selectedProducts.value.length === 0 ) {
     errorMsg.value = { type: "", priceChangeValue: "", products: errMsgList.product };
     return;
   }
@@ -254,8 +255,8 @@ async function formSubmit() {
     updated_by: userData.value.id,
     products: selectedProducts.value.map(p => ({
       product_id: p.id,
-      old_price: p.old_price,
-      new_price: p.new_price
+      old_price: p.old_price,   
+      new_price: p.new_price    
     }))
   };
 
@@ -271,17 +272,17 @@ async function formSubmit() {
     return;
   }
 
-  toast.add({ severity: 'success', summary: 'Success Message', detail: 'Price change updated successfully.', life: 3000 });
-  router.push('/price_change');
+  toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales price change updated successfully.', life: 3000 });
+  router.push('/sales_price_change');
 }
 </script>
 
 <template>
 <div class="p-4">
-  <PageTitle title="Update Price Change">
+  <PageTitle title="Update Sale Price Change">
     <template #titleButtons>
       <div class="flex gap-x-2 items-center">
-        <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary" @click="changeRoute('/price_change')" />
+        <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary" @click="changeRoute('/sales_price_change')" />
       </div>
     </template>
   </PageTitle>
@@ -295,7 +296,7 @@ async function formSubmit() {
           <BaseLabel label="Price Change Type" />
           <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]" v-model="formData.type">
             <option value="sale">Sale</option>
-            <option value="purchase">Purchase</option>
+            <!-- <option value="purchase">Purchase</option> -->
           </select>
         </div>
         <div class="flex flex-col gap-y-1 w-[200px]">
@@ -315,7 +316,6 @@ async function formSubmit() {
         <BaseLabel label="Price Change Value" />
         <div class="flex gap-x-2 items-center">
           <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-[120px] h-[35px]" v-model="formData.priceValueType">
-            <option value="" disabled>Select</option>
             <option value="INCREASE">Increase</option>
             <option value="DECREASE">Decrease</option>
           </select>
@@ -331,6 +331,8 @@ async function formSubmit() {
       <!-- Products -->
       <div class="flex flex-col">
         <BaseButton label="Select Products" class="w-fit mt-4 mb-4" @click="openProductDialog()" />
+        <span v-if="errorMsg.products" class="text-red-600 text-sm">{{ errorMsg.products }}</span>
+        <span v-if="errorMsg.priceChangeValue" class="text-red-600 text-sm">{{ errorMsg.priceChangeValue }}</span>
 
         <div class="mt-4">
           <div class="max-h-[350px] overflow-y-auto rounded">
@@ -339,8 +341,8 @@ async function formSubmit() {
                 <tr class="text-left text-gray-600">
                   <th class="py-2 sticky top-0 bg-white z-10 border-b">Image</th>
                   <th class="py-2 sticky top-0 bg-white z-10 border-b">Product Name</th>
-                  <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Old Price</th>
-                  <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">New Price</th>
+                  <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Sales Old Price</th>
+                  <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Sales New Price</th>
                   <th class="py-2 sticky top-0 bg-white z-10 border-b">&nbsp;</th>
                 </tr>
               </thead>
@@ -361,7 +363,6 @@ async function formSubmit() {
                             type="number"
                             class="w-24 text-right px-1 py-1 border rounded"
                             v-model.number="product.new_price"
-                            @input="product.individual_new_price = true"
                         />
                     </td>
 

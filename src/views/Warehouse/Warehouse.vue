@@ -104,6 +104,7 @@
             :defaultSort="{key: 'created_at', order: 'desc'}"
             :isEdit="!usePermission.can('Warehouse', 'Update')"
             :isDelete="!usePermission.can('Warehouse', 'Delete')"
+            filename="Warehouse"
         >
             <template #filters>
                 <div class="flex gap-2">

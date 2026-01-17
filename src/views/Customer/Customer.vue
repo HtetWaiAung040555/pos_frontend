@@ -4,7 +4,7 @@ import PageTitle from '@/components/PageTitle.vue';
 import DataTable from '@/components/DataTable.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import { useRouter } from 'vue-router';
-import { onMounted, ref, computed } from 'vue';
+import { onMounted, ref, computed, watch } from 'vue';
 import { useToast } from 'primevue';
 import moment from 'moment'
 import { useFilterStore } from '@/stores/filterStore';
@@ -21,18 +21,49 @@ const useCustomer = useCustomerStore();
 const searchValue = ref('');
 const startDate = ref('');
 const endDate = ref('');
+const balanceSign = ref('all');
 const dataList = ref([]);
 
 onMounted(async () => {
+    // restore saved filters
+    const saved = filter.getPageFilter('customer');
+    if (saved) {
+        if (saved.startDate) startDate.value = saved.startDate;
+        if (saved.endDate) endDate.value = saved.endDate;
+        if (saved.searchValue) searchValue.value = saved.searchValue;
+        if (saved.balanceSign) balanceSign.value = saved.balanceSign;
+    }
+
     await useCustomer.fetchAllCustomer();
     dataList.value = useCustomer.customerList;
+    // persist current filters
+    saveFilters();
+});
+
+// persist filters for this page
+function saveFilters() {
+    filter.setPageFilter('customer', {
+        startDate: startDate.value,
+        endDate: endDate.value,
+        searchValue: searchValue.value,
+        balanceSign: balanceSign.value,
+    });
+}
+
+watch([
+    () => startDate.value,
+    () => endDate.value,
+    () => searchValue.value,
+    () => balanceSign.value
+], () => {
+    saveFilters();
 });
 
 // Table headers
 const columns = [
     { key: 'id', label: 'ID' },
     { key: 'name', label: 'Name' },
-    { key: 'balance', label: 'Balance' },
+    { key: 'balance', label: 'Balance', formatter: (row) => Number(row.balance).toLocaleString('en-us') ?? 0 },
     { key: 'phone', label: 'Phone' },
     { key: 'address', label: 'Address' },
     { key: 'created_by', label: 'Created By', formatter: (row) => row.created_by.name },
@@ -50,8 +81,19 @@ function changeRoute(pathname) {
 const filteredRows = computed(() => {
     const searchedData = filter.searchFunction(dataList.value, searchValue.value, [
         "name",
+        "id"
     ]);
-    return filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value })
+    const dateFiltered = filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value });
+
+    if (balanceSign.value === 'all') return dateFiltered;
+
+    return dateFiltered.filter((row) => {
+        const bal = Number(row.balance ?? 0);
+        if (balanceSign.value === 'positive') return bal > 0;
+        if (balanceSign.value === 'negative') return bal < 0;
+        if (balanceSign.value === 'zero') return bal === 0;
+        return true;
+    });
 });
 
 //Customer delete function
@@ -92,14 +134,20 @@ async function deleteHandle(id) {
         <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Customer'"
             :isLoading="useCustomer.loading" :defaultSort="{ key: 'created_at', order: 'desc' }"
             :isEdit="!usePermission.can('Customer', 'Update')" :isDelete="!usePermission.can('Customer', 'Delete')"
-            @delete="deleteHandle">
+            @delete="deleteHandle" filename="Customer">
             <!-- Filter Section -->
             <template #filters>
-                <div class="flex gap-2">
+                <div class="flex gap-2 items-center">
                     <BaseInput size="sm" type="date" v-model="startDate" placeholder="Search" width="200px"
                         height="h-[35px]" />
                     <BaseInput size="sm" type="date" v-model="endDate" placeholder="Search" width="200px"
                         height="h-[35px]" />
+                    <select v-model="balanceSign" class="h-[35px] px-2 border rounded bg-white">
+                        <option value="all">All balances</option>
+                        <option value="zero">Zero (0)</option>
+                        <option value="positive">Positive (+)</option>
+                        <option value="negative">Negative (-)</option>
+                    </select>
                     <BaseInput size="sm" v-model="searchValue" placeholder="Search" width="200px" height="h-[35px]"
                         icon="pi pi-search" />
                 </div>

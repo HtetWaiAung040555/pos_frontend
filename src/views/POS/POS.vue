@@ -3,9 +3,8 @@ import BaseButton from '@/components/BaseButton.vue';
 import BaseInput from '@/components/BaseInput.vue';
 import ProductCard from '@/components/ProductCard.vue';
 import { useCustomerStore } from '@/stores/useCustomerStore';
-import { useInventoryStore } from '@/stores/useInventoryStore';
 import { Dialog, Select, useToast } from 'primevue';
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useStatusStore } from '@/stores/useStatusStore';
 import { useSaleStore } from '@/stores/useSalesStore';
 import { useRouter } from 'vue-router';
@@ -13,14 +12,15 @@ import moment from 'moment';
 import axios from 'axios';
 import { useProductStore } from '@/stores/useProductStore';
 import BaseSearchSelect from '@/components/BaseSearchSelect.vue';
+import { usePromotionStore } from '@/stores/usePromotionStore';
 
 const toast = useToast();
 const router = useRouter();
-const useInventory = useInventoryStore();
 const useCustomer = useCustomerStore();
 const useStatus = useStatusStore();
 const useSales = useSaleStore();
 const useProduct = useProductStore();
+const usePromo = usePromotionStore();
 
 const productList = ref([]);
 const userData = ref({});
@@ -38,7 +38,7 @@ const visible = ref(false);
 const qty = ref("");
 const qtyInputRef = ref(null);
 const selectedPId = ref("");
-const selectedCustomer = ref("");
+const selectedCustomer = ref({});
 const searchQuery = ref("");
 const barcodeInput = ref(null); // Hidden barcode input reference
 // Hold sales UI
@@ -48,15 +48,15 @@ const loadingHolds = ref(false);
 const selectedHold = ref('');
 
 onMounted(async () => {
-  await useStatus.fetchAllStatus();
-  await useInventory.fetchAllStock();
   await useCustomer.fetchAllCustomer();
-  // const inventory = useInventory.stockList.filter(item => item.warehouse.id === JSON.parse(localStorage.getItem('user')).branch.warehouse_id);
   userData.value = JSON.parse(localStorage.getItem('user'));
   selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
   // productList.value = inventory;
   await useProduct.fetchSalesProduct({warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id});
   productList.value = useProduct.productList;
+  await useStatus.fetchAllStatus();
+  await usePromo.fetchAllPromo();
+  
 });
 
 const filteredProducts = computed(() => {
@@ -97,7 +97,7 @@ async function addProduct(product) {
     //visible.value = true;
     return;
   }
-  const checkPromo = await axios.get(`/promotions/checkprice/${product.id}`);
+  const checkPromo = await axios.post(`/promotions/checkprice`, { product_id: product.id });
   if (checkPromo.data.promotion_id) {
     selectedProducts.value = [
       ...selectedProducts.value,
@@ -342,10 +342,10 @@ async function onPayClick() {
       paid_amount: 0,
       payment_id: 1,
       sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
-      status_id: useStatus.statusList.find(el => el.name === 'Pending').id,
+      status_id: useStatus.statusList.find(el => el.name === 'Hold').id,
       updated_by: JSON.parse(localStorage.getItem('user')).id
     }
-    await useSales.editSales(selectedHold.value.id, payload);
+    await useSales.editSales(payload, selectedHold.value.id);
     if (useSales.error.length) {
       useSales.error.forEach((msg) => {
       toast.add({
@@ -398,6 +398,28 @@ async function onPayClick() {
   }
 }
 
+function onCustomerFilter(e) {
+  const query = e.value?.trim()
+  if (!query) return
+
+  // Barcode scanners usually end with Enter → full ID present
+  const matched = useCustomer.customerList.find(
+    c => String(c.id) === query
+  )
+
+  if (matched) {
+    selectedCustomer.value = matched
+
+    // Clear filter input
+    customerSelect.value?.resetFilter()
+
+    // Return focus to barcode scanning (important for Android)
+    nextTick(() => {
+      document.activeElement?.blur()
+    })
+  }
+}
+
 </script>
 
 <template>
@@ -416,7 +438,18 @@ async function onPayClick() {
           <!-- Scrollable product grid -->
           <div class="flex-1 overflow-y-auto mt-4 pr-1">
             <div class="grid grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-              <ProductCard v-for="product in filteredProducts" :key="product.id" :name="product.name"
+              <div v-if="useProduct.loading || useCustomer.loading || usePromo.loading" v-for="n in 18" :key="n" class="w-full rounded-md p-4">
+                <div class="flex animate-pulse space-x-4">
+                  <div class="flex-1 space-y-6 py-1">
+                      <div class="h-2 rounded bg-gray-300"></div>
+                      <div class="space-y-3">
+                          <div class="h-2 rounded bg-gray-300"></div>
+                          <div class="h-2 rounded bg-gray-300"></div>
+                      </div>
+                  </div>
+                </div>
+              </div>
+              <ProductCard v-else v-for="product in filteredProducts" :key="product.id" :name="product.name"
                 :price="product.price" :imageUrl="product.image_url" :qty="product.qty"
                 @click="addProduct(product)" />
             </div>
@@ -435,14 +468,38 @@ async function onPayClick() {
                 </div>
               </template>
             </Select> -->
-            <BaseSearchSelect
+            <!-- <BaseSearchSelect
               v-model="selectedCustomer"
               :options="useCustomer.customerList"
               optionLabel="name"
               optionValue="id"
               placeholder="Select customer"
-            />
+            /> -->
+            <div class="flex flex-col gap-y-1">
+              <Select
+                ref="customerSelect"
+                v-model="selectedCustomer"
+                :options="useCustomer.customerList"
+                filter
+                showClear
+                optionLabel="id"
+                placeholder="Select a customer"
+                class="h-[35px] items-center"
+                @filter="onCustomerFilter"
+              >
+                <template #value="{ value }">
+                  <div v-if="value" class="flex flex-col">
+                  <span>{{ value.id }} | {{ value.name }}</span>
+                  </div>
+                </template>
 
+                <template #option="{ option }">
+                  <div class="flex flex-col">
+                  <span>{{ option.id }} | {{ option.name }}</span>
+                  </div>
+                </template>
+              </Select>
+            </div>
             <BaseInput id="barcodeInput" type="text" height="h-[33px]" width="350px" placeholder="Scan products by barcode..."
             @keyup="handleBarcodeInput" />
           </div>
@@ -505,12 +562,12 @@ async function onPayClick() {
 
           <!-- Fixed bottom button group -->
           <div class="shrink-0 mt-4 flex justify-end gap-x-2 items-center">
-            <BaseButton label="Reset" severity="danger" icon="fa fa-rotate-left"
-              :disabled="selectedProducts.length === 0" @click="resetData" />
-            <BaseButton label="Hold" severity="secondary" icon="fa fa-hand" :disabled="selectedProducts.length === 0 || selectedHold.length != 0"
+            <BaseButton label="Reset" severity="danger" :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-rotate-left'"
+              :disabled="selectedProducts.length === 0 || useSales.loading" @click="resetData" />
+            <BaseButton label="Hold" severity="secondary" :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-hand'" :disabled="selectedProducts.length === 0 || selectedHold.length != 0 || useSales.loading"
               @click="holdSale" />
-            <BaseButton label="Pay" severity="primary" icon="fa fa-credit-card"
-              :disabled="selectedProducts.length === 0" @click="onPayClick" />
+            <BaseButton label="Pay" severity="primary" :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-credit-card'"
+              :disabled="selectedProducts.length === 0 || useSales.loading" @click="onPayClick" />
           </div>
         </div>
       </div>
@@ -543,32 +600,42 @@ async function onPayClick() {
               </div>
             </div>
 
-            <div v-if="loadingHolds" class="text-center py-8">Loading...</div>
+            <div v-if="loadingHolds" class="w-full rounded-md p-4">
+              <div class="flex animate-pulse space-x-4">
+                  <div class="flex-1 space-y-6 py-1">
+                      <div class="h-2 rounded bg-gray-300"></div>
+                      <div class="space-y-3">
+                          <div class="h-2 rounded bg-gray-300"></div>
+                          <div class="h-2 rounded bg-gray-300"></div>
+                      </div>
+                  </div>
+                </div>
+            </div>
 
-            <div v-else>
-              <table class="table-auto w-full border-collapse">
-                <thead class="bg-gray-100 text-sm">
+            <div v-else class="max-h-[450px] overflow-y-auto">
+              <table class="w-full border-collapse">
+                <thead class="bg-gray-100 text-sm top-0 sticky">
                   <tr>
                     <th class="p-2 text-left">#</th>
                     <th class="p-2 text-left">Hold ID</th>
                     <th class="p-2 text-left">Customer</th>
                     <th class="p-2 text-right">Total</th>
                     <th class="p-2 text-left">Date</th>
-                    <th class="p-2 w-[80px]"></th>
+                    <th class="p-2 w-[40px]"></th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="(h, idx) in holdList" :key="h.id" class="border-t text-sm">
                     <td class="p-2">{{ idx + 1 }}</td>
                     <td class="p-2">{{ h.id }}</td>
-                    <td class="p-2">{{ h.customer?.name ?? 'Walk-in' }}</td>
+                    <td class="p-2">{{ h.customer?.name ?? '' }}</td>
                     <td class="p-2 text-right font-semibold">Ks. {{ (h.total_amount || 0).toLocaleString('en-us') }}
                     </td>
                     <td class="p-2">{{ h.created_at ? new Date(h.created_at).toLocaleString() : '' }}</td>
                     <td class="p-2">
                       <div class="flex gap-x-2">
                         <BaseButton severity="info" size="sm" icon="pi pi-pen-to-square" @click="editHold(h)" />
-                        <BaseButton severity="danger" size="sm" icon="pi pi-trash" @click="deleteHold(h)" />
+                        <!-- <BaseButton severity="danger" disabled size="sm" icon="pi pi-trash" @click="deleteHold(h)" /> -->
                       </div>
                     </td>
                   </tr>

@@ -10,8 +10,6 @@ import { onMounted, ref, warn, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import BaseLabel from '@/components/BaseLabel.vue';
 import { Select } from 'primevue';
-import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
-import { errMsgList } from '@/utils/const';
 import moment from 'moment';
 import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
 import { usePurchaseReturnStore } from '@/stores/usePurchaseReturn';
@@ -167,7 +165,7 @@ function onReturnQtyChange(product) {
                             filter
                             optionLabel="id"
                             placeholder="Select Purchase Invoice ID"
-                            class="w-[300px] h-[35px] items-center" 
+                            class="h-[35px] items-center" 
                         />
                     </div>
                     <!-- Customer -->
@@ -176,8 +174,8 @@ function onReturnQtyChange(product) {
                     <!-- Warehouse -->
                     <BaseInput size="sm" v-model="selectedPurchase.warehouse.name" label="Warehouse"
                         placeholder="Warehouse" height="h-[35px]" disabled />
-                    <!-- Expired date input -->
-                    <BaseInput size="sm" v-model="formData.returnDate" label="Expired Date"
+                    <!-- Return date input -->
+                    <BaseInput size="sm" v-model="formData.returnDate" label="Return Date"
                         height="h-[35px]" type="datetime-local" />
                     <div class="flex flex-col gap-1">
                         <BaseLabel label="Payment Method:" />

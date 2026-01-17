@@ -70,12 +70,11 @@ async function formSubmit() {
     }
     let updatedData = {
         name: formData.value.name,
-        phone: formData.value.phone,
-        address: formData.value.address,
+        phone: formData.value.phone === null ? "" : formData.value.phone,
+        address: formData.value.address === null ? "" : formData.value.address,
         updated_by: userData.value.id,
         status_id: supplierStatus.value ? '1' : '2'
     };
-
     await useSupplier.editSupplier(route.query.id, updatedData);
     if (useSupplier.error.length) {
         useSupplier.error.forEach((msg) => {

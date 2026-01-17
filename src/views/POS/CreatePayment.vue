@@ -30,7 +30,7 @@ const data = ref({
   date: Date.now(),
   currency: 'Ks. ',
   taxRate: 3,
-  statusId: '',
+  statusId: 7, // Default to 'Complete'
   walletAmt: 0,
   walletPaymentId: 1,
   walletRemark: '',
@@ -47,7 +47,6 @@ onMounted(async () => {
   await usePaymentMethod.fetchAllPaymentMethod();
   await useStatus.fetchAllStatus();
   userData.value = JSON.parse(localStorage.getItem('user'));
-  data.value.statusId = useStatus.statusList.find(el => el.name === 'Complete').id;
 });
 
 const subtotal = computed(() => {
@@ -70,7 +69,16 @@ const changeReturn = computed(() => {
   return change;
 });
 
-async function formSubmit() {
+async function formSubmit(isPrint) {
+  if (salesData.value.payment_method.id === 3 && (salesData.value.customer.balance - subtotal.value) < 0) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error Message',
+      detail: 'Customer balance is insufficient for this purchase.',
+      life: 3000
+    });
+    return
+  }
   const payload = {
     sale_date: moment(data.value.date).format("YYYY/MM/DD HH:mm:ss"),
     payment_id: salesData.value.payment_method.id,
@@ -94,6 +102,9 @@ async function formSubmit() {
   }
   if (useSales.salesList) {
     toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales created successfully.', life: 3000 });
+    if (isPrint) {
+      printSlip();
+    }
     router.push('/pos');
   }
 }
@@ -105,7 +116,6 @@ async function formSubmitAndPrint() {
   } catch (err) {
     console.error('Error submitting before print', err);
   }
-  printSlip();
 }
 
 async function formCancel() {
@@ -113,8 +123,10 @@ async function formCancel() {
 }
 
 function changePaymentMethod(e) {
-  if (!e.target.value) return
-  if (e.target.value === '2') {
+  const inputValue = e.target.value;
+  if (!inputValue) return
+  salesData.value.payment_method.name = usePaymentMethod.paymentMethodList.find(pm => pm.id === parseInt(inputValue)).name;
+  if (inputValue === '2') {
     let statusData = useStatus.statusList.find(el => el.name === 'Unpaid');
     data.value.statusId = statusData.id;
     return
@@ -141,12 +153,15 @@ async function addWallet() {
     created_by: userData.value.id
   }
   await useWallet.addWallet(payload);
-  if (useWallet.error) {
-    Object.values(useWallet.error).forEach((err) => {
-      err.forEach((msg) => {
-        toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
-      })
-    })
+  if (useWallet.error.length) {
+    useWallet.error.forEach((msg) => {
+      toast.add({
+        severity: 'error',
+        summary: 'Error Message',
+        detail: msg,
+        life: 3000
+      });
+    });
     return
   }
   if (useWallet.walletList) {
@@ -248,7 +263,7 @@ function printSlip() {
           <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
             v-model="salesData.payment_method.id" @change="changePaymentMethod">
             <option value="1" v-if="usePaymentMethod.loading">Loading. . .</option>
-            <option v-for="pm in usePaymentMethod.paymentMethodList" :value="pm.id">
+            <option v-for="pm in usePaymentMethod.paymentMethodList?.filter(p => p.id !== 2)" :value="pm.id">
               {{ pm.name }}
             </option>
           </select>
@@ -273,7 +288,7 @@ function printSlip() {
         <div class="flex flex-col col-span-2">
           <BaseLabel label="Payment Status:" />
           <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
-            v-model="data.statusId">
+            v-model="data.statusId" disabled>
             <option v-for="status in useStatus.statusList.filter(el => el.name === 'Complete' || el.name === 'Unpaid')"
               :value="status.id">
               {{ status.name === 'Complete' ? 'Paid' : status.name }}
@@ -283,9 +298,9 @@ function printSlip() {
 
         <!-- Submit Button Group -->
         <div class="flex gap-3 mt-5">
-          <BaseButton label="Submit" @click="formSubmit" />
-          <BaseButton label="Submit & Print" @click="formSubmitAndPrint" />
-          <BaseButton label="Cancel" severity="danger" @click="formCancel" />
+          <BaseButton label="Submit" @click="formSubmit(false)" :disabled="useSales.loading || usePaymentMethod.loading || useStatus.loading" />
+          <BaseButton label="Submit & Print" @click="formSubmit(true)" :disabled="useSales.loading || usePaymentMethod.loading || useStatus.loading" />
+          <BaseButton label="Cancel" severity="danger" :disabled="useSales.loading || usePaymentMethod.loading || useStatus.loading" @click="formCancel" />
         </div>
 
       </div>
@@ -302,8 +317,8 @@ function printSlip() {
             border-bottom: 1px solid black;
           ">
           <h1 class="text-lg font-bold">FUSION MART</h1>
-          <div>53 Street, Between 36 & 37 ST (MA-68/2), Ye Mon Taung Quater, Mandalay</div>
-          <div>Tel: +959740010055</div>
+          <div>{{ userData.branch?.location }}</div>
+          <div>{{ userData.branch?.phone }}</div>
         </header>
 
         <!-- Receipt Info -->
@@ -411,7 +426,10 @@ function printSlip() {
               border-top: 1px solid black;
               padding-top: 4px;
             ">
-            <span>TOTAL</span>
+            <span>
+              TOTAL
+              <span style="font-weight: normal; font-size: small;">{{ salesData.payment_method.id !== 1 && salesData.payment_method.id !== 2 && salesData.payment_method.id !==3 ? `(${salesData.payment_method.name})` : '' }}</span>
+            </span>
             <span>{{ data.currency + Number(subtotal).toLocaleString() }}</span>
             <!-- <span>{{ data.currency + (subtotal + tax).toLocaleString() }}</span> -->
           </div>
@@ -501,14 +519,14 @@ function printSlip() {
               <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
                 v-model="data.walletPaymentId" @change="changePaymentMethod">
                 <option value="1" v-if="usePaymentMethod.loading">Loading. . .</option>
-                <option v-for="pm in usePaymentMethod.paymentMethodList" :value="pm.id">
+                <option v-for="pm in usePaymentMethod.paymentMethodList?.filter(p => p.id !== 2 && p.id !== 3)" :value="pm.id">
                   {{ pm.name }}
                 </option>
               </select>
             </div>
             <BaseTextarea class="col-span-2" v-model="data.walletRemark" label="Remark" autoResize />
             <div class="col-span-2 flex justify-end items-center">
-              <BaseButton label="Add Wallet" @click="addWallet" />
+              <BaseButton label="Add Wallet" @click="addWallet" :disabled="useWallet.loading || useSales.loading" />
             </div>
           </div>
         </div>

@@ -74,53 +74,51 @@ watch(() => formData.value.id, async (newVal) => {
     }
 });
 
-// 1) Auto-generate customer code (e.g., FMC-0001)
+// 1) Auto-generate customer code (e.g., C1225001)
 function generateCustomerCode() {
-    // Default configuration
-    const defaultPrefix = 'KBAM';
-    const defaultSep = '-';
+    // Format: C + MMYY + 3-digit serial, e.g. C1225002
+    const prefix = 'C';
+    const sep = '';
+    const now = new Date();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yy = String(now.getFullYear()).slice(-2);
+    const dateCode = `${mm}${yy}`; // e.g. '1225'
 
     const customers = useCustomer.customerList || [];
     const lastRaw = useCustomer.lastId || '';
 
     let maxSerial = 0;
-    let pad = 4; // default serial padding
-    let prefix = defaultPrefix;
-    let sep = defaultSep;
+    const pad = 3; // always use 3-digit serial
 
-    // Build regex to match prefix variants like KBAM-0001 or KBAM0001 or KBAM_0001
-    const regex = new RegExp(`^(${prefix})([-_]?)(0*)(\\d+)$`, 'i');
+    // Regex: prefix + optional sep + 4-digit date (MMYY) + optional leading zeros + serial
+    const regex = new RegExp(`^(${prefix})([-_]?)(\\d{4})(0*)(\\d+)$`, 'i');
 
-    // Scan customer list for entries that match our prefix and extract the numeric part
     customers.forEach(c => {
         const idVal = (c.id || '').toString();
         const m = idVal.match(regex);
         if (m) {
-            const leadingZeros = m[3] || '';
-            const numStr = (m[4] || '').replace(/^0+/, '') || '0';
+            const foundDate = m[3] || '';
+            if (foundDate !== dateCode) return; // only consider same month-year
+            const numStr = (m[5] || '').replace(/^0+/, '') || '0';
             const num = parseInt(numStr, 10) || 0;
-            const currentPad = Math.max(leadingZeros.length + numStr.length, numStr.length);
             if (num > maxSerial) {
                 maxSerial = num;
-                pad = Math.max(pad, leadingZeros.length + numStr.length);
             }
         }
     });
 
-    // If no customers matched our prefix, fall back to lastRaw only if it matches the prefix
+    // fallback to lastRaw only if it matches current date code
     if (maxSerial === 0 && lastRaw) {
         const m2 = lastRaw.match(regex);
-        if (m2) {
-            const leadingZeros = m2[3] || '';
-            const numStr = (m2[4] || '').replace(/^0+/, '') || '0';
+        if (m2 && (m2[3] || '') === dateCode) {
+            const numStr = (m2[5] || '').replace(/^0+/, '') || '0';
             maxSerial = parseInt(numStr, 10) || 0;
-            pad = Math.max(pad, leadingZeros.length + numStr.length);
         }
     }
 
     const next = maxSerial + 1;
     const serial = String(next).padStart(pad, '0');
-    formData.value.id = `${prefix}${sep}${serial}`;
+    formData.value.id = `${prefix}${sep}${dateCode}${serial}`;
 }
 
 // 2) Print QR code image (opens printable window)

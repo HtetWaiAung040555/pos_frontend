@@ -1,17 +1,15 @@
 <script setup>
   import { useCollapseSidebar } from '@/stores/collapseSidebar';
 import { usePermissionStore } from '@/stores/usePermissionStore';
-  import { ref } from 'vue';
+  import { ref, onMounted, onUnmounted } from 'vue';
   import { useRouter } from 'vue-router';
 
   const collapseSidebar = useCollapseSidebar();
   const router = useRouter();
   const usePermission = usePermissionStore();
   const openDropdown = ref(null);
-
-  function toggleCollapse() {
-      isCollapsed.value = !isCollapsed.value;
-  }
+  const sidebarRef = ref(null);
+  let onDocumentClick = null;
 
   // menu items
   const menuItems = [
@@ -34,6 +32,12 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             permission: {name: 'Sales', action: "View"}
           },
           { 
+            name: 'Sales Return', 
+            icon: 'fa fa-undo',
+            pathname: "/sales_return",
+            permission: {name: 'Sales return', action: "View"}
+          },
+          { 
             name: 'Customers', 
             icon: 'fa fa-users',
             pathname: "/customer",
@@ -46,11 +50,11 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             permission: {name: 'Promotion', action: "View"}
           },
           { 
-            name: 'Sales Return', 
-            icon: 'fa fa-undo',
-            pathname: "/sales_return",
-            permission: {name: 'Sales return', action: "View"}
-          },
+            name: 'Sales Price Change', 
+            icon: 'fas fa-arrow-up-right-dots',
+            pathname: "/sales_price_change",
+            permission: {name: 'Sales price change', action: "View"}
+          }
         ],
       },
       {
@@ -67,7 +71,7 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
           },
           { 
             name: 'Purchase Return', 
-            icon: 'fa fa-cart-plus ', 
+            icon: 'fa fa-undo ', 
             pathname: "/purchase_return",
             permission: {name: 'Purchase return', action: "View"}
           },
@@ -76,6 +80,12 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             icon: 'fa fa-users ', 
             pathname: "/supplier",
             permission: {name: 'Supplier', action: "View"}
+          },
+          { 
+            name: 'Purchase Price Change', 
+            icon: 'fas fa-arrow-up-right-dots',
+            pathname: "/purchase_price_change",
+            permission: {name: 'Purchase price change', action: "View"}
           }
         ]
       },
@@ -193,12 +203,6 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
         pathname: "/wallet",
         permission: {name: 'Wallet', action: "View"}
       },
-      { 
-        name: 'Price Change', 
-        icon: 'fas fa-arrow-up-right-dots',
-        pathname: "/price_change",
-        permission: {name: 'Price change', action: "View"}
-      },
   ];
 
   function toggleDropdown(itemName) {
@@ -229,11 +233,25 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
     return true;
   }
 
+  onMounted(() => {
+    onDocumentClick = (e) => {
+      if (!sidebarRef.value) return;
+      if (!sidebarRef.value.contains(e.target)) {
+        openDropdown.value = null;
+      }
+    };
+    document.addEventListener('click', onDocumentClick);
+  });
+
+  onUnmounted(() => {
+    if (onDocumentClick) document.removeEventListener('click', onDocumentClick);
+  });
+
 </script>
 
 <template>
     <!-- Sidebar -->
-    <div :class="[
+    <div ref="sidebarRef" :class="[
         'sidebar-bg text-white transition-all duration-300 text-sm font-semibold pt-2 h-screen',
         collapseSidebar.isSidebarCollapsed ? 'w-16' : 'w-74',
         'md:group-hover:w-74',

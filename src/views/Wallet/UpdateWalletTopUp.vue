@@ -11,6 +11,7 @@ import moment from 'moment';
 import { useWalletStore } from '@/stores/useWalletStore';
 import { useCustomerStore } from '@/stores/useCustomerStore';
 import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
+import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -27,13 +28,16 @@ const userData = ref({});
 const selectedCustomer = ref(null);
 const selectedPaymentMethod = ref(null);
 const currency = "Ks. "
-
 const beforeBalance = ref(0);
-
 const oldTopUpAmount = ref(0);
 const oldCustomerId = ref(null);
 const errorMessage = ref('');
 const updateAllowed = ref(true);
+const errorMsg = ref({
+  paymentMethod: "",
+  customer: "",
+  amount: ""
+});
 
 // Change route function
 function changeRoute(pathname) {
@@ -89,7 +93,29 @@ const afterBalance = computed(() => {
 
 
 // Update function
-async function formSubmit() {
+async function formSubmit(isPrint = false) {
+  if (!selectedCustomer.value) {
+    errorMsg.value = {
+      paymentMethod: "",
+      customer: "Select a customer.",
+      amount: ""
+    }
+    return
+  } else if (!data.value.amount || Number(data.value.amount) <= 0) {
+    errorMsg.value = {
+      paymentMethod: "",
+      customer: "",
+      amount: "Amount must be greater than 0."
+    }
+    return
+  } else if (!selectedPaymentMethod.value) {
+    errorMsg.value = {
+      paymentMethod: errMsgList.paymentMethod,
+      customer: "",
+      amount: ""
+    }
+    return
+  }
 
   let updatedData = {
     customer_id: selectedCustomer.value.id,
@@ -116,17 +142,11 @@ async function formSubmit() {
 
   if (useWallet.walletList) {
     toast.add({ severity: 'success', summary: 'Success Message', detail: 'Wallet top up updated successfully.', life: 3000 });
+    if(isPrint) {
+      printSlip();
+    }
     router.push('/wallet');
   }
-}
-
-async function formSubmitAndPrint() {
-  try {
-    await formSubmit();
-  } catch (err) {
-    console.error('Error submitting before print', err);
-  }
-  printSlip();
 }
 
 function printSlip() {
@@ -189,6 +209,29 @@ function printSlip() {
     printWindow.print();
   }, 500);
 }
+
+function onCustomerFilter(e) {
+  const query = e.value?.trim()
+  if (!query) return
+
+  // Barcode scanners usually end with Enter → full ID present
+  const matched = useCustomer.customerList.find(
+    c => String(c.id) === query
+  )
+
+  if (matched) {
+    selectedCustomer.value = matched
+
+    // Clear filter input
+    customerSelect.value?.resetFilter()
+
+    // Return focus to barcode scanning (important for Android)
+    nextTick(() => {
+      document.activeElement?.blur()
+    })
+  }
+}
+
 </script>
 
 <template>
@@ -201,24 +244,52 @@ function printSlip() {
       <!-- FORM -->
       <div class="flex-[1.2] grid grid-cols-2 gap-4 bg-white p-6 rounded-sm border border-gray-300 shadow-sm">
         <!-- Customer -->
-        <div class="flex flex-col">
+        <!-- <div class="flex flex-col">
           <BaseLabel label="Customer" :isRequire="true" />
           <Select v-model="selectedCustomer" :options="useCustomer.customerList" showClear filter optionLabel="name"
-            placeholder="Select a customer" class="w-[350px] h-[35px]" />
+            placeholder="Select a customer" class="h-[35px]" />
+        </div> -->
+        <div class="flex flex-col gap-y-1">
+          <BaseLabel label="Customer" :isRequire="true" />
+          <Select
+            ref="customerSelect"
+            v-model="selectedCustomer"
+            :options="useCustomer.customerList"
+            filter
+            showClear
+            optionLabel="id"
+            placeholder="Select a customer"
+            class="h-[35px] items-center"
+            @filter="onCustomerFilter"
+          >
+            <template #value="{ value }">
+              <div v-if="value" class="flex flex-col">
+              <span>{{ value.id }} | {{ value.name }}</span>
+              </div>
+            </template>
+
+            <template #option="{ option }">
+              <div class="flex flex-col">
+              <span>{{ option.id }} | {{ option.name }}</span>
+              </div>
+            </template>
+          </Select>
+          <BaseErrorLabel v-if="errorMsg.customer" :label="errorMsg.customer" />
         </div>
         <!-- Pay date Input -->
-        <BaseInput size="sm" v-model="data.pay_date" label="Pay Date" placeholder="Pay Date" width="300px"
+        <BaseInput size="sm" v-model="data.pay_date" label="Pay Date" placeholder="Pay Date"
           height="h-[35px]" type="datetime-local" />
         <!-- Amount -->
         <div class="flex flex-col">
           <BaseLabel label="Top Up Amount :" />
-          <BaseInput size="sm" v-model="data.amount" type="number" width="350px" height="h-[35px]" />
+          <BaseInput size="sm" v-model="data.amount" type="number" height="h-[35px]" :isRequire="true" :error="errorMsg.amount"/>
         </div>
         <!-- Payment Method Select -->
         <div class="flex flex-col gap-y-1">
           <BaseLabel label="Payment Method" :isRequire="true" />
-          <Select v-model="selectedPaymentMethod" :options="usePaymentMethod.paymentMethodList" showClear filter
-            optionLabel="name" placeholder="Select a payment method" class="w-[300px] h-[35px] items-center" />
+          <Select v-model="selectedPaymentMethod" :options="usePaymentMethod.paymentMethodList?.filter(p => p.id !== 2 && p.id !== 3)" showClear filter
+            optionLabel="name" placeholder="Select a payment method" class="h-[35px] items-center" />
+          <BaseErrorLabel v-if="errorMsg.paymentMethod" :label="errorMsg.paymentMethod" />
         </div>
 
         <!-- Remark -->
@@ -233,8 +304,8 @@ function printSlip() {
         </div> -->
 
         <div class="flex gap-3 mt-5 col-span-2">
-          <BaseButton label="Submit" @click="formSubmit" />
-          <BaseButton label="Submit & Print" @click="formSubmitAndPrint" />
+          <BaseButton label="Update" @click="formSubmit" :icon="useWallet.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'"  :isLoading="useWallet.loading" :disabled="useWallet.loading" />
+          <BaseButton label="Submit & Print" @click="formSubmit(true)" :icon="useWallet.loading ? 'fa fa-spinner' : 'fa fa-print'"  :isLoading="useWallet.loading" :disabled="useWallet.loading"/>
         </div>
       </div>
 
@@ -276,7 +347,7 @@ function printSlip() {
           </div>
           <!-- top up -->
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>Top Up Amount {{ selectedPaymentMethod?.name }} :</span>
+            <span>Top Up Amount ({{ selectedPaymentMethod?.name }}):</span>
             <span style="font-weight: bold;">{{ currency + Number(data.amount).toLocaleString() }}</span>
           </div>
           <!-- after -->

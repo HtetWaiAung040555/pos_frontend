@@ -7,7 +7,7 @@ const api_url = API_URL;
 
 export const usePromotionStore = defineStore('wallet', {
     state: () => ({
-        promoList: null,
+        promoList: [],
         loading: false,
         deleteLoading: false,
         data: null,
