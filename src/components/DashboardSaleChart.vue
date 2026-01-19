@@ -1,40 +1,82 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { Chart as ChartJS, Title, Tooltip, Legend, LineElement, PointElement, LinearScale, CategoryScale, Filler } from 'chart.js'
 import { Line } from 'vue-chartjs'
+import axios from 'axios'
 
 ChartJS.register(Title, Tooltip, Legend, LineElement, PointElement, LinearScale, CategoryScale, Filler)
 
 // --- Tabs ---
-const options = ['daily', 'weekly', 'monthly']
+const options = ['daily', 'monthly', 'yearly']
 const selected = ref('daily')
 
-// --- Raw Sales Data ---
-const rawData = {
-  daily: [
-    { label: 'Nov 1', total: 1000 },
-    { label: 'Nov 2', total: 1200 },
-    { label: 'Nov 3', total: 900 },
-    { label: 'Nov 4', total: 1500 },
-    { label: 'Nov 5', total: 1100 },
-  ],
-  weekly: [
-    { label: 'Week 1', total: 5000 },
-    { label: 'Week 2', total: 6200 },
-    { label: 'Week 3', total: 4800 },
-    { label: 'Week 4', total: 7000 },
-  ],
-  monthly: [
-    { label: 'Jan', total: 20000 },
-    { label: 'Feb', total: 25000 },
-    { label: 'Mar', total: 18000 },
-    { label: 'Apr', total: 22000 },
-  ],
+function getLastNDates(n) {
+  const dates = []
+  const today = new Date()
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(today)
+    d.setDate(d.getDate() - i)
+    dates.push(d.toISOString().split('T')[0]) 
+  }
+  return dates
 }
+
+const fillMissingDates = (data, days = 30) => {
+  const lastDates = getLastNDates(days)
+  const dataMap = {}
+  data.forEach(item => {
+    dataMap[item.date] = parseFloat(item.total)
+  })
+
+  return lastDates.map(date => ({
+    label: date,
+    total: dataMap[date] || 0,
+  }))
+}
+
+
+const rawData = ref({
+  daily: [],
+  weekly: [],
+  monthly: [],
+  yearly: [],
+})
+
+
+const fetchSalesData = async () => {
+  try {
+    const endpoints = {
+      daily: '/dashboard/dailysales',
+      // weekly: '/dashboard/weeklysales',
+      monthly: '/dashboard/monthlysales',
+      yearly: '/dashboard/yearlysales'
+    }
+
+    for (const key of Object.keys(endpoints)) {
+      const response = await axios.get(endpoints[key])
+      let formatted = response.data.map(item => ({
+        label: item.date ||item.month || item.year,
+        total: parseFloat(item.total),
+      }))
+
+      // fill missing dates
+      if (key === 'daily') {
+        formatted = fillMissingDates(response.data, 20)
+      }
+    
+      rawData.value[key] = formatted
+    }
+  } catch (error) {
+    console.error('Failed to fetch sales data:', error)
+  }
+}
+
+
+onMounted(() => fetchSalesData())
 
 // --- Computed Chart Data ---
 const chartData = computed(() => {
-  const data = rawData[selected.value]
+  const data = rawData.value[selected.value] || []
   return {
     labels: data.map(d => d.label),
     datasets: [
@@ -147,3 +189,4 @@ const summaryStats = computed(() => {
   </div>
 </div>
 </template>
+
