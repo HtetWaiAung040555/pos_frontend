@@ -13,6 +13,7 @@ import BaseInput from '@/components/BaseInput.vue';
 
 import { useWalletStore } from '@/stores/useWalletStore';
 import DashboardCard from '@/components/DashboardCard.vue';
+import { statusBadgeHtml } from '@/utils/const';
 
 const router = useRouter();
 const toast = useToast();
@@ -96,6 +97,7 @@ const columns = [
     { key: 'pay_date', label: 'Date', formatter: (row) => moment(row.pay_date).format('DD-MM-YY hh:mm') },
     { key: 'sale_id', label: 'Sales ID' },
     { key: 'type', label: 'Type' },
+    { key: 'status.name', label: 'Status', formatter: (row) => statusBadgeHtml(row.status?.name) },
     { key: 'created_by', label: 'Created By', },
     { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
     // { key: 'updated_by', label: 'Updated By', },
