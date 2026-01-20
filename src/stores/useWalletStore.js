@@ -21,7 +21,7 @@ export const useWalletStore = defineStore('wallet', {
             try {
                 let response;
                 if (filteredData) {
-                    response = await axios.get(`/customers_transactions?start_date=${filteredData.start_date}&end_date=${filteredData.end_date}&${filteredData.customer_id? customer_id=filteredData.customer_id : ""}`);
+                    response = await axios.get(`/customers_transactions?start_date=${filteredData.start_date}&end_date=${filteredData.end_date}&customer_id=${filteredData.customer_id}&status_id=${filteredData.status_id}`);
                     this.walletList = response.data.data;
                 } else {
                     response = await axios.get(`/customers_transactions`);
