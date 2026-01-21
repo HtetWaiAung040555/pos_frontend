@@ -211,6 +211,7 @@
             filteredData.value.startDateTimeLocal = "";
             filteredData.value.endDateTimeLocal = "";
             selectedMonth.value = "All"; 
+            dateRange.value = [null, null];
             await fetchSalesByDate();
             return;
         }
@@ -219,6 +220,10 @@
         if (selectedMonth.value === "All") {
             filteredData.value.startDateTimeLocal = `${newYear}-01-01T00:00`;
             filteredData.value.endDateTimeLocal = `${newYear}-12-31T23:59`;
+            dateRange.value = [
+                moment(`${newYear}-01-01`).toDate(),
+                moment(`${newYear}-12-31`).toDate()
+            ];
             await fetchSalesByDate();
             return;
         }
@@ -228,7 +233,10 @@
         const daysInMonth = new Date(Number(newYear), Number(m), 0).getDate();
         filteredData.value.startDateTimeLocal = `${newYear}-${m}-01T00:00`;
         filteredData.value.endDateTimeLocal = `${newYear}-${m}-${String(daysInMonth).padStart(2, '0')}T23:59`;
-
+        dateRange.value = [
+            moment(`${newYear}-${m}-01`).toDate(),
+            moment(`${newYear}-${m}-${String(daysInMonth).padStart(2, '0')}`).toDate()
+        ];
         await fetchSalesByDate();
     });
 
@@ -241,6 +249,7 @@
         if (newMonth === "All" && y === "All") {
             filteredData.value.startDateTimeLocal = "";
             filteredData.value.endDateTimeLocal = "";
+            dateRange.value = [null, null];
             await fetchSalesByDate();
             return;
         }
@@ -249,6 +258,10 @@
         if (newMonth === "All") {
             filteredData.value.startDateTimeLocal = `${y}-01-01T00:00`;
             filteredData.value.endDateTimeLocal = `${y}-12-31T23:59`;
+            dateRange.value = [
+                moment(`${y}-01-01`).toDate(),
+                moment(`${y}-12-31`).toDate()
+            ];
             await fetchSalesByDate();
             return;
         }
@@ -257,7 +270,10 @@
         const daysInMonth = new Date(Number(y), Number(newMonth), 0).getDate();
         filteredData.value.startDateTimeLocal = `${y}-${newMonth}-01T00:00`;
         filteredData.value.endDateTimeLocal = `${y}-${newMonth}-${String(daysInMonth).padStart(2, '0')}T23:59`;
-
+        dateRange.value = [
+            moment(`${y}-${newMonth}-01`).toDate(),
+            moment(`${y}-${newMonth}-${String(daysInMonth).padStart(2, '0')}`).toDate()
+        ];
         await fetchSalesByDate();
     });
 
@@ -277,6 +293,7 @@
         filteredData.value.startDateTimeLocal = `${dayObj.iso}T00:00`;
         filteredData.value.endDateTimeLocal = `${dayObj.iso}T23:59`;
         // trigger fetch for the selected day
+        dateRange.value = [moment(dayObj.iso).toDate(), moment(dayObj.iso).toDate()];
         fetchSalesByDate();
     }
 
