@@ -20,6 +20,7 @@ const props = defineProps({
   isDelete: {type: Boolean, default: true},
   isAdjust: {type: Boolean, default: false},
   filename: {type: String, default: 'export'},
+  isSearchable: {type: Boolean, default: false},
   // detailHeaders: array of column labels for detail rows. If empty, details won't be exported.
   detailHeaders: { type: Array, default: () => [] },
   // detailField: path on each row where detail(s) live (object or array). Default 'details'
@@ -207,7 +208,7 @@ function exportToExcel() {
         <div class="flex-1">
           <slot name="filters">
             <!-- Default fallback: search input -->
-            <input
+            <input v-if="isSearchable"
               type="text"
               v-model="searchQuery"
               placeholder="Search..."

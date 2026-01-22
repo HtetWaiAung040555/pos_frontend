@@ -3,6 +3,7 @@
 import PageTitle from '@/components/PageTitle.vue';
 import DataTable from '@/components/DataTable.vue';
 import BaseButton from '@/components/BaseButton.vue';
+import DatePicker from 'primevue/datepicker';
 import { useRouter } from 'vue-router';
 import { onMounted, ref, computed, watch } from 'vue';
 import { useToast } from 'primevue';
@@ -29,6 +30,54 @@ const filteredData = ref({
     endedDate: ""
 });
 
+// New DatePicker range state
+const dateRange = ref(null); // [startDate, endDate]
+const isDateLoading = ref(false);
+
+function setFilteredDatesFromRange(range) {
+    if (Array.isArray(range) && range[0] && range[1]) {
+        const start = moment(range[0]).startOf('day');
+        const end = moment(range[1]).endOf('day');
+        filteredData.value.startedDate = start.format('YYYY-MM-DD HH:mm:ss');
+        filteredData.value.endedDate = end.format('YYYY-MM-DD HH:mm:ss');
+    } else {
+        filteredData.value.startedDate = "";
+        filteredData.value.endedDate = "";
+    }
+}
+
+function applyPresetRange(preset) {
+    let start, end;
+    const now = moment();
+    switch (preset) {
+        case 'today':
+            start = moment().startOf('day');
+            end = moment().endOf('day');
+            break;
+        case 'yesterday':
+            start = moment().subtract(1, 'day').startOf('day');
+            end = moment().subtract(1, 'day').endOf('day');
+            break;
+        case 'thisWeek':
+            start = moment().startOf('week');
+            end = moment().endOf('week');
+            break;
+        case 'thisMonth':
+            start = moment().startOf('month');
+            end = moment().endOf('month');
+            break;
+        case 'thisYear':
+            start = moment().startOf('year');
+            end = moment().endOf('year');
+            break;
+        default:
+            start = null;
+            end = null;
+            break;
+    }
+    dateRange.value = start && end ? [start.toDate(), end.toDate()] : null;
+}
+
 // Persist filters for this page under the key 'wallet'
 function saveFilters() {
     filter.setPageFilter('wallet', {
@@ -49,6 +98,12 @@ onMounted(async () => {
         if (saved.selectedPaymentMethod) selectedPaymentMethod.value = saved.selectedPaymentMethod;
         if (saved.selectedType) selectedType.value = saved.selectedType;
         if (saved.searchValue) searchValue.value = saved.searchValue;
+        // initialize DatePicker range from saved dates if present
+        if (saved.startedDate && saved.endedDate) {
+            const s = moment(saved.startedDate).toDate();
+            const e = moment(saved.endedDate).toDate();
+            dateRange.value = [s, e];
+        }
     }
     await fetchTransaction();
 });
@@ -56,23 +111,38 @@ onMounted(async () => {
 
 
 async function fetchTransaction() {
-    // convert local datetime-local strings to backend friendly format (YYYY-MM-DD HH:mm:ss)
-    const start = filteredData.value.startedDate
-        ? moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss')
-        : "";
-    const end = filteredData.value.endedDate
-        ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss')
-        : "";
-    await useWallet.fetchAllWallet({
-        start_date: start,
-        end_date: end,
-        customer_id: "",
-        status_id: 7, // completed status only
-    });
-    walletList.value = useWallet.walletList || [];
-    // persist current filters after fetch
-    saveFilters();
+    isDateLoading.value = true;
+    try {
+        // convert local datetime-local strings to backend friendly format (YYYY-MM-DD HH:mm:ss)
+        const start = filteredData.value.startedDate
+            ? moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss')
+            : "";
+        const end = filteredData.value.endedDate
+            ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss')
+            : "";
+        await useWallet.fetchAllWallet({
+            start_date: start,
+            end_date: end,
+            customer_id: "",
+            status_id: 7, // completed status only
+        });
+        walletList.value = useWallet.walletList || [];
+        // persist current filters after fetch
+        saveFilters();
+    } finally {
+        isDateLoading.value = false;
+    }
 }
+
+// Sync and auto-fetch when DatePicker range changes
+watch(dateRange, async (val) => {
+    setFilteredDatesFromRange(val);
+    const hasFullRange = Array.isArray(val) && val[0] && val[1];
+    const cleared = val === null;
+    if (hasFullRange || cleared) {
+        await fetchTransaction();
+    }
+});
 
 // watch filter inputs and persist changes so coming back restores them
 watch([
@@ -208,20 +278,43 @@ async function deleteHandle(id) {
             :isEdit="!usePermission.can('Wallet', 'Update')" :isDelete="!usePermission.can('Wallet', 'Delete')" filename="Customer_Transaction">
             <!-- Filter Section -->
             <template #filters>
-                <div class="flex gap-2">
-                    <BaseInput size="sm" type="datetime-local" v-model="filteredData.startedDate" width="200px"
-                        height="h-[35px]" />
-                    <BaseInput size="sm" type="datetime-local" v-model="filteredData.endedDate" width="200px"
-                        height="h-[35px]" />
-                    <BaseButton label="Fetch" severity="primary" @click="fetchTransaction" />
+                <div class="flex gap-2 items-center">
+                    <DatePicker
+                        v-model="dateRange"
+                        selectionMode="range"
+                        :manualInput="false"
+                        showButtonBar
+                        placeholder="Date range"
+                        inputClass="h-[35px]"
+                        :disabled="isDateLoading"
+                    >
+                        <template #buttonbar="{ clearCallback }">
+                            <div class="flex justify-between w-full px-2 pb-2 gap-2 flex-wrap items-center">
+                                <div class="flex gap-2 flex-wrap">
+                                    <BaseButton size="sm" label="Today" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('today')" />
+                                    <BaseButton size="sm" label="Yesterday" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('yesterday')" />
+                                    <BaseButton size="sm" label="This Week" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisWeek')" />
+                                    <BaseButton size="sm" label="This Month" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisMonth')" />
+                                    <BaseButton size="sm" label="This Year" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisYear')" />
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <div v-if="isDateLoading" class="flex items-center text-xs text-gray-600 gap-2">
+                                        <i class="pi pi-spin pi-spinner"></i>
+                                        <span>Loading...</span>
+                                    </div>
+                                    <BaseButton size="sm" label="Clear" icon="pi pi-times" severity="danger" variant="outlined" :disabled="isDateLoading" @click="clearCallback" />
+                                </div>
+                            </div>
+                        </template>
+                    </DatePicker>
                     <BaseInput size="sm" v-model="searchValue" placeholder="Search by customer" width="200px" height="h-[35px]"
                         icon="pi pi-search" />
-                    <select v-model="selectedPaymentMethod" class="border p-2 rounded text-sm">
+                    <select v-model="selectedPaymentMethod" class="border border-gray-300 p-2 rounded text-sm h-[35px]">
                         <option value="">All Payment</option>
                         <option v-for="opt in paymentMethods" :key="opt.id" :value="opt.name">{{ opt.name }}</option>
                     </select>
 
-                    <select v-model="selectedType" class="border p-2 rounded text-sm">
+                    <select v-model="selectedType" class="border border-gray-300 p-2 rounded text-sm h-[35px]">
                         <option value="">All Type</option>
                         <option value="sale">Sales</option>
                         <option value="top-up">Top-up</option>

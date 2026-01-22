@@ -7,6 +7,10 @@
             type: String,
             required: true,
         },
+        spanText: {
+            type: String,
+            default: '',
+        },
         showBreadcrumb: {
             type: Boolean,
             default: true,
@@ -20,7 +24,7 @@
     <div class="flex items-start justify-between gap-x-4">
         <div>
             <!-- Page Title -->
-            <p class="text-black font-semibold text-xl">{{ title }}</p>
+            <p class="text-black font-semibold text-xl flex items-center gap-x-2">{{ title }} <span v-if="spanText" class="text-black text-sm">( {{ spanText }} )</span></p>
 
             <!-- Breadcrumb (optional) -->
             <Breadcrumb v-if="showBreadcrumb" class="mt-1" />

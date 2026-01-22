@@ -12,6 +12,7 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
 import { useFilterStore } from '@/stores/filterStore';
 import { usePurchaseStore } from '@/stores/usePurchaseStore';
 import DashboardCard from '@/components/DashboardCard.vue';
+import { statusBadgeHtml } from '@/utils/const';
 
 const router = useRouter();
 const usePurchase = usePurchaseStore();
@@ -228,17 +229,22 @@ function selectMonthDay(dayObj) {
 }
 
 const columns = [
-    { key: 'id', label: 'Purchase No.' },
+    { key: 'id', label: 'Purchase No.', formatter: (row) => {
+        const href = router.resolve({ name: 'View Sales', query: { id: row.id } }).href;
+        return `<a href="${href}">
+            <span class="cursor-pointer text-blue-600 hover:underline">${row.id}</span>
+        </a>`;
+    } },
     { key: 'purchase_date', label: 'Date', formatter: (row) => moment(row.purchase_date).format('DD-MM-YY hh:mm') },
     { key: 'supplier.name', label: 'Supplier Name', formatter: (row) => row.supplier.name },
     { key: 'total_amount', label: 'Total', formatter: (row) => Number(row.total_amount).toLocaleString('en-us') },
     { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.warehouse.name },
     { key: 'payment.name', label: 'Payment', formatter: (row) => row.payment.name },
-    { key: 'status.name', label: 'Status', formatter: (row) => row.status.name },
+    { key: 'status.name', label: 'Status', formatter: (row) => statusBadgeHtml(row.status?.name) },
     { key: 'created_by', label: 'Created By' },
     { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
-    { key: 'updated_by', label: 'Updated By' },
-    { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
+    // { key: 'updated_by', label: 'Updated By' },
+    // { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
 ];
 
 // Derived options from fetched data for client-side filters
