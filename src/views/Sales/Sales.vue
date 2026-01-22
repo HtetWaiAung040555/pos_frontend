@@ -23,6 +23,7 @@
     const toast = useToast();
     const usePermission = usePermissionStore();
     const salesList = ref([]);
+    const isDateLoading = ref(false); // show loading while fetching on date changes
     const dateRange = ref(null); // PrimeVue date range
     let suppressMonthYearWatch = false; // avoid double-fetch when presets set both range and year/month
     // Date range for API fetch
@@ -78,20 +79,25 @@
     });
 
     async function fetchSalesByDate() {
-        // convert local datetime-local strings to backend friendly format (YYYY-MM-DD HH:mm:ss)
-        const start = filteredData.value.startDateTimeLocal
-            ? moment(filteredData.value.startDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
-            : '';
-        const end = filteredData.value.endDateTimeLocal
-            ? moment(filteredData.value.endDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
-            : '';
-        await useSales.fetchAllSales({
-            start_date: start,
-            end_date: end
-        });
-        salesList.value = useSales.salesList || [];
-        // persist current filters after fetch
-        saveFilters();
+        isDateLoading.value = true;
+        try {
+            // convert local datetime-local strings to backend friendly format (YYYY-MM-DD HH:mm:ss)
+            const start = filteredData.value.startDateTimeLocal
+                ? moment(filteredData.value.startDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
+                : '';
+            const end = filteredData.value.endDateTimeLocal
+                ? moment(filteredData.value.endDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
+                : '';
+            await useSales.fetchAllSales({
+                start_date: start,
+                end_date: end
+            });
+            salesList.value = useSales.salesList || [];
+            // persist current filters after fetch
+            saveFilters();
+        } finally {
+            isDateLoading.value = false;
+        }
     }
 
     // Persist filters for this page under the key 'sales'
@@ -126,15 +132,23 @@
 
     // Keep filteredData in sync with PrimeVue date range picker and trigger fetch
     watch(dateRange, async (val) => {
-        if (val && Array.isArray(val) && val[0] && val[1]) {
-            filteredData.value.startDateTimeLocal = moment(val[0]).startOf('day').format('YYYY-MM-DDTHH:mm');
-            filteredData.value.endDateTimeLocal = moment(val[1]).endOf('day').format('YYYY-MM-DDTHH:mm');
-            await fetchSalesByDate();
-        } else {
+        if (!val || !Array.isArray(val)) return;
+        const [start, end] = val;
+
+        // Clear case: both cleared -> fetch without range
+        if (!start && !end) {
             filteredData.value.startDateTimeLocal = '';
             filteredData.value.endDateTimeLocal = '';
             await fetchSalesByDate();
+            return;
         }
+
+        // Wait until both start and end are chosen
+        if (!start || !end) return;
+
+        filteredData.value.startDateTimeLocal = moment(start).startOf('day').format('YYYY-MM-DDTHH:mm');
+        filteredData.value.endDateTimeLocal = moment(end).endOf('day').format('YYYY-MM-DDTHH:mm');
+        await fetchSalesByDate();
     });
 
     // Helper: list of years for selection (e.g., 2020..current+2)
@@ -472,7 +486,7 @@
     <div class="p-4">
         <PageTitle title="Sales List">
             <template #titleButtons>
-                <div class="border-t flex gap-x-2 items-center">
+                <!-- <div class="border-t flex gap-x-2 items-center">
                     <div class="flex items-center gap-2 text-black mb-2">
                         <select v-model="selectedYear" class="border p-2 rounded text-sm">
                             <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
@@ -501,7 +515,7 @@
                             <i class="fa fa-chevron-circle-right text-xl"></i>
                         </button>
                     </div>
-                </div>
+                </div> -->
                 <div class="flex gap-x-2 items-center">
                     <BaseButton 
                         v-if="usePermission.can('Sales', 'Create')"
@@ -615,18 +629,23 @@
                         showButtonBar
                         placeholder="Date range"
                         inputClass="h-[35px]"
+                        :disabled="isDateLoading"
                     >
                         <template #buttonbar="{ clearCallback }">
-                            <div class="flex justify-between w-full px-2 pb-2 gap-2 flex-wrap">
+                            <div class="flex justify-between w-full px-2 pb-2 gap-2 flex-wrap items-center">
                                 <div class="flex gap-2 flex-wrap">
-                                    <BaseButton size="sm" label="Today" variant="outlined" @click="() => applyPresetRange('today')" />
-                                    <BaseButton size="sm" label="Yesterday" variant="outlined" @click="() => applyPresetRange('yesterday')" />
-                                    <BaseButton size="sm" label="This Week" variant="outlined" @click="() => applyPresetRange('thisWeek')" />
-                                    <BaseButton size="sm" label="This Month" variant="outlined" @click="() => applyPresetRange('thisMonth')" />
-                                    <BaseButton size="sm" label="This Year" variant="outlined" @click="() => applyPresetRange('thisYear')" />
+                                    <BaseButton size="sm" label="Today" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('today')" />
+                                    <BaseButton size="sm" label="Yesterday" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('yesterday')" />
+                                    <BaseButton size="sm" label="This Week" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisWeek')" />
+                                    <BaseButton size="sm" label="This Month" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisMonth')" />
+                                    <BaseButton size="sm" label="This Year" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisYear')" />
                                 </div>
-                                <div class="flex gap-2">
-                                    <BaseButton size="sm" label="Clear" icon="pi pi-times" severity="danger" variant="outlined" @click="clearCallback" />
+                                <div class="flex gap-2 items-center">
+                                    <div v-if="isDateLoading" class="flex items-center text-xs text-gray-600 gap-2">
+                                        <i class="pi pi-spin pi-spinner"></i>
+                                        <span>Loading...</span>
+                                    </div>
+                                    <BaseButton size="sm" label="Clear" icon="pi pi-times" severity="danger" variant="outlined" :disabled="isDateLoading" @click="clearCallback" />
                                 </div>
                             </div>
                         </template>
