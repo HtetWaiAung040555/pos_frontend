@@ -49,13 +49,13 @@ const selectedHold = ref('');
 
 onMounted(async () => {
   await useCustomer.fetchAllCustomer();
+  await usePromo.fetchAllPromo();
   userData.value = JSON.parse(localStorage.getItem('user'));
   selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
   // productList.value = inventory;
   await useProduct.fetchSalesProduct({warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id});
   productList.value = useProduct.productList;
   await useStatus.fetchAllStatus();
-  await usePromo.fetchAllPromo();
   
 });
 
@@ -319,6 +319,28 @@ function resetData() {
   selectedHold.value = [];
 }
 
+// Compare current cart to the products stored on the selected hold
+function areHoldProductsEqual() {
+  if (!selectedHold.value || !Array.isArray(selectedHold.value.details)) return false;
+
+  const holdMap = new Map();
+  selectedHold.value.details.forEach((d) => {
+    const id = d.product_id || d.product?.id;
+    if (!id) return;
+    holdMap.set(id, Number(d.quantity));
+  });
+
+  if (holdMap.size !== selectedProducts.value.length) return false;
+
+  for (const p of selectedProducts.value) {
+    const holdQty = holdMap.get(p.id);
+    if (holdQty === undefined) return false;
+    if (Number(holdQty) !== Number(p.qty)) return false;
+  }
+
+  return true;
+}
+
 async function deleteHold(hold) {
   if (!confirm('Delete this hold sale? This may be irreversible depending on backend settings.')) return;
   const payload = {
@@ -338,12 +360,24 @@ async function deleteHold(hold) {
 
 async function onPayClick() {
   if (selectedHold.value) {
+    const productsChanged = !areHoldProductsEqual();
     const payload = {
       paid_amount: 0,
       payment_id: 1,
       sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
       status_id: useStatus.statusList.find(el => el.name === 'Hold').id,
-      updated_by: JSON.parse(localStorage.getItem('user')).id
+      updated_by: JSON.parse(localStorage.getItem('user')).id,
+    }
+
+    if (productsChanged) {
+      payload.products = selectedProducts.value.map(p => ({
+        product_id: p.id,
+        quantity: p.qty,
+        price: p.price,
+        discount_amount: Number(p.discount_amount) || 0,
+        discount_price: p.discount_price || 0,
+        promotion_id: p.promotion_id || null,
+      }));
     }
     await useSales.editSales(payload, selectedHold.value.id);
     if (useSales.error.length) {
