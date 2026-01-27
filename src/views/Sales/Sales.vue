@@ -15,6 +15,7 @@
     import { useFilterStore } from '@/stores/filterStore';
     import DashboardCard from '@/components/DashboardCard.vue';
     import { statusBadgeHtml } from '@/utils/const';
+import { getPresetRange } from '@/utils/datePresets';
 
     const router = useRouter();
     const route = useRoute();
@@ -130,25 +131,26 @@
         saveFilters();
     });
 
+    function setFilteredDatesFromRange(range) {
+        if (Array.isArray(range) && range[0] && range[1]) {
+            const start = moment(range[0]).startOf('day');
+            const end = moment(range[1]).endOf('day');
+            filteredData.value.startDateTimeLocal = start.format('YYYY-MM-DDTHH:mm');
+            filteredData.value.endDateTimeLocal = end.format('YYYY-MM-DDTHH:mm');
+        } else {
+            filteredData.value.startDateTimeLocal = "";
+            filteredData.value.endDateTimeLocal = "";
+        }
+    }
+
     // Keep filteredData in sync with PrimeVue date range picker and trigger fetch
     watch(dateRange, async (val) => {
-        if (!val || !Array.isArray(val)) return;
-        const [start, end] = val;
-
-        // Clear case: both cleared -> fetch without range
-        if (!start && !end) {
-            filteredData.value.startDateTimeLocal = '';
-            filteredData.value.endDateTimeLocal = '';
+        setFilteredDatesFromRange(val);
+        const hasFullRange = Array.isArray(val) && val[0] && val[1];
+        const cleared = val === null
+        if (hasFullRange || cleared) {
             await fetchSalesByDate();
-            return;
         }
-
-        // Wait until both start and end are chosen
-        if (!start || !end) return;
-
-        filteredData.value.startDateTimeLocal = moment(start).startOf('day').format('YYYY-MM-DDTHH:mm');
-        filteredData.value.endDateTimeLocal = moment(end).endOf('day').format('YYYY-MM-DDTHH:mm');
-        await fetchSalesByDate();
     });
 
     // Helper: list of years for selection (e.g., 2020..current+2)
@@ -211,85 +213,85 @@
     }
 
     // reset window when month or year changes
-    watch([selectedYear, selectedMonth], () => {
-        dayWindowStart.value = 0;
-        selectedDay.value = '';
-    });
+    // watch([selectedYear, selectedMonth], () => {
+    //     dayWindowStart.value = 0;
+    //     selectedDay.value = '';
+    // });
 
     // When year changes, fetch that whole year
-    watch(selectedYear, async (newYear) => {
-        if (suppressMonthYearWatch) return;
-        if (!newYear) return;
-        // Case 1: ALL years – show all data
-        if (newYear === "All") {
-            filteredData.value.startDateTimeLocal = "";
-            filteredData.value.endDateTimeLocal = "";
-            selectedMonth.value = "All"; 
-            dateRange.value = [null, null];
-            await fetchSalesByDate();
-            return;
-        }
+    // watch(selectedYear, async (newYear) => {
+    //     if (suppressMonthYearWatch) return;
+    //     if (!newYear) return;
+    //     // Case 1: ALL years – show all data
+    //     if (newYear === "All") {
+    //         filteredData.value.startDateTimeLocal = "";
+    //         filteredData.value.endDateTimeLocal = "";
+    //         selectedMonth.value = "All"; 
+    //         dateRange.value = [null, null];
+    //         await fetchSalesByDate();
+    //         return;
+    //     }
 
-        // Case 2: Year selected but month = ALL → show full year
-        if (selectedMonth.value === "All") {
-            filteredData.value.startDateTimeLocal = `${newYear}-01-01T00:00`;
-            filteredData.value.endDateTimeLocal = `${newYear}-12-31T23:59`;
-            dateRange.value = [
-                moment(`${newYear}-01-01`).toDate(),
-                moment(`${newYear}-12-31`).toDate()
-            ];
-            await fetchSalesByDate();
-            return;
-        }
+    //     // Case 2: Year selected but month = ALL → show full year
+    //     if (selectedMonth.value === "All") {
+    //         filteredData.value.startDateTimeLocal = `${newYear}-01-01T00:00`;
+    //         filteredData.value.endDateTimeLocal = `${newYear}-12-31T23:59`;
+    //         dateRange.value = [
+    //             moment(`${newYear}-01-01`).toDate(),
+    //             moment(`${newYear}-12-31`).toDate()
+    //         ];
+    //         await fetchSalesByDate();
+    //         return;
+    //     }
 
-        // Case 3: Year changed but month is still specific
-        const m = selectedMonth.value;
-        const daysInMonth = new Date(Number(newYear), Number(m), 0).getDate();
-        filteredData.value.startDateTimeLocal = `${newYear}-${m}-01T00:00`;
-        filteredData.value.endDateTimeLocal = `${newYear}-${m}-${String(daysInMonth).padStart(2, '0')}T23:59`;
-        dateRange.value = [
-            moment(`${newYear}-${m}-01`).toDate(),
-            moment(`${newYear}-${m}-${String(daysInMonth).padStart(2, '0')}`).toDate()
-        ];
-        await fetchSalesByDate();
-    });
+    //     // Case 3: Year changed but month is still specific
+    //     const m = selectedMonth.value;
+    //     const daysInMonth = new Date(Number(newYear), Number(m), 0).getDate();
+    //     filteredData.value.startDateTimeLocal = `${newYear}-${m}-01T00:00`;
+    //     filteredData.value.endDateTimeLocal = `${newYear}-${m}-${String(daysInMonth).padStart(2, '0')}T23:59`;
+    //     dateRange.value = [
+    //         moment(`${newYear}-${m}-01`).toDate(),
+    //         moment(`${newYear}-${m}-${String(daysInMonth).padStart(2, '0')}`).toDate()
+    //     ];
+    //     await fetchSalesByDate();
+    // });
 
     // When month changes, fetch that month within selectedYear
-    watch(selectedMonth, async (newMonth) => {
-        if (suppressMonthYearWatch) return;
-        if (!newMonth || !selectedYear.value) return;
-        const y = selectedYear.value;
-        // Case 1: ALL Months + ALL Years
-        if (newMonth === "All" && y === "All") {
-            filteredData.value.startDateTimeLocal = "";
-            filteredData.value.endDateTimeLocal = "";
-            dateRange.value = [null, null];
-            await fetchSalesByDate();
-            return;
-        }
+    // watch(selectedMonth, async (newMonth) => {
+    //     if (suppressMonthYearWatch) return;
+    //     if (!newMonth || !selectedYear.value) return;
+    //     const y = selectedYear.value;
+    //     // Case 1: ALL Months + ALL Years
+    //     if (newMonth === "All" && y === "All") {
+    //         filteredData.value.startDateTimeLocal = "";
+    //         filteredData.value.endDateTimeLocal = "";
+    //         dateRange.value = [null, null];
+    //         await fetchSalesByDate();
+    //         return;
+    //     }
 
-        // Case 2: ALL Months but specific year
-        if (newMonth === "All") {
-            filteredData.value.startDateTimeLocal = `${y}-01-01T00:00`;
-            filteredData.value.endDateTimeLocal = `${y}-12-31T23:59`;
-            dateRange.value = [
-                moment(`${y}-01-01`).toDate(),
-                moment(`${y}-12-31`).toDate()
-            ];
-            await fetchSalesByDate();
-            return;
-        }
+    //     // Case 2: ALL Months but specific year
+    //     if (newMonth === "All") {
+    //         filteredData.value.startDateTimeLocal = `${y}-01-01T00:00`;
+    //         filteredData.value.endDateTimeLocal = `${y}-12-31T23:59`;
+    //         dateRange.value = [
+    //             moment(`${y}-01-01`).toDate(),
+    //             moment(`${y}-12-31`).toDate()
+    //         ];
+    //         await fetchSalesByDate();
+    //         return;
+    //     }
 
-        // Case 3: Specific month + specific year
-        const daysInMonth = new Date(Number(y), Number(newMonth), 0).getDate();
-        filteredData.value.startDateTimeLocal = `${y}-${newMonth}-01T00:00`;
-        filteredData.value.endDateTimeLocal = `${y}-${newMonth}-${String(daysInMonth).padStart(2, '0')}T23:59`;
-        dateRange.value = [
-            moment(`${y}-${newMonth}-01`).toDate(),
-            moment(`${y}-${newMonth}-${String(daysInMonth).padStart(2, '0')}`).toDate()
-        ];
-        await fetchSalesByDate();
-    });
+    //     // Case 3: Specific month + specific year
+    //     const daysInMonth = new Date(Number(y), Number(newMonth), 0).getDate();
+    //     filteredData.value.startDateTimeLocal = `${y}-${newMonth}-01T00:00`;
+    //     filteredData.value.endDateTimeLocal = `${y}-${newMonth}-${String(daysInMonth).padStart(2, '0')}T23:59`;
+    //     dateRange.value = [
+    //         moment(`${y}-${newMonth}-01`).toDate(),
+    //         moment(`${y}-${newMonth}-${String(daysInMonth).padStart(2, '0')}`).toDate()
+    //     ];
+    //     await fetchSalesByDate();
+    // });
 
     function openDateFilterDialog() {
         visibleDateFilter.value = true;
@@ -313,58 +315,30 @@
 
     function applyPresetRange(preset) {
         const today = moment().startOf('day');
-        let start = today.clone();
-        let end = today.clone().endOf('day');
-
-        switch (preset) {
-            case 'yesterday':
-                start = today.clone().subtract(1, 'day');
-                end = today.clone().subtract(1, 'day').endOf('day');
-                break;
-            case 'thisWeek':
-                start = today.clone().startOf('week');
-                end = today.clone().endOf('week');
-                break;
-            case 'thisMonth':
-                start = today.clone().startOf('month');
-                end = today.clone().endOf('month');
-                break;
-            case 'thisYear':
-                start = today.clone().startOf('year');
-                end = today.clone().endOf('year');
-                break;
-            case 'today':
-            default:
-                // already set
-                break;
-        }
+        let range = getPresetRange(preset);
 
         // Keep UI selectors in sync without triggering their fetch logic
-        suppressMonthYearWatch = true;
-        selectedYear.value = start.format('YYYY');
-        selectedMonth.value = start.format('MM');
+        // suppressMonthYearWatch = true;
+        // selectedYear.value = start.format('YYYY');
+        // selectedMonth.value = start.format('MM');
         // Only lock the exact day when the preset is today or yesterday
-        selectedDay.value = (preset === 'today' || preset === 'yesterday')
-            ? start.format('YYYY-MM-DD')
-            : '';
+        // selectedDay.value = (preset === 'today' || preset === 'yesterday')
+        //     ? start.format('YYYY-MM-DD')
+        //     : '';
+        dateRange.value = range ? range : null;
 
-        dateRange.value = [start.toDate(), end.toDate()];
-
-        nextTick(() => {
-            suppressMonthYearWatch = false;
-        });
+        // nextTick(() => {
+        //     suppressMonthYearWatch = false;
+        // });
     }
 
     // Use shared status badge helper
 
     const columns = [
-        { key: 'id', label: 'Invoice No.', formatter: (row) => {
-            const href = router.resolve({ name: 'View Sales', query: { id: row.id } }).href;
-            return `<a href="${href}">
-                <span class="cursor-pointer text-blue-600 hover:underline">${row.id}</span>
-            </a>`;
-        } },
-        { key: 'sale_date', label: 'Date', formatter: (row) => moment(row.sale_date).format('DD-MM-YY hh:mm') },
+        { key: 'id', label: 'Invoice No.', formatter: (row) => row.id, onClick: (row) => {
+            router.push({name: 'View Sales', query: { id: row.id }});
+        }},
+        { key: 'sale_date', label: 'Date', formatter: (row) => moment(row.sale_date).format('DD-MM-YY HH:mm') },
         { key: 'customer.name', label: 'Customer Name', formatter: (row) => row.customer.name },
         { key: 'total_amount', label: 'Total', formatter: (row) => Number(row.total_amount).toLocaleString('en-us') },
         { key: 'payment_method.name', label: 'Payment', formatter: (row) => row.payment_method.name },
@@ -639,6 +613,7 @@
                                     <BaseButton size="sm" label="This Week" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisWeek')" />
                                     <BaseButton size="sm" label="This Month" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisMonth')" />
                                     <BaseButton size="sm" label="This Year" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisYear')" />
+                                    <BaseButton size="sm" label="All" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('all')" />
                                 </div>
                                 <div class="flex gap-2 items-center">
                                     <div v-if="isDateLoading" class="flex items-center text-xs text-gray-600 gap-2">
