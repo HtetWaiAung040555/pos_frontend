@@ -27,9 +27,13 @@ const formData = ref({
     products: [],
 })
 
-// Change route function
-function changeRoute(pathname) {
-    router.push(pathname);
+// Navigate back to previous route with fallback
+function goBack() {
+  if (window.history.length > 1) {
+    router.back();
+  } else {
+    router.push('/sales');
+  }
 }
 
 onMounted(async () => {
@@ -134,7 +138,7 @@ function printSlip() {
                         @click="printSlip" :disabled="useSales.loading" 
                     />
                     <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary"
-                        @click="changeRoute('/sales')" />
+                      @click="goBack" />
                 </div>
             </template>
         </PageTitle>
@@ -190,7 +194,7 @@ function printSlip() {
                         <td class="border-b border-gray-200 p-2 text-center">{{ product.product.name }}</td>
                         <td class="border-b border-gray-200 p-2">{{ Number(product.price).toLocaleString('en-us') }}</td>
                         <td class="border-b border-gray-200 p-2">{{ Number(product.discount_amount).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 p-2">{{ Number(product.discount_price).toLocaleString('en-us') }}</td>
+                        <td class="border-b border-gray-200 p-2">{{ Number(product.discount_price == 0? product.price : product.discount_price).toLocaleString('en-us') }}</td>
                         <td class="border-b border-gray-200 p-2">{{ product.quantity }}</td>
                         <td class="border-b border-gray-200 p-2">{{ Number(product.total).toLocaleString('en-us') }}</td>
                     </tr>

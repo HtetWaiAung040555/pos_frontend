@@ -203,6 +203,32 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
         pathname: "/wallet",
         permission: {name: 'Wallet', action: "View"}
       },
+      {
+        name: 'Reports',
+        icon: 'fa fa-clipboard-list',
+        pathname: '/reports',
+        permission: { name: 'Sales', action: 'Report' },
+        children: [
+          {
+            name: 'Sales',
+            icon: 'fa fa-chart-line',
+            pathname: '/reports/sales',
+            permission: { name: 'Sales', action: 'Report' }
+          },
+          {
+            name: 'Purchase',
+            icon: 'fa fa-cart-arrow-down',
+            pathname: '/reports/purchase',
+            permission: { name: 'Purchase', action: 'Report' }
+          },
+          {
+            name: 'Inventory Stock',
+            icon: 'fa fa-cubes',
+            pathname: '/reports/inventory',
+            permission: { name: 'Inventory', action: 'Report' }
+          },
+        ]
+      },
   ];
 
   function toggleDropdown(itemName) {

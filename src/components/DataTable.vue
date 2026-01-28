@@ -1,9 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import BaseButton from './BaseButton.vue';
 import Loading from './Loading.vue';
 import Dialog from 'primevue/dialog';
-import * as XLSX from 'xlsx';
+import { exportToXlsx } from '@/utils/exportXlsx';
 
 const props = defineProps({
   columns: { type: Array, required: true }, // [{ key: 'name', label: 'Name' }]
@@ -37,6 +37,13 @@ const sortKey = ref(props.defaultSort.key);
 const sortOrder = ref(props.defaultSort.order); // 'asc' or 'desc'
 const visible = ref(false);
 const rowId = ref('');
+
+// Reset sort when defaultSort prop changes (e.g., switching table modes)
+watch(() => props.defaultSort, (val) => {
+  sortKey.value = val?.key ?? null;
+  sortOrder.value = val?.order ?? 'desc';
+  currentPage.value = 1;
+}, { deep: true });
 
 // Filtered rows by search
 const filteredRows = computed(() => {
@@ -123,79 +130,14 @@ function confirmDelete() {
 }
 
 function exportToExcel() {
-  try {
-    // Parent headers come from provided columns
-    const parentHeaders = props.columns.map(c => (c.label || c.key));
-    // Use configured detail headers/keys. If none provided, no detail columns will be exported.
-    const configuredDetailHeaders = Array.isArray(props.detailHeaders) ? props.detailHeaders : [];
-    const configuredDetailKeys = Array.isArray(props.detailKeys) ? props.detailKeys : [];
-
-    // Determine whether to include details: only if headers provided and at least one row has the detail field
-    const getByPath = (obj, path) => {
-      return path.split('.').reduce((acc, k) => acc?.[k], obj);
-    };
-
-    const includeDetails = configuredDetailHeaders.length > 0 && props.rows.some(r => {
-      const d = getByPath(r, props.detailField);
-      return d !== undefined && d !== null && (Array.isArray(d) ? d.length > 0 : true);
-    });
-
-    const headers = includeDetails ? parentHeaders.concat(configuredDetailHeaders) : parentHeaders;
-
-    const data = [headers];
-
-    const formatParentValues = (row) => {
-      return props.columns.map(col => {
-        const val = getByPath(row, col.key);
-        return val === undefined || val === null ? '' : String(val);
-      });
-    };
-
-    const formatDetailValues = (d) => {
-      // Use configured detailKeys to extract values from detail object
-      if (!includeDetails) return [];
-      return configuredDetailKeys.map(k => {
-        const v = getByPath(d, k);
-        return v === undefined || v === null ? '' : String(v);
-      });
-    };
-
-    props.rows.forEach(r => {
-      const parentVals = formatParentValues(r);
-      const details = getByPath(r, props.detailField);
-
-      if (includeDetails) {
-        if (Array.isArray(details) && details.length > 0) {
-          // First detail row contains parent values
-          data.push(parentVals.concat(formatDetailValues(details[0])));
-          // Subsequent detail rows contain blanks for parent columns
-          for (let i = 1; i < details.length; i++) {
-            const blankParents = parentVals.map(() => '');
-            data.push(blankParents.concat(formatDetailValues(details[i])));
-          }
-        } else if (details && typeof details === 'object') {
-          // Single detail object
-          data.push(parentVals.concat(formatDetailValues(details)));
-        } else {
-          // No details: push parent row with empty detail columns
-          const emptyDetails = configuredDetailKeys.map(() => '');
-          data.push(parentVals.concat(emptyDetails));
-        }
-      } else {
-        // Not exporting details: push only parent values
-        data.push(parentVals);
-      }
-    });
-
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-
-    const filename = `${props.filename}_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'_')}.xlsx`;
-    XLSX.writeFile(wb, filename);
-  } catch (err) {
-    console.error('Export to excel failed', err);
-  }
+  exportToXlsx({
+    columns: props.columns,
+    rows: props.rows,
+    filename: props.filename,
+    detailHeaders: props.detailHeaders,
+    detailField: props.detailField,
+    detailKeys: props.detailKeys,
+  });
 }
 
 </script>
@@ -276,8 +218,24 @@ function exportToExcel() {
                 v-for="col in columns"
                 :key="col.key"
                 class="p-2 text-center"
-                v-html="col.formatter ? col.formatter(row) : row[col.key]"
               >
+                <template v-if="col.onClick">
+                  <span
+                    class="cursor-pointer text-blue-600 hover:underline"
+                    @click="() => col.onClick(row)"
+                  >
+                    {{ col.formatter ? col.formatter(row) : row[col.key] }}
+                  </span>
+                </template>
+                <template v-else-if="col.to">
+                  <router-link
+                    class="cursor-pointer text-blue-600 hover:underline"
+                    :to="typeof col.to === 'function' ? col.to(row) : col.to"
+                  >
+                    {{ col.formatter ? col.formatter(row) : row[col.key] }}
+                  </router-link>
+                </template>
+                <span v-else v-html="col.formatter ? col.formatter(row) : row[col.key]"></span>
               </td>
               <td class="p-2 text-center w-[120px]" v-if="props.isAction">
                 <router-link v-if="isAdjust" :to="{name: props.adjustPath, query: {id: row.id}}">

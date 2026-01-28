@@ -77,8 +77,6 @@ onMounted(async () => {
         }
     });
 
-    console.log(priceChange);
-
     formData.value.description = priceChange.description || '';
     formData.value.type = priceChange.type || '';
     formData.value.startDate = priceChange.start_at ? moment(priceChange.start_at).format('YYYY-MM-DDTHH:mm') : formData.value.startDate;

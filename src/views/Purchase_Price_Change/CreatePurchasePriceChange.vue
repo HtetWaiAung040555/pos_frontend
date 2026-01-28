@@ -255,7 +255,6 @@ async function formSubmit() {
         }
         return
     } else if (!formData.value.priceChangeValue && !hasManualPrice.value) {
-        console.log('No price change value or manual prices inputted');
         errorMsg.value = {
             type: "",
             priceChangeValue: "Some product prices must be changed. Please input a price change value or set new prices manually.",

@@ -15,6 +15,7 @@ import BaseInput from '@/components/BaseInput.vue';
 import { useWalletStore } from '@/stores/useWalletStore';
 import DashboardCard from '@/components/DashboardCard.vue';
 import { statusBadgeHtml } from '@/utils/const';
+import { getPresetRange } from '@/utils/datePresets';
 
 const router = useRouter();
 const toast = useToast();
@@ -33,50 +34,6 @@ const filteredData = ref({
 // New DatePicker range state
 const dateRange = ref(null); // [startDate, endDate]
 const isDateLoading = ref(false);
-
-function setFilteredDatesFromRange(range) {
-    if (Array.isArray(range) && range[0] && range[1]) {
-        const start = moment(range[0]).startOf('day');
-        const end = moment(range[1]).endOf('day');
-        filteredData.value.startedDate = start.format('YYYY-MM-DD HH:mm:ss');
-        filteredData.value.endedDate = end.format('YYYY-MM-DD HH:mm:ss');
-    } else {
-        filteredData.value.startedDate = "";
-        filteredData.value.endedDate = "";
-    }
-}
-
-function applyPresetRange(preset) {
-    let start, end;
-    const now = moment();
-    switch (preset) {
-        case 'today':
-            start = moment().startOf('day');
-            end = moment().endOf('day');
-            break;
-        case 'yesterday':
-            start = moment().subtract(1, 'day').startOf('day');
-            end = moment().subtract(1, 'day').endOf('day');
-            break;
-        case 'thisWeek':
-            start = moment().startOf('week');
-            end = moment().endOf('week');
-            break;
-        case 'thisMonth':
-            start = moment().startOf('month');
-            end = moment().endOf('month');
-            break;
-        case 'thisYear':
-            start = moment().startOf('year');
-            end = moment().endOf('year');
-            break;
-        default:
-            start = null;
-            end = null;
-            break;
-    }
-    dateRange.value = start && end ? [start.toDate(), end.toDate()] : null;
-}
 
 // Persist filters for this page under the key 'wallet'
 function saveFilters() {
@@ -100,15 +57,14 @@ onMounted(async () => {
         if (saved.searchValue) searchValue.value = saved.searchValue;
         // initialize DatePicker range from saved dates if present
         if (saved.startedDate && saved.endedDate) {
-            const s = moment(saved.startedDate).toDate();
-            const e = moment(saved.endedDate).toDate();
-            dateRange.value = [s, e];
+            dateRange.value = [
+                moment(saved.startedDate).toDate(),
+                moment(saved.endedDate).toDate()
+            ];
         }
     }
     await fetchTransaction();
 });
-
-
 
 async function fetchTransaction() {
     isDateLoading.value = true;
@@ -132,6 +88,23 @@ async function fetchTransaction() {
     } finally {
         isDateLoading.value = false;
     }
+}
+
+function setFilteredDatesFromRange(range) {
+    if (Array.isArray(range) && range[0] && range[1]) {
+        const start = moment(range[0]).startOf('day');
+        const end = moment(range[1]).endOf('day');
+        filteredData.value.startedDate = start.format('YYYY-MM-DD HH:mm:ss');
+        filteredData.value.endedDate = end.format('YYYY-MM-DD HH:mm:ss');
+    } else {
+        filteredData.value.startedDate = "";
+        filteredData.value.endedDate = "";
+    }
+}
+
+function applyPresetRange(preset) {
+    const range = getPresetRange(preset);
+    dateRange.value = range ? range : null;
 }
 
 // Sync and auto-fetch when DatePicker range changes
@@ -167,7 +140,11 @@ const columns = [
     } },
     { key: 'payment_method.name', label: 'Payment Method', formatter: (row) => row.payment_method?.name },
     { key: 'pay_date', label: 'Date', formatter: (row) => moment(row.pay_date).format('DD-MM-YY hh:mm') },
-    { key: 'sale_id', label: 'Sales ID' },
+    { key: 'sale_id', label: 'Sales ID', formatter: (row) => row.sale_id, onClick: (row) => {
+        if (row.sale_id) {
+            router.push({ name: 'View Sales', query: { id: row.sale_id } });
+        }
+    }},
     { key: 'type', label: 'Type' },
     { key: 'status.name', label: 'Status', formatter: (row) => statusBadgeHtml(row.status?.name) },
     { key: 'created_by', label: 'Created By', },
