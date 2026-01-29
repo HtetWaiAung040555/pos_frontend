@@ -27,8 +27,8 @@ const walletList = ref([]);
 const selectedPaymentMethod = ref('');
 const selectedType = ref('');
 const filteredData = ref({
-    startedDate: "",
-    endedDate: ""
+    startedDate: moment().startOf('month').format('YYYY-MM-DD HH:mm:ss'),
+    endedDate: moment().endOf('month').format('YYYY-MM-DD HH:mm:ss'),
 });
 
 // New DatePicker range state
@@ -57,12 +57,14 @@ onMounted(async () => {
         if (saved.searchValue) searchValue.value = saved.searchValue;
         // initialize DatePicker range from saved dates if present
         if (saved.startedDate && saved.endedDate) {
-            dateRange.value = [
-                moment(saved.startedDate).toDate(),
-                moment(saved.endedDate).toDate()
-            ];
+            filteredData.value.startedDate = saved.startedDate;
+            filteredData.value.endedDate = saved.endedDate;
         }
     }
+    dateRange.value = [
+        moment(filteredData.value.startedDate).toDate(),
+        moment(filteredData.value.endedDate).toDate()
+    ];
     await fetchTransaction();
 });
 
