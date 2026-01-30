@@ -27,8 +27,8 @@ const walletList = ref([]);
 const selectedPaymentMethod = ref('');
 const selectedType = ref('');
 const filteredData = ref({
-    startedDate: moment().startOf('month').format('YYYY-MM-DD HH:mm:ss'),
-    endedDate: moment().endOf('month').format('YYYY-MM-DD HH:mm:ss'),
+    startedDate: moment().startOf('week').format('YYYY-MM-DD HH:mm:ss'),
+    endedDate: moment().format('YYYY-MM-DD HH:mm:ss'),
 });
 
 // New DatePicker range state

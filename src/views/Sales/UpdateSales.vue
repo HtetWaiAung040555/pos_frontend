@@ -67,6 +67,7 @@ async function formSubmit(isPrint = false) {
         payment_id: formData.value.paymentId,
         status_id: formData.value.statusId,
         paid_amount: formData.value.paidAmount,
+        total_amount: formData.value.totalAmount,
     }
     await useSales.editSales(payload, route.query.id);
     if (useSales.error.length) {

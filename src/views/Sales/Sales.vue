@@ -51,8 +51,8 @@ import { getPresetRange } from '@/utils/datePresets';
     const productSearchValue = ref('');
 
     onMounted(async () => {
-        // default date-time range: start of current month at 00:00 to now
-        filteredData.value.startDateTimeLocal = moment().startOf('month').format('YYYY-MM-DDTHH:mm');
+        // default date-time range: start of current week at 00:00 to now
+        filteredData.value.startDateTimeLocal = moment().startOf('week').format('YYYY-MM-DDTHH:mm');
         filteredData.value.endDateTimeLocal = moment().format('YYYY-MM-DDTHH:mm');
 
         // restore saved filters for this page if present

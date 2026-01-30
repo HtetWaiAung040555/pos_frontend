@@ -55,6 +55,14 @@ input.p-inputtext.p-component.p-select-filter:focus {
 
 input[type="number"] {
   text-align: right;
+  -moz-appearance: textfield; /* Hide spinner in Firefox */
+}
+
+/* Hide Chrome, Safari, Edge number input spinners */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .p-select-empty-message {
@@ -112,4 +120,14 @@ input[type="number"] {
   background-color: #1d4ed8 !important;
   /* blue-700 */
   color: white !important;
+}
+
+.hidden-print {
+  display: none;
+}
+
+@media print {
+  .hidden-print {
+    display: block;
+  }
 }

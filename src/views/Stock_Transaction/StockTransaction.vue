@@ -21,7 +21,7 @@ const selectedReference = ref('');
 const selectedType = ref('');
 const dataList = ref([]);
 const filteredData = ref({
-    startedDate: moment().startOf('month').format('YYYY-MM-DDTHH:mm'),
+    startedDate: moment().startOf('week').format('YYYY-MM-DDTHH:mm'),
     endedDate: moment().format('YYYY-MM-DDTHH:mm'),
     referenceType: 'adjustment',
 });

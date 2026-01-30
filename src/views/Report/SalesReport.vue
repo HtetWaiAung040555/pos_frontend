@@ -46,7 +46,7 @@ const paymentMethodStore = usePaymentMethodStore();
 
 onMounted(async () => {
 	// default range: current month to today
-	const start = moment().startOf('month').toDate();
+	const start = moment().startOf('weeks').toDate();
 	const end = moment().endOf('day').toDate();
 
 	await Promise.all([
@@ -78,7 +78,6 @@ async function fetchSales() {
 		
 		const startedDate = start ? moment(start).startOf('day').format('YYYY-MM-DD HH:mm:ss') : "";
 		const endedDate = end ? moment(end).endOf('day').format('YYYY-MM-DD HH:mm:ss') : "";
-		console.log('Fetching sales from', startedDate, 'to', endedDate);
 		await useSales.fetchAllSales({
 			start_date: startedDate,
 			end_date: endedDate

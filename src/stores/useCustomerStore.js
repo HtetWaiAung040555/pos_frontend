@@ -97,6 +97,12 @@ export const useCustomerStore = defineStore('customer', {
             } finally {
                 this.loading = false;
             }
+        },
+        updateCustomerBalance(customerId, newBalance) {
+            const idx = this.customerList.findIndex(c => c.id === customerId);
+            if (idx !== -1) {
+            this.customerList[idx].balance = newBalance;
+            }
         }
 
     }
