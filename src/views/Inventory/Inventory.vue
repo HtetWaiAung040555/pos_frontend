@@ -10,6 +10,7 @@
     import { useFilterStore } from '@/stores/filterStore';
     import { usePermissionStore } from '@/stores/usePermissionStore';
     import BaseInput from '@/components/BaseInput.vue';
+    import BaseCheckbox from '@/components/BaseCheckbox.vue';
     import { useInventoryStore } from '@/stores/useInventoryStore';
 
     const router = useRouter();
@@ -23,6 +24,7 @@
     const endDate = ref('');
     const dataList = ref([]);
     const nearlyExpire = ref(false);
+    const negativeOnly = ref(false);
 
     onMounted(async () => {
         // restore saved filters
@@ -32,13 +34,12 @@
             if (saved.endDate) endDate.value = saved.endDate;
             if (saved.searchValue) searchValue.value = saved.searchValue;
             if (typeof saved.nearlyExpire !== 'undefined') nearlyExpire.value = saved.nearlyExpire;
+            if (typeof saved.negativeOnly !== 'undefined') negativeOnly.value = saved.negativeOnly;
         }
 
         await useInventory.fetchAllStock();
         const inventory = useInventory.stockList.filter(item => item.warehouse.id === JSON.parse(localStorage.getItem('user')).branch.warehouse_id);
         dataList.value = inventory;
-        console.log('Inventory List:', dataList.value);
-        // persist current filters
         saveFilters();
     });
 
@@ -49,6 +50,7 @@ function saveFilters() {
         endDate: endDate.value,
         searchValue: searchValue.value,
         nearlyExpire: nearlyExpire.value,
+        negativeOnly: negativeOnly.value,
     });
 }
 
@@ -56,7 +58,8 @@ watch([
     () => startDate.value,
     () => endDate.value,
     () => searchValue.value,
-    () => nearlyExpire.value
+    () => nearlyExpire.value,
+    () => negativeOnly.value
 ], () => {
     saveFilters();
 });
@@ -89,13 +92,19 @@ watch([
             "product.name",
         ]);
 
-        if (nearlyExpire.value) {
-            const today = moment().startOf('day');
-            const twoMonths = moment().add(2, 'months').endOf('day');
-            return searchedData.filter(item => item.expired_date && moment(item.expired_date).isBetween(today, twoMonths, undefined, '[]'));
+        let result = nearlyExpire.value
+            ? searchedData.filter((item) => {
+                const today = moment().startOf('day');
+                const twoMonths = moment().add(2, 'months').endOf('day');
+                return item.expired_date && moment(item.expired_date).isBetween(today, twoMonths, undefined, '[]');
+            })
+            : filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value });
+
+        if (negativeOnly.value) {
+            result = result.filter((item) => Number(item.qty) < 0);
         }
 
-        return filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value })
+        return result;
     });
 
     //Branch delete function
@@ -160,7 +169,7 @@ watch([
         >
             <!-- Filter Section -->
             <template #filters>
-                <div class="flex gap-2">
+                <div class="flex gap-2 items-center">
                     <BaseInput
                         size="sm"
                         type="date"
@@ -183,6 +192,7 @@ watch([
                         height="h-[35px]"
                         icon="pi pi-search"
                     />
+                    <BaseCheckbox v-model="negativeOnly" label="Negative Qty" size="sm" />
                     <BaseButton label="Nearly Expire" severity="secondary" @click="handleNearlyExpire" />
                 </div>
             </template>

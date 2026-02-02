@@ -1,9 +1,6 @@
 import { defineStore } from "pinia";
 import axios from "axios";
-import { API_URL } from "@/utils/config";
 import { normalizeApiError } from "@/utils/NormalizeApiError";
-
-const api_url = API_URL;
 
 export const useWalletStore = defineStore('wallet', {
     state: () => ({
