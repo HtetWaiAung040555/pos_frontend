@@ -40,6 +40,7 @@ const selectedPId = ref("");
 const selectedCustomer = ref({});
 const searchQuery = ref("");
 const barcodeInput = ref(null); // Hidden barcode input reference
+const pendingAddIds = ref(new Set());
 // Hold sales UI
 const visibleHoldList = ref(false);
 const holdList = ref([]);
@@ -116,6 +117,11 @@ watch(visible, (newVal) => {
 });
 
 async function addProduct(product) {
+  const productId = product?.id;
+  if (!productId) return;
+  if (pendingAddIds.value.has(productId)) return;
+  pendingAddIds.value.add(productId);
+
   let checkQty = product.qty <= 0;
   if (checkQty) {
     toast.add({
@@ -125,39 +131,42 @@ async function addProduct(product) {
       life: 3000
     });
   }
-  let exist = selectedProducts.value.find(p => p.id === product.id);
-  if (exist) {
-    selectedPId.value = product.id;
-    increaseQty(exist);
-    //visible.value = true;
-    return;
+  try {
+    let exist = selectedProducts.value.find(p => p.id === product.id);
+    if (exist) {
+      selectedPId.value = product.id;
+      increaseQty(exist);
+      //visible.value = true;
+      return;
+    }
+    const checkPromo = await axios.post(`/promotions/checkprice`, { product_id: product.id });
+    if (checkPromo.data.promotion_id) {
+      selectedProducts.value = [
+        ...selectedProducts.value,
+        {
+          ...product,
+          qty: 1,
+          promotion_id: checkPromo.data.promotion_id,
+          discount_value: checkPromo.data.discount_value,
+          discount_amount: checkPromo.data.discount_amount,
+          discount_type: checkPromo.data.discount_type,
+          discount_price: product.price - checkPromo.data.discount_amount
+        }
+      ];
+      selectedPId.value = product.id;
+    } else {
+      selectedProducts.value = [
+        ...selectedProducts.value,
+        {
+          ...product,
+          qty: 1
+        }
+      ];
+      selectedPId.value = product.id;
+    }
+  } finally {
+    pendingAddIds.value.delete(productId);
   }
-  const checkPromo = await axios.post(`/promotions/checkprice`, { product_id: product.id });
-  if (checkPromo.data.promotion_id) {
-    selectedProducts.value = [
-      ...selectedProducts.value,
-      {
-        ...product,
-        qty: 1,
-        promotion_id: checkPromo.data.promotion_id,
-        discount_value: checkPromo.data.discount_value,
-        discount_amount: checkPromo.data.discount_amount,
-        discount_type: checkPromo.data.discount_type,
-        discount_price: product.price - checkPromo.data.discount_amount
-      }
-    ];
-    selectedPId.value = product.id;
-  } else {
-    selectedProducts.value = [
-      ...selectedProducts.value,
-      {
-        ...product,
-        qty: 1
-      }
-    ];
-    selectedPId.value = product.id;
-  }
-
 }
 
 function openDialog(product) {
