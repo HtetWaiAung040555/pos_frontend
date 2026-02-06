@@ -174,18 +174,23 @@ const filteredSales = computed(() => {
 
 	return rows.filter(sale => {
 
-		if (!isCustomerReport.value && selectedCustomer.value && sale.customer?.id !== selectedCustomer.value.id) return false;
+		if (selectedCustomer.value && sale.customer?.id !== selectedCustomer.value.id) return false;
 		if (selectedWarehouse.value && sale.warehouse?.id !== selectedWarehouse.value.id) return false;
-		if (!isPaymentReport.value && selectedPaymentMethod.value && String(sale.payment_method?.id) !== String(selectedPaymentMethod.value)) return false;
+		if (selectedPaymentMethod.value && String(sale.payment_method?.id) !== String(selectedPaymentMethod.value)) return false;
 		if (selectedStatus.value && sale.status?.name && sale.status.name.toLowerCase() !== selectedStatus.value.toLowerCase()) return false;
 
-		if (!isProductReport.value && selectedProduct.value) {
+		if (selectedProduct.value) {
 			const hasProduct = (sale.details || []).some(d => d.product?.id === selectedProduct.value.id);
 			if (!hasProduct) return false;
 		}
 		return true;
 	});
 });
+
+const matchesSelectedProduct = (detail) => {
+	if (!selectedProduct.value) return true;
+	return detail.product?.id === selectedProduct.value.id;
+};
 
 // Payment method: aggregate by payment method
 const paymentColumns = [
@@ -290,225 +295,97 @@ const discountRows = computed(() => {
 // Amount view rows
 const amountColumns = [
     { key: 'no', label: '#' },
-	{ key: 'invoice', label: 'Invoice' },
-	{ key: 'date', label: 'Date' },
-	{ key: 'customer', label: 'Customer' },
 	{ key: 'warehouse', label: 'Warehouse' },
+	{ key: 'customer', label: 'Customer' },
 	{ key: 'payment', label: 'Payment' },
-	{ key: 'status', label: 'Status' },
-	{ key: 'amount', label: 'Amount' },
+	{ key: 'amount', label: 'Amount', align: 'right', formatter: (row) => Number(row.amount || 0).toLocaleString('en-us') },
 ];
 
 const amountRows = computed(() => {
-	return (filteredSales.value || []).map((s, index) => ({
-		no: index + 1,
-		invoice: s.id,
-		date: s.sale_date ? moment(s.sale_date).format('DD-MM-YYYY HH:mm') : '-',
-		customer: s.customer?.name || '-',
-		warehouse: s.warehouse?.name || '-',
-		payment: s.payment_method?.name || '-',
-		status: s.status?.name || '-',
-		amount: Number(s.total_amount || 0).toLocaleString('en-us'),
-	}));
-});
-
-// Product sales: aggregate by product
-const productColumns = [
-	{ key: 'no', label: '#' },
-	{ key: 'product', label: 'Product' },
-	{ key: 'qty', label: 'Total Qty' },
-	{ key: 'amount', label: 'Total Amount', formatter: (row) => Number(row.amount || 0).toLocaleString('en-us') },
-];
-
-const productRows = computed(() => {
 	const totals = new Map();
-
-	(filteredSales.value || []).forEach(sale => {
-		(sale.details || []).forEach(detail => {
-			const productId = detail.product?.id;
-			if (!productId) return;
-
-			const qty = Number(detail.quantity || 0);
-			const amount = Number(detail.total || 0);
-			const entry = totals.get(productId) || {
-				product: detail.product?.name || 'Unknown',
-				orders: 0,
-				qty: 0,
-				amount: 0,
-			};
-
-			entry.orders += 1;
-			entry.qty += qty;
-			entry.amount += amount;
-			totals.set(productId, entry);
-		});
-	});
-
-	return Array.from(totals.values())
-		.sort((a, b) => b.amount - a.amount || b.qty - a.qty)
-		.map((item, index) => ({
-			no: index + 1,
-			product: item.product,
-			orders: item.orders,
-			qty: Number(item.qty || 0),
-			amount: Number(item.amount || 0),
-		}));
-});
-
-// Product details view rows
-const productDetailColumns = [
-	{ key: 'no', label: '#' },
-	{ key: 'product', label: 'Product' },
-	{ key: 'invoice', label: 'Invoice', formatter: (row) => row.invoice, onClick: (row) => {
-		router.push({ name: 'View Sales', query: { id: row.invoice } });
-	}},
-	{ key: 'date', label: 'Sales Date' },
-	{ key: 'price', label: 'Price' },
-	{ key: 'qty', label: 'Qty' },
-	{ key: 'amount', label: 'Total Amount', formatter: (row) => Number(row.amount || 0).toLocaleString('en-us') },
-];
-
-const productDetailRows = computed(() => {
-	const grouped = new Map();
-
-	(filteredSales.value || []).forEach(sale => {
-		(sale.details || []).forEach(detail => {
-			const productId = detail.product?.id;
-			if (!productId) return;
-
-			const invoice = sale.id;
-			const saleDate = sale.sale_date ? moment(sale.sale_date).format('DD-MM-YYYY HH:mm') : '-';
-			const qty = Number(detail.quantity || 0);
-			const amount = Number(detail.total || 0);
-			const salePrice = detail.discount_price == 0 ? detail.price : detail.discount_price;
-			const entry = grouped.get(productId) || {
-				product: detail.product?.name || 'Unknown',
-				rows: [],
-			};
-
-			entry.rows.push({
-				product: detail.product?.name || 'Unknown',
-				date: saleDate,
-				invoice,
-				qty,
-				amount,
-				price: salePrice,
-			});
-			grouped.set(productId, entry);
-		});
-	});
-
-	const flat = [];
-	grouped.forEach(entry => {
-		entry.rows
-			.sort((a, b) => b.qty - a.qty)
-			.forEach((row, idx) => {
-				flat.push({
-					product: idx === 0 ? row.product : '',
-					invoice: row.invoice,
-					date: row.date,
-					price: row.price,
-					qty: row.qty,
-					amount: Number(row.amount || 0),
-				});
-			});
-	});
-
-	return flat.map((row, index) => ({
-		no: index + 1,
-		product: row.product,
-		invoice: row.invoice,
-		date: row.date,
-		price: row.price,
-		qty: row.qty,
-		amount: row.amount,
-	}));
-});
-
-// Customer sales: aggregate by customer
-const customerColumns = [
-	{ key: 'no', label: '#' },
-	{ key: 'customerName', label: 'Name' },
-	{ key: 'orders', label: 'Orders' },
-	{ key: 'amount', label: 'Total Amount' },
-];
-
-const customerRows = computed(() => {
-	const totals = new Map();
-
-	(filteredSales.value || []).forEach(sale => {
-		const customerId = sale.customer?.id;
-		if (!customerId) return;
-
-		const amount = Number(sale.total_amount || 0);
-		const qty = (sale.details || []).reduce((sum, d) => sum + Number(d.quantity || 0), 0);
-
-		const entry = totals.get(customerId) || {
-			customerId: customerId,
-			customerName: sale.customer?.name || 'Unknown',
-			orders: 0,
-			qty: 0,
+	(filteredSales.value || []).forEach((s) => {
+		const warehouseName = s.warehouse?.name || 'Unknown Warehouse';
+		const customerName = s.customer?.name || 'Unknown Customer';
+		const paymentName = s.payment_method?.name || 'Unknown';
+		const key = `${s.warehouse?.id}-${s.customer?.id}-${s.payment_method?.id}`;
+		const entry = totals.get(key) || {
+			warehouse: warehouseName,
+			customer: customerName,
+			payment: paymentName,
 			amount: 0,
 		};
-
-		entry.orders += 1;
-		entry.qty += qty;
-		entry.amount += amount;
-		totals.set(customerId, entry);
+		entry.amount += Number(s.total_amount || 0);
+		totals.set(key, entry);
 	});
 
-	return Array.from(totals.values())
-		.sort((a, b) => b.amount - a.amount || b.qty - a.qty)
-		.map((item, index) => ({
+	const rows = Array.from(totals.values()).sort((a, b) => {
+		const w = a.warehouse.localeCompare(b.warehouse);
+		if (w !== 0) return w;
+		const c = a.customer.localeCompare(b.customer);
+		if (c !== 0) return c;
+		return a.payment.localeCompare(b.payment);
+	});
+
+	let lastWarehouse = null;
+	let lastCustomer = null;
+
+	return rows.map((row, index) => {
+		const showWarehouse = row.warehouse !== lastWarehouse;
+		const showCustomer = showWarehouse || row.customer !== lastCustomer;
+
+		const displayWarehouse = showWarehouse ? row.warehouse : '';
+		const displayCustomer = showCustomer ? row.customer : '';
+
+		lastWarehouse = row.warehouse;
+		lastCustomer = row.customer;
+
+		return {
 			no: index + 1,
-			customerId: item.customerId,
-			customerName: item.customerName,
-			orders: item.orders,
-			qty: Number(item.qty || 0),
-			amount: Number(item.amount || 0),
-		}));
+			warehouse: displayWarehouse,
+			customer: displayCustomer,
+			payment: row.payment,
+			amount: Number(row.amount || 0),
+		};
+	});
 });
 
-// Customer details rows (per sale)
-const customerDetailColumns = [
+// amount details rows
+const amountDetailColumns = [
 	{ key: 'no', label: '#' },
-	{ key: 'customerId', label: 'Customer ID' },
-	{ key: 'customerName', label: 'Customer' },
+	{ key: 'warehouse', label: 'Warehouse' },
 	{ key: 'invoice', label: 'Invoice', formatter: (row) => row.invoice, onClick: (row) => {
 		router.push({ name: 'View Sales', query: { id: row.invoice } });
 	}},
 	{ key: 'date', label: 'Sales Date' },
-	{ key: 'qty', label: 'Qty' },
-	{ key: 'amount', label: 'Total Amount' },
+	{ key: 'status', label: 'Status' },
+	{ key: 'customer', label: 'Customer' },
+	{ key: 'payment', label: 'Payment' },
+	{ key: 'amount', label: 'Amount', align: 'right', formatter: (row) => Number(row.amount || 0).toLocaleString('en-us') },
 ];
 
-const customerDetailRows = computed(() => {
+// Prepare amount detail rows
+const amountDetailRows = computed(() => {
 	const grouped = new Map();
 
-	// Sort sales by customer id before grouping
-	const sortedSales = [...(filteredSales.value || [])].sort((a, b) => {
-		const aId = a.customer?.id ?? '';
-		const bId = b.customer?.id ?? '';
-		return String(aId).localeCompare(String(bId));
-	});
-
-	sortedSales.forEach(sale => {
-		const customerId = sale.customer?.id;
-		if (!customerId) return;
-
-		const amount = Number(sale.total_amount || 0);
-		const qty = (sale.details || []).reduce((sum, d) => sum + Number(d.quantity || 0), 0);
-		const date = sale.sale_date ? moment(sale.sale_date).format('DD-MM-YYYY HH:mm') : '-';
-		const invoice = sale.id;
-
-		const entry = grouped.get(customerId) || {
-			customerId: customerId,
-			customerName: sale.customer?.name || 'Unknown',
+	(filteredSales.value || []).forEach(sale => {
+		const warehouseId = sale.warehouse?.id || 'unknown';
+		const customerId = sale.customer?.id || 'unknown';
+		const key = `${warehouseId}-${customerId}`;
+		const entry = grouped.get(key) || {
+			warehouse: sale.warehouse?.name || 'Unknown Warehouse',
+			customer: sale.customer?.name || 'Unknown Customer',
 			rows: [],
 		};
 
-		entry.rows.push({ customerId: entry.customerId, customerName: entry.customerName, invoice, date, qty, amount });
-		grouped.set(customerId, entry);
+		entry.rows.push({
+			invoice: sale.id,
+			date: sale.sale_date ? moment(sale.sale_date).format('DD-MM-YYYY HH:mm') : '-',
+			status: sale.status?.name || 'Unknown',
+			customer: sale.customer?.name || 'Unknown Customer',
+			payment: sale.payment_method?.name || 'Unknown',
+			amount: Number(sale.total_amount || 0),
+		});
+		grouped.set(key, entry);
 	});
 
 	const flat = [];
@@ -517,26 +394,341 @@ const customerDetailRows = computed(() => {
 			.sort((a, b) => moment(b.date, 'DD-MM-YYYY HH:mm').valueOf() - moment(a.date, 'DD-MM-YYYY HH:mm').valueOf())
 			.forEach((row, idx) => {
 				flat.push({
-					customerId: idx === 0 ? row.customerId : '',
-					customerName: idx === 0 ? row.customerName : '',
+					warehouse: idx === 0 ? entry.warehouse : '',
 					invoice: row.invoice,
 					date: row.date,
-					qty: row.qty,
-					amount: row.amount,
+					status: row.status,
+					customer: idx === 0 ? entry.customer : '',
+					payment: row.payment,
+					amount: Number(row.amount || 0),
 				});
 			});
 	});
-
 	return flat.map((row, index) => ({
 		no: index + 1,
-		customerId: row.customerId,
-		customerName: row.customerName,
+		warehouse: row.warehouse,
 		invoice: row.invoice,
 		date: row.date,
-		qty: row.qty,
-		amount: row.amount,
+		status: row.status,
+		customer: row.customer,
+		payment: row.payment,
+		amount: Number(row.amount || 0),
 	}));
 });
+
+// Product sales: aggregate by product
+const productColumns = [
+	{ key: 'no', label: '#' },
+	{ key: 'warehouse', label: 'Warehouse' },
+	{ key: 'barcode', label: 'Barcode' },
+	{ key: 'product', label: 'Product' },
+	{ key: 'qty', label: 'Total Qty', align: 'right' },
+	{ key: 'amount', label: 'Total Amount', align: 'right', formatter: (row) => Number(row.amount || 0).toLocaleString('en-us') },
+];
+
+const productRows = computed(() => {
+	const totals = new Map();
+
+	(filteredSales.value || []).forEach(sale => {
+		(sale.details || []).forEach(detail => {
+			if (!matchesSelectedProduct(detail)) return;
+			const productId = detail.product?.id;
+			const warehouseId = sale.warehouse?.id || 'unknown';
+			const key = `${productId}-${warehouseId}`;
+
+			const qty = Number(detail.quantity || 0);
+			const amount = Number(detail.total || 0);
+			const entry = totals.get(key) || {
+				warehouse: sale.warehouse?.name || 'Unknown Warehouse',
+				product: detail.product?.name || 'Unknown',
+				barcode: detail.product?.barcode || '',
+				orders: 0,
+				qty: 0,
+				amount: 0,
+			};
+
+			entry.orders += 1;
+			entry.qty += qty;
+			entry.amount += amount;
+			totals.set(key, entry);
+		});
+	});
+
+	let lastWarehouse = null;
+
+	return Array.from(totals.values())
+		.sort((a, b) => b.amount - a.amount || b.qty - a.qty)
+		.map((item, index) => {
+			const showWarehouse = item.warehouse !== lastWarehouse;
+
+			const displayWarehouse = showWarehouse ? item.warehouse : '';
+
+			lastWarehouse = item.warehouse;
+
+			return {
+				no: index + 1,
+				warehouse: displayWarehouse,
+				product: item.product,
+				barcode: item.barcode,
+				orders: item.orders,
+				qty: Number(item.qty || 0),
+				amount: Number(item.amount || 0),
+			}
+		});
+});
+
+// Product details view rows
+const productDetailColumns = [
+	{ key: 'no', label: '#' },
+	{ key: 'invoice', label: 'Invoice', formatter: (row) => row.invoice, onClick: (row) => {
+		router.push({ name: 'View Sales', query: { id: row.invoice } });
+	}},
+	{ key: 'date', label: 'Sales Date', formatter: (row) => row.date ? moment(row.date).format('DD-MM-YYYY HH:mm') : '' },
+	{ key: 'warehouse', label: 'Warehouse' },
+	{ key: 'status', label: 'Status' },
+	{ key: 'barcode', label: 'Barcode' },
+	{ key: 'product', label: 'Product' },
+	{ key: 'qty', label: 'Qty', align: 'right' },
+	{ key: 'price', label: 'Price', align: 'right', formatter: (row) => Number(row.price || 0).toLocaleString('en-us') },
+	{ key: 'amount', label: 'Total Amount', align: 'right', formatter: (row) => Number(row.amount || 0).toLocaleString('en-us') },
+];
+
+const productDetailRows = computed(() => {
+	const grouped = new Map();
+
+	(filteredSales.value || []).forEach(sale => {
+		const warehouseName = sale.warehouse?.name || 'Unknown Warehouse';
+		const warehouseId = sale.warehouse?.id || 'unknown';
+		const ts = sale.sale_date ? new Date(sale.sale_date).getTime() : 0;
+
+		(sale.details || []).forEach(detail => {
+			if (!matchesSelectedProduct(detail)) return;
+
+			const product = detail.product;
+			if (!product?.id) return;
+
+			const key = `${product.id}-${warehouseId}`;
+			const entry = grouped.get(key) || {
+				productName: product.name || 'Unknown',
+				barcode: product.barcode || '',
+				warehouse: warehouseName,
+				rows: [],
+			};
+
+			entry.rows.push({
+				productName: product.name || 'Unknown',
+				barcode: product.barcode || '',
+				warehouse: warehouseName,
+				ts,
+				invoice: sale.id,
+				qty: Number(detail.quantity || 0),
+				amount: Number(detail.total || 0),
+				price: detail.promotion?.id ? detail.discount_price : detail.price,
+				status: sale.status?.name || 'Unknown',
+			});
+
+			grouped.set(key, entry);
+		});
+	});
+
+	const flat = [];
+	let last = { productName: null, barcode: null, warehouse: null, invoice: null };
+
+	grouped.forEach(entry => {
+		entry.rows
+			.sort((a, b) => b.ts - a.ts)
+			.forEach((row) => {
+
+				const showProduct = row.productName !== last.productName;
+				const showBarcode =  row.barcode !== last.barcode;
+				const showWarehouse = row.warehouse !== last.warehouse;
+				const showInvoice = row.invoice !== last.invoice;
+
+				flat.push({
+					product: showProduct ? row.productName : '',
+					barcode: showBarcode ? row.barcode : '',
+					warehouse: showWarehouse ? row.warehouse : '',
+					invoice: showInvoice ? row.invoice : '',
+					date: showInvoice ? row.ts : '',
+					price: row.price,
+					qty: row.qty,
+					amount: row.amount,
+					status: showInvoice ? row.status : '',
+				});
+
+				last = {
+					productName: row.productName,
+					barcode: row.barcode,
+					warehouse: row.warehouse,
+					invoice: row.invoice,
+				};
+			});
+	});
+
+	return flat.map((row, i) => ({ no: i + 1, ...row}));
+});
+
+
+// Customer sales: aggregate by customer
+const customerColumns = [
+	{ key: 'no', label: '#' },
+	{ key: 'warehouse', label: 'Warehouse' },
+	{ key: 'customerId', label: 'Customer ID' },
+	{ key: 'customerName', label: 'Name' },
+	{ key: 'product', label: 'Product' },
+	{ key: 'qty', label: 'Total Qty', align: 'right' },
+	{ key: 'amount', label: 'Total Amount', align: 'right', formatter: (row) => Number(row.amount || 0).toLocaleString('en-us') },
+];
+
+const customerRows = computed(() => {
+	const prodGrouped = new Map();
+
+	(filteredSales.value || []).forEach(sale => {
+		const customer = sale.customer;
+		if (!customer?.id) return;
+
+		(sale.details || []).forEach(detail => {
+			if (!matchesSelectedProduct(detail)) return;
+
+			const key = `${customer.id}-${detail.product?.id}-${sale.warehouse?.id}`;
+
+			const entry = prodGrouped.get(key) || {
+				customerId: customer.id,
+				customerName: customer.name || 'Unknown',
+				warehouse: sale.warehouse?.name || 'Unknown Warehouse',
+				product: detail.product?.name || 'Unknown',
+				qty: 0,
+				amount: 0,
+			};
+
+			entry.qty += Number(detail.quantity || 0);
+			entry.amount += Number(detail.total || 0);
+
+			prodGrouped.set(key, entry);
+		});
+	});
+
+	const flat = [...prodGrouped.values()].sort((a, b) =>
+		a.customerName.localeCompare(b.customerName) ||
+		a.warehouse.localeCompare(b.warehouse) ||
+		a.product.localeCompare(b.product)
+	);
+
+	let lastCustomerId = null;
+	let lastWarehouse = null;
+
+	return flat.map((row, index) => {
+		const showCustomer = row.customerId !== lastCustomerId;
+		const showWarehouse = showCustomer || row.warehouse !== lastWarehouse;
+
+		lastCustomerId = row.customerId;
+		lastWarehouse = row.warehouse;
+
+		return {
+			no: index + 1,
+			customerId: showCustomer ? row.customerId : '',
+			customerName: showCustomer ? row.customerName : '',
+			warehouse: showWarehouse ? row.warehouse : '',
+			product: row.product,
+			qty: row.qty,
+			amount: row.amount,
+			amountFormatted: row.amount.toLocaleString('en-US'),
+		};
+	});
+});
+
+
+const customerDetailColumns = [
+	{ key: 'no', label: '#' },
+	{ key: 'invoice', label: 'Invoice', formatter: (row) => row.invoice, onClick: (row) => {
+		router.push({ name: 'View Sales', query: { id: row.invoice } });
+	}},
+	{ key: 'warehouse', label: 'Warehouse' },
+	{ key: 'status', label: 'Status' },
+	{ key: 'date', label: 'Sales Date' },
+	{ key: 'customerId', label: 'Customer ID' },
+	{ key: 'customerName', label: 'Customer' },
+	{ key: 'product', label: 'Product' },
+	{ key: 'qty', label: 'Qty', align: 'right' },
+	{ key: 'price', label: 'Price', align: 'right', formatter: (row) => Number(row.price || 0).toLocaleString('en-us') },
+	{ key: 'amount', label: 'Total Amount', align: 'right', formatter: (row) => Number(row.amount || 0).toLocaleString('en-us') },
+];
+
+// Customer details rows (per sale)
+const customerDetailRows = computed(() => {
+  const sales = filteredSales.value || [];
+
+  const sortedSales = [...sales].sort((a, b) =>
+    (a.customer?.name || '').localeCompare(b.customer?.name || '')
+  );
+
+  const grouped = new Map();
+
+  sortedSales.forEach(sale => {
+    if (!sale.customer?.id) return;
+
+    const key = sale.customer.id;
+    const entry = grouped.get(key) || {
+      customerId: sale.customer.id,
+      customerName: sale.customer.name,
+      rows: [],
+    };
+
+	    (sale.details || []).forEach(detail => {
+	      if (!matchesSelectedProduct(detail)) return;
+      entry.rows.push({
+        customerId: entry.customerId,
+        customerName: entry.customerName,
+        invoice: sale.id,
+		ts: sale.sale_date ? new Date(sale.sale_date).getTime() : 0,
+        date: sale.sale_date ? moment(sale.sale_date).format('DD-MM-YYYY HH:mm') : '-',
+        warehouse: sale.warehouse?.name || 'Unknown Warehouse',
+        status: sale.status?.name || 'Unknown',
+        product: detail.product?.name || 'Unknown',
+        price: detail.promotion?.id ? detail.discount_price : detail.price,
+        qty: Number(detail.quantity || 0),
+        amount: Number(detail.total || 0),
+      });
+    });
+
+    grouped.set(key, entry);
+  });
+
+  const flat = [];
+  let last = { customerId: null, invoice: null, warehouse: null };
+
+  grouped.forEach(entry => {
+    entry.rows
+      .sort((a, b) => b.ts - a.ts)
+      .forEach(row => {
+        const showCustomer = row.customerId !== last.customerId;
+        const showInvoice = row.invoice !== last.invoice;
+        const showWarehouse = row.warehouse !== last.warehouse;
+
+        flat.push({
+          customerId: showCustomer ? row.customerId : '',
+          customerName: showCustomer ? row.customerName : '',
+          invoice: showInvoice ? row.invoice : '',
+          date: showInvoice ? row.date : '',
+          warehouse: showWarehouse ? row.warehouse : '',
+          status: showInvoice ? row.status : '',
+          product: row.product,
+          qty: row.qty,
+          price: row.price,
+          amount: row.amount,
+        });
+
+        last = {
+          customerId: row.customerId,
+          invoice: row.invoice,
+          warehouse: row.warehouse,
+        };
+      });
+  });
+
+  return flat.map((row, i) => ({ no: i + 1, ...row }));
+});
+
 
 const invoiceColumns = [
 	{ key: 'invoice', label: 'Invoice No' },
@@ -598,11 +790,12 @@ const paymentOptions = computed(() => {
 
 const reportTypeOptions = [
 	{ label: 'By Amount', value: 'amount' },
-	{ label: 'Details', value: 'details' },
+	{ label: 'By Invoice', value: 'details' },
 	{ label: 'Product Sales', value: 'product' },
 	{ label: 'Customer Sales', value: 'customer' },
-	{ label: 'Payment Method', value: 'payment' },
 	{ label: 'Discount', value: 'discount' },
+	//{ label: 'Payment Method', value: 'payment' },
+	
 ];
 </script>
 
@@ -674,12 +867,21 @@ const reportTypeOptions = [
 		<!-- Amount View -->
 		<div v-if="reportType === 'amount'" class="mt-3">
 			<DataTable
-				:columns="amountColumns"
-				:rows="amountRows"
+				:columns="viewMode === 'summary' ? amountColumns : amountDetailColumns"
+				:rows="viewMode === 'summary' ? amountRows : amountDetailRows"
 				:isAction="false"
-				:defaultSort="{ key: 'date', order: 'desc' }"
+				:defaultSort="{ key: 'no', order: 'asc' }"
 				:filename="'sales_report_amount'"
 				:isLoading="useSales.loading"
+				:totals="{
+					enabled: true,
+					showSubtotal: viewMode === 'details',
+					showGrandTotal: true,
+					groupBy: 'customer',
+					groupCarryForward: true,
+					columns: [{ key: 'amount', type: 'sum', formatter: v => Number(v).toLocaleString('en-us') }],
+					grandTotalLabel: 'Grand Total',
+				}"
 			>
              <template #filters>
                 <div></div>
@@ -766,6 +968,18 @@ const reportTypeOptions = [
 				:isAction="false"
 				:filename="viewMode === 'summary' ? 'sales_report_product' : 'sales_report_product_details'"
 				:isLoading="useSales.loading"
+				:totals="{
+					enabled: true,
+					showSubtotal: viewMode === 'details',
+					showGrandTotal: true,
+					groupBy: 'product',
+					groupCarryForward: true,
+					columns: [
+						{ key: 'qty', type: 'sum', formatter: v => Number(v).toLocaleString('en-us') },
+						{ key: 'amount', type: 'sum', formatter: v => Number(v).toLocaleString('en-us') }
+					],
+					grandTotalLabel: 'Grand Total',
+				}"
 			/>
 		</div>
 
@@ -774,10 +988,21 @@ const reportTypeOptions = [
 			<DataTable
 				:columns="viewMode === 'summary' ? customerColumns : customerDetailColumns"
 				:rows="viewMode === 'summary' ? customerRows : customerDetailRows"
-				:defaultSort="viewMode === 'summary' ? { key: 'amount', order: 'desc' } : { key: 'no', order: 'asc' }"
+				:defaultSort="{ key: 'no', order: 'asc' }"
 				:isAction="false"
 				:filename="viewMode === 'summary' ? 'sales_report_customer' : 'sales_report_customer_details'"
 				:isLoading="useSales.loading"
+				:totals="{
+					enabled: true,
+					showGrandTotal: true,
+					groupBy: 'customerName',
+					groupCarryForward: true,
+					columns: [
+						{ key: 'qty', type: 'sum', formatter: v => Number(v).toLocaleString('en-us') },
+						{ key: 'amount', type: 'sum', formatter: v => Number(v).toLocaleString('en-us') }
+					],
+					grandTotalLabel: 'Grand Total',
+				}"
 			/>
 		</div>
 
@@ -845,7 +1070,6 @@ const reportTypeOptions = [
 							filter
 							optionLabel="name"
 							placeholder="Select a customer"
-							:disabled="isCustomerReport"
 							class="w-full h-[35px] items-center mt-1"
 						/>
 					</div>
@@ -858,7 +1082,6 @@ const reportTypeOptions = [
 							filter
 							optionLabel="name"
 							placeholder="Select a product"
-							:disabled="isProductReport"
 							class="w-full h-[35px] items-center mt-1"
 						/>
 					</div>
