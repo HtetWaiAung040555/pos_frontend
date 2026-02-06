@@ -90,6 +90,7 @@ watch([
     const filteredRows = computed(() => {
         const searchedData = filter.searchFunction(dataList.value, searchValue.value, [
             "product.name",
+            "product.barcode",
         ]);
 
         let result = nearlyExpire.value

@@ -7,7 +7,7 @@ const api_url = API_URL;
 
 export const useCounterStore = defineStore('counter', {
     state: () => ({
-        counterList: null,
+        counterList: [],
         loading: false,
         deleteLoading: false,
         data: null,

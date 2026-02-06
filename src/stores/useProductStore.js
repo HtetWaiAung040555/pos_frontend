@@ -84,5 +84,11 @@ export const useProductStore = defineStore('product', {
                 this.loading = false;
             }
         },
+        async updateProductStock(productId, qty) {
+            const idx = this.productList.findIndex(p => p.id === productId);
+            if (idx !== -1) {
+                this.productList[idx].stock -= qty;
+            }
+        }
     }
 });

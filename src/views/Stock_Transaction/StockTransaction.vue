@@ -11,12 +11,14 @@ import BaseInput from '@/components/BaseInput.vue';
 import { useStockTransactionStore } from '@/stores/useStockTransactionStore';
 import { watch } from 'vue';
 import { getPresetRange } from '@/utils/datePresets';
+import DashboardCard from '@/components/DashboardCard.vue';
 
 const toast = useToast();
 const filter = useFilterStore();
 const useStockTransaction = useStockTransactionStore();
 
 const searchValue = ref('');
+const searchReference = ref('');
 const selectedReference = ref('');
 const selectedType = ref('');
 const dataList = ref([]);
@@ -38,6 +40,7 @@ onMounted(async () => {
         if (saved.selectedReference) selectedReference.value = saved.selectedReference;
         if (saved.selectedType) selectedType.value = saved.selectedType;
         if (saved.searchValue) searchValue.value = saved.searchValue;
+        if (saved.searchReference) searchReference.value = saved.searchReference;
     }
     if (filteredData.value.startedDate && filteredData.value.endedDate) {
         dateRange.value = [
@@ -81,6 +84,7 @@ function saveFilters() {
         selectedReference: selectedReference.value,
         selectedType: selectedType.value,
         searchValue: searchValue.value,
+        searchReference: searchReference.value,
     });
 }
 
@@ -143,7 +147,8 @@ watch([
     () => filteredData.value.endedDate,
     () => selectedReference.value,
     () => selectedType.value,
-    () => searchValue.value
+    () => searchValue.value,
+    () => searchReference.value,
 ], () => {
     saveFilters();
 });
@@ -168,19 +173,28 @@ const filteredRows = computed(() => {
     if (selectedType.value) {
         list = list.filter(st => String(st.type) === String(selectedType.value));
     }
-    // search across product name, reference id
+    // search across product name, barcode
     if (searchValue.value && searchValue.value.trim() !== '') {
         const q = searchValue.value.toLowerCase().trim();
         list = list.filter(st => {
             const product = st.inventory.product?.name || '';
+            const barcode = st.inventory.product?.barcode || '';
             const reference_id = st.reference_id ? String(st.reference_id) : '';
-            return product.toLowerCase().includes(q) || reference_id.toLowerCase().includes(q);
+            return product.toLowerCase().includes(q) || barcode.toLowerCase().includes(q);
+        });
+    }
+    // search across reference id
+    if (searchReference.value && searchReference.value.trim() !== '') {
+        const q = searchReference.value.toLowerCase().trim();
+        list = list.filter(st => {
+            const reference_id = st.reference_id ? String(st.reference_id) : '';
+            return reference_id.toLowerCase().includes(q);
         });
     }
     return list;
 });
 
-//Branch delete function
+//stock delete function
 async function deleteHandle(id) {
     await useUser.deleteUser(id);
     if (useUser.error) {
@@ -194,6 +208,28 @@ async function deleteHandle(id) {
     }
 }
 
+const stockInQty = computed(() => {
+    return filteredRows.value.reduce((total, st) => {
+        if (st.type === 'in') {
+            return total + st.quantity_change;
+        }
+        return total;
+    }, 0);
+});
+
+const stockOutQty = computed(() => {
+    return filteredRows.value.reduce((total, st) => {
+        if (st.type === 'out') {
+            return total + st.quantity_change;
+        }
+        return total;
+    }, 0);
+});
+
+const remainingStock = computed(() => {
+    return stockInQty.value - stockOutQty.value;
+});
+
 </script>
 
 <template>
@@ -201,6 +237,11 @@ async function deleteHandle(id) {
         <!-- Page Title -->
         <PageTitle title="Stock Transaction List">
         </PageTitle>
+        <div class="grid grid-cols-5 my-3 gap-x-4">
+            <DashboardCard title="Total Stock In" :value="stockInQty" icon="fa fa-plus" color="green" />
+            <DashboardCard title="Total Stock Out" :value="stockOutQty" icon="fa fa-minus" color="red" />
+            <DashboardCard title="Remaining Stock" :value="remainingStock" icon="fa fa-equals" color="blue" />
+        </div>
         <!-- DataTable -->
         <DataTable 
             :columns="columns" :rows="filteredRows" :isAction="false"
@@ -226,6 +267,7 @@ async function deleteHandle(id) {
                                     <BaseButton size="sm" label="This Week" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisWeek')" />
                                     <BaseButton size="sm" label="This Month" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisMonth')" />
                                     <BaseButton size="sm" label="This Year" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisYear')" />
+                                    <BaseButton size="sm" label="All" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('all')" />
                                 </div>
                                 <div class="flex gap-2 items-center">
                                     <div v-if="isDateLoading" class="flex items-center text-xs text-gray-600 gap-2">
@@ -252,7 +294,16 @@ async function deleteHandle(id) {
                     <BaseInput 
                         size="sm"
                         v-model="searchValue"
-                        placeholder="Search..."
+                        placeholder="Search by Product Name or Barcode"
+                        icon="pi pi-search"
+                        width="200px"
+                        height="h-[35px]"
+                    />
+
+                    <BaseInput 
+                        size="sm"
+                        v-model="searchReference"
+                        placeholder="Search by Reference ID"
                         icon="pi pi-search"
                         width="200px"
                         height="h-[35px]"

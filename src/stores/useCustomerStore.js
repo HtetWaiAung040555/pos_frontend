@@ -5,6 +5,7 @@ import { defineStore } from "pinia";
 export const useCustomerStore = defineStore('customer', {
     state: () => ({
         customerList: [],
+        singleCustomer: null,
         lastId: '',
         loading: false,
         deleteLoading: false,
@@ -30,7 +31,7 @@ export const useCustomerStore = defineStore('customer', {
             this.error = [];
             try {
                 const response = await axios.get(`/customers/${id}`);
-                this.customerList = response.data.data;
+                this.singleCustomer = response.data.data;
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

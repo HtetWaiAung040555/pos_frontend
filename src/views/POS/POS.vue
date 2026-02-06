@@ -59,6 +59,7 @@ const errorMsg = ref({
 const savedSalesData = ref({});
 const defaultCurrency = ref('Ks');
 const oldCustomerBalance = ref(0);
+const initialLoading = ref(false);
 
 const sortedHoldList = computed(() => {
   return [...(holdList.value || [])].sort((a, b) => {
@@ -69,6 +70,7 @@ const sortedHoldList = computed(() => {
 });
 
 onMounted(async () => {
+  initialLoading.value = true;
   await Promise.all([
     useCustomer.fetchAllCustomer(),
     usePromo.fetchAllPromo(),
@@ -78,6 +80,7 @@ onMounted(async () => {
   selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
   productList.value = useProduct.productList;
   userData.value = JSON.parse(localStorage.getItem('user'));
+  initialLoading.value = false;
 });
 
 const filteredProducts = computed(() => {
@@ -266,6 +269,20 @@ function onSelectEnter(e) {
 async function holdSale() {
   if (!selectedProducts.value || selectedProducts.value.length === 0) return;
 
+  await useCustomer.fetchCustomer(selectedCustomer.value.id);
+  if (useCustomer.singleCustomer.balance < totalAmount.value && salesData.value.paymentId == 3) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error Message',
+      detail: "Insufficient wallet balance.",
+      life: 3000
+    });
+    selectedCustomer.value = useCustomer.singleCustomer;
+    oldCustomerBalance.value = useCustomer.singleCustomer.balance || 0;
+    salesData.value.paymentId = useCustomer.singleCustomer.is_default ? 1 : 3;
+    return
+  }
+
   // Build payload expected by backend. Assumptions noted below.
   const payload = {
     customer_id: selectedCustomer.value?.id ?? null,
@@ -405,7 +422,27 @@ async function deleteHold(hold) {
   }
 }
 
+async function updateProductQty(ProductId, qty) {
+  const idx = productList.value.findIndex(p => p.id === ProductId);
+  if (idx !== -1) {
+    productList.value[idx].qty -= qty;
+  }
+}
+
 async function onPayClick() {
+  await useCustomer.fetchCustomer(selectedCustomer.value.id);
+  if (useCustomer.singleCustomer.balance < totalAmount.value && salesData.value.paymentId == 3) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error Message',
+      detail: "Insufficient wallet balance.",
+      life: 3000
+    });
+    selectedCustomer.value = useCustomer.singleCustomer;
+    oldCustomerBalance.value = useCustomer.singleCustomer.balance || 0;
+    salesData.value.paymentId = useCustomer.singleCustomer.is_default ? 1 : 3;
+    return
+  }
   if (selectedHold.value) {
     const productsChanged = !areHoldProductsEqual();
     const payload = {
@@ -504,6 +541,11 @@ async function onPayClick() {
         );
       }
 
+      await Promise.all(
+        selectedProducts.value.map(p => updateProductQty(p.id, p.qty)),
+        selectedProducts.value.map(p => useProduct.updateProductStock(p.id, p.qty)),
+      );
+
       await nextTick();
 
       setTimeout(() => {
@@ -514,12 +556,11 @@ async function onPayClick() {
       selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
       salesData.value.paymentId = 1;
       salesData.value.paidAmount = 0;
-      //router.push({ path: '/payment/create', query: { id: useSales.salesList.id } });
     }
   }
 }
 
-function onCustomerFilter(e) {
+async function onCustomerFilter(e) {
   const query = e.value?.trim()
   if (!query) return
 
@@ -530,8 +571,10 @@ function onCustomerFilter(e) {
 
   if (matched) {
     selectedCustomer.value = matched;
-    oldCustomerBalance.value = matched.balance || 0;
-    salesData.value.paymentId = matched.is_default ? 1 : 3;
+    await useCustomer.fetchCustomer(matched.id);
+    selectedCustomer.value = useCustomer.singleCustomer;
+    oldCustomerBalance.value = useCustomer.singleCustomer.balance || 0;
+    salesData.value.paymentId = useCustomer.singleCustomer.is_default ? 1 : 3;
 
     // Return focus to barcode scanning (important for Android)
     nextTick(() => {
@@ -596,9 +639,15 @@ function changePaymentMethod() {
   }
 }
 
-function changeCustomer() {
-  salesData.value.paymentId = selectedCustomer.value.is_default ? 1 : 3;
-  oldCustomerBalance.value = selectedCustomer.value.balance ?? 0;
+async function changeCustomer() {
+  await useCustomer.fetchCustomer(selectedCustomer.value.id);
+  selectedCustomer.value = useCustomer.singleCustomer;
+  salesData.value.paymentId = useCustomer.singleCustomer.is_default ? 1 : 3;
+  oldCustomerBalance.value = useCustomer.singleCustomer.balance ?? 0;
+}
+
+function clickCustomerSelect() {
+  console.log('Customer select clicked');
 }
 
 // Print only the slip section between the markers
@@ -691,7 +740,7 @@ function printSlip() {
         <!-- Scrollable product grid -->
         <div class="flex-1 overflow-y-auto mt-4 pr-1">
           <div class="grid grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-            <div v-if="useProduct.loading || useCustomer.loading || usePromo.loading" v-for="n in 18" :key="n"
+            <div v-if="initialLoading" v-for="n in 18" :key="n"
               class="w-full rounded-md p-4">
               <div class="flex animate-pulse space-x-4">
                 <div class="flex-1 space-y-6 py-1">
@@ -714,10 +763,18 @@ function printSlip() {
         <!-- Top: Customer & Payment selection -->
         <div class="shrink-0 mb-1 flex gap-x-2 items-center">
           <div class="flex flex-col gap-y-1">
-            <Select ref="customerSelect" v-model="selectedCustomer" :options="useCustomer.customerList" filter showClear
+            <Select 
+              ref="customerSelect" 
+              v-model="selectedCustomer" 
+              :options="useCustomer.customerList" 
+              filter 
+              :loading="useCustomer.loading"
+              showClear
               optionLabel="id" placeholder="Select a customer" class="h-[35px] items-center"
               @change="changeCustomer"
-              @filter="onCustomerFilter">
+              @filter="onCustomerFilter"
+              @click="clickCustomerSelect"
+            >
               <template #value="{ value }">
                 <div v-if="value" class="flex flex-col">
                   <span>{{ value.id }} | {{ value.name }}</span>
