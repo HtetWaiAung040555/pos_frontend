@@ -109,22 +109,18 @@ function initTotalsAcc() {
   totalsConfig.value.columns.forEach(col => {
     acc[col.key] = 0;
   });
-  console.log('Initialized totals accumulator:', acc);
   return acc;
 }
 
 function accumulateTotals(row, acc) {
   totalsConfig.value.columns.forEach(col => {
     const type = col.type || 'sum';
-    console.log(`Accumulating for column ${col.key} with type ${type}`);
     if (type === 'count') {
       acc[col.key] += 1;
       return;
     }
     const raw = getValueByPath(row, col.key);
-    console.log(`Raw value for column ${col.key}:`, raw);
     const val = Number(raw || 0);
-    console.log(`Adding value ${val} from row to total for column ${col.key}`);
     acc[col.key] += isNaN(val) ? 0 : val;
   });
 }
@@ -144,7 +140,6 @@ const displayRows = computed(() => {
     return baseRows;
   }
 
-  console.log('Calculating totals with config:', totalsConfig.value);
   const rowsWithTotals = [];
   const hasGroup = !!totalsConfig.value.groupBy;
   let currentGroup = null;
@@ -154,27 +149,21 @@ const displayRows = computed(() => {
 
   baseRows.forEach((row, idx) => {
     const rawGroupVal = hasGroup ? getValueByPath(row, totalsConfig.value.groupBy) : null;
-    console.log(`Row ${idx} group value (raw):`, rawGroupVal);
     const groupVal = hasGroup && totalsConfig.value.groupCarryForward && isEmptyGroupValue(rawGroupVal)
       ? lastNonEmptyGroup
       : rawGroupVal;
-
-    console.log(`Processing row ${idx}: group value =`, groupVal);
 
     if (hasGroup && !isEmptyGroupValue(rawGroupVal)) {
       lastNonEmptyGroup = rawGroupVal;
     }
 
-    console.log('Current row group value:', groupVal, 'Current group:', currentGroup);
     if (hasGroup && currentGroup !== null && groupVal !== currentGroup && totalsConfig.value.showSubtotal) {
       rowsWithTotals.push(makeTotalRow('subtotal', subtotalAcc, totalsConfig.value.subtotalLabel, currentGroup));
       subtotalAcc = initTotalsAcc();
-      console.log(`Subtotal for group ${currentGroup}:`, rowsWithTotals[rowsWithTotals.length - 1]);
     }
 
     if (hasGroup && currentGroup === null) {
       currentGroup = groupVal;
-      console.log(`Starting new group: ${currentGroup}`);
     }
 
     rowsWithTotals.push(row);
@@ -191,8 +180,6 @@ const displayRows = computed(() => {
   if (baseRows.length > 0 && totalsConfig.value.showGrandTotal) {
     rowsWithTotals.push(makeTotalRow('grandtotal', grandAcc, totalsConfig.value.grandTotalLabel, null));
   }
-
-  console.log('Final rows with totals:', rowsWithTotals);
 
   return rowsWithTotals;
 });

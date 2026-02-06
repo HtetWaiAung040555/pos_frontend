@@ -875,7 +875,7 @@ const reportTypeOptions = [
 				:isLoading="useSales.loading"
 				:totals="{
 					enabled: true,
-					showSubtotal: viewMode === 'detail',
+					showSubtotal: viewMode === 'details',
 					showGrandTotal: true,
 					groupBy: 'customer',
 					groupCarryForward: true,
@@ -970,7 +970,7 @@ const reportTypeOptions = [
 				:isLoading="useSales.loading"
 				:totals="{
 					enabled: true,
-					showSubtotal: viewMode === 'detail',
+					showSubtotal: viewMode === 'details',
 					showGrandTotal: true,
 					groupBy: 'product',
 					groupCarryForward: true,
