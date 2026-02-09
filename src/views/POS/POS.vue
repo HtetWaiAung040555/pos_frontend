@@ -612,6 +612,8 @@ async function createWallet() {
   }
   if (useWallet.walletList) {
     toast.add({ severity: 'success', summary: 'Success Message', detail: 'Wallet top-up successfully.', life: 3000 });
+
+    printSlip(false);
     await useCustomer.fetchAllCustomer();
     selectedCustomer.value = useCustomer.customerList.find(c => c.id === selectedCustomer.value.id);
     oldCustomerBalance.value = selectedCustomer.value.balance || 0;
@@ -651,8 +653,8 @@ function clickCustomerSelect() {
 }
 
 // Print only the slip section between the markers
-function printSlip() {
-  const slip = document.getElementById('slip-section');
+function printSlip(isSale = true) {
+  const slip = document.getElementById(isSale ? 'sales-slip' : 'wallet-slip');
   if (!slip) {
     alert('Slip section not found');
     return;
@@ -1008,7 +1010,7 @@ function printSlip() {
     <!-- Start of Slip Section-->
     <div v-if="savedSalesData"
       class="flex-[1.8] max-w-md w-full mx-auto p-6 bg-white shadow-lg border border-gray-300 rounded-sm text-sm font-mono text-black print-only hidden-print"
-      id="slip-section">
+      id="sales-slip">
       <!-- Header -->
       <header style="
             text-align: center;
@@ -1196,6 +1198,69 @@ function printSlip() {
       </footer>
     </div>
     <!-- End of Slip Section -->
+
+    <!-- Wallet Top-up Slip -->
+    <div id="wallet-slip"
+      class="max-w-md w-full mx-auto p-6 bg-white shadow-lg border border-gray-300 rounded-sm text-sm font-mono text-black print-only hidden-print">
+      <!-- Header -->
+      <header style="
+          text-align: center;
+          padding-bottom: 6px;
+          margin-bottom: 6px;
+          border-bottom: 1px solid black;">
+        <h1 class="text-lg font-bold">FUSION MART</h1>
+        <div>53 Street, Between 36 & 37 ST (MA-68/2), Ye Mon Taung Quater, Mandalay</div>
+        <div>Tel: +959740010055</div>
+      </header>
+
+      <!-- Info -->
+      <div style="
+          display: flex;
+          justify-content: space-between;
+          font-size: 12px;
+          margin-bottom: 8px;
+          padding-bottom: 4px;
+          border-bottom: 1px dashed black;
+        ">
+        <div>
+          <div><strong>Customer:</strong> {{ selectedCustomer?.name }}</div>
+          <div><strong>Date:</strong> {{ moment(walletData.payDate).format('DD/MM/YY HH:mm') }}</div>
+        </div>
+      </div>
+
+      <!-- Amount Section -->
+      <div style="text-align: right; margin-bottom: 16px;">
+        <!-- before -->
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span>Before Balance :</span>
+          <span style="font-weight: bold;">{{ `${defaultCurrency} ${Number(oldCustomerBalance).toLocaleString()}` }}</span>
+        </div>
+        <!-- top up -->
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <span>Top Up Amount ({{ walletData.paymentId == 1 ? 'Cash' : 'Kpay' }}) :</span>
+          <span style="font-weight: bold;">{{ `${defaultCurrency} ${Number(walletData.amount).toLocaleString()}` }}</span>
+        </div>
+        <!-- after -->
+        <div style="
+            display: flex;
+            justify-content: space-between;
+            font-size: large;
+            border-top: 1px solid black;
+            padding-top: 4px; ">
+          <span>After Balance :</span>
+          <span style="font-weight: bold;">{{ `${defaultCurrency} ${(Number(oldCustomerBalance) + Number(walletData.amount)).toLocaleString()}` }}</span>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <footer style="
+          text-align: center;
+          border-top: 1px dashed black;
+          padding-top: 8px;
+          font-size: 12px;">
+        <div>THANK YOU!</div>
+      </footer>
+    </div>
 
   </div>
 </template>

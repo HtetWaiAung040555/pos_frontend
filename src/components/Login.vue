@@ -3,8 +3,10 @@
     import { ref, onMounted } from 'vue';
     import { useUserStore } from '@/stores/useUserStore';
     import { useRouter } from 'vue-router';
+import { usePermissionStore } from '@/stores/usePermissionStore';
 
     const useUser = useUserStore();
+    const usePermission = usePermissionStore();
     const router = useRouter();
     const showPass = ref(false);
     const formData = ref(
@@ -29,7 +31,11 @@
         return
       }
       await useUser.loginUser({email: formData.value.email, password: formData.value.password});
-      router.push("/");
+      if (usePermission.can('Admin Panel', 'View')) {
+        router.push('/');
+      } else {
+        router.push('/pos');
+      }
     }
 
 </script>
