@@ -44,7 +44,7 @@ export const useCounterStore = defineStore('counter', {
             this.error = [];
             try {
                 const response = await axios.post(`/counters`, formData);
-                this.counterList = response.data.data;
+                this.data = response.data;
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

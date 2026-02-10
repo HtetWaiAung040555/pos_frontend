@@ -44,7 +44,7 @@ export const useCategoryStore = defineStore('category', {
             this.error = [];
             try {
                 const response = await axios.post(`/categories`, formData);
-                this.categoryList = response.data.data;
+                this.data = response.data;
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

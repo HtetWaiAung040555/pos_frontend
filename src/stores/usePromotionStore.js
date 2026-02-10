@@ -74,6 +74,17 @@ export const usePromotionStore = defineStore('promotion', {
             } finally {
                 this.deleteLoading = false;
             }
+        },
+        async syncFromCloud(data) {
+            this.loading = true;
+            this.error = [];
+            try {
+                const response = await axios.post(`/promotions/sync`, data);
+            } catch (err) {
+                this.error = normalizeApiError(err);
+            } finally {
+                this.loading = false;
+            }
         }
     }
 });

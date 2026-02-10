@@ -89,6 +89,17 @@ export const useProductStore = defineStore('product', {
             if (idx !== -1) {
                 this.productList[idx].stock -= qty;
             }
+        },
+        async syncFromCloud(data) {
+            this.loading = true;
+            this.error = [];
+            try {
+                const response = await axios.post(`/products/sync`, data);
+            } catch (err) {
+                this.error = normalizeApiError(err);
+            } finally {
+                this.loading = false;
+            }
         }
     }
 });

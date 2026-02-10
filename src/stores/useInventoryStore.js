@@ -87,5 +87,16 @@ export const useInventoryStore = defineStore('Inventory', {
                 this.deleteLoading = false;
             }
         },
+        async syncFromCloud(data) {
+            this.loading = true;
+            this.error = [];
+            try {
+                const response = await axios.post(`/inventories/sync`, data);
+            } catch (err) {
+                this.error = normalizeApiError(err);
+            } finally {
+                this.loading = false;
+            }
+        }
     }
 });

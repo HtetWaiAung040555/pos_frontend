@@ -794,7 +794,7 @@ function printSlip(isSale = true) {
             <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
               v-model="salesData.paymentId" @change="changePaymentMethod">
               <option value="1">Cash</option>
-              <option v-if="!selectedCustomer.is_default" value="3">Wallet</option>
+              <option v-if="!selectedCustomer?.is_default" value="3">Wallet</option>
               <option value="4">Kpay</option>
             </select>
           </div>

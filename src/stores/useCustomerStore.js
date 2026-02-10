@@ -99,13 +99,23 @@ export const useCustomerStore = defineStore('customer', {
                 this.loading = false;
             }
         },
-        updateCustomerBalance(customerId, newBalance) {
+        async updateCustomerBalance(customerId, newBalance) {
             const idx = this.customerList.findIndex(c => c.id === customerId);
             if (idx !== -1) {
             this.customerList[idx].balance = newBalance;
             }
+        },
+        async syncFromCloud(data) {
+            this.loading = true;
+            this.error = [];
+            try {
+                const response = await axios.post(`/customers/sync`, data);
+            } catch (err) {
+                this.error = normalizeApiError(err);
+            } finally {
+                this.loading = false;
+            }
         }
-
     }
 
 });

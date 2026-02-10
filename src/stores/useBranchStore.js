@@ -44,7 +44,7 @@ export const useBranchStore = defineStore('branch', {
             this.error = [];
             try {
                 const response = await axios.post(`/branches`, formData);
-                this.branchList = response.data.data;
+                this.data = response.data.data;
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

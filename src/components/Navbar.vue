@@ -9,6 +9,11 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
 import { Dialog, useToast } from 'primevue';
 import BaseInput from './BaseInput.vue';
 import SubTitle from './SubTitle.vue';
+import { useCustomerStore } from '@/stores/useCustomerStore';
+import { useInventoryStore } from '@/stores/useInventoryStore';
+import { useProductStore } from '@/stores/useProductStore';
+import { usePromotionStore } from '@/stores/usePromotionStore';
+import { useSaleStore } from '@/stores/useSalesStore';
 
 const collapseSidebar = useCollapseSidebar();
 const openDropdown = ref(false);
@@ -17,6 +22,11 @@ const router = useRouter();
 const route = useRoute();
 const useUser = useUserStore();
 const usePermission = usePermissionStore();
+const useCustomer = useCustomerStore();
+const useInventory = useInventoryStore();
+const useProduct = useProductStore();
+const usePromo = usePromotionStore();
+const useSales = useSaleStore();
 const toast = useToast();
 const userData = ref({});
 const errorMsg = ref({
@@ -25,6 +35,7 @@ const errorMsg = ref({
   password: "",
 });
 const openEditModal = ref(false);
+const isSyncLoading = ref(false);
 
 onMounted(() => {
   userData.value = JSON.parse(localStorage.getItem('user'));
@@ -111,6 +122,70 @@ async function formSubmit() {
   }
 }
 
+async function syncAll() {
+  try {
+    isSyncLoading.value = true;
+    await Promise.all([
+      await useCustomer.syncFromCloud({updated_by: userData.value.id}),
+      await useProduct.syncFromCloud({updated_by: userData.value.id}),
+      await useInventory.syncFromCloud({updated_by: userData.value.id}),
+      await usePromo.syncFromCloud({updated_by: userData.value.id}),
+    ]).finally (() => {
+      isSyncLoading.value = false;
+      router.push('/pos');
+    })
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error Message',
+      detail: err,
+      life: 3000
+    });
+  }
+}
+
+async function syncFromCloud() {
+  try {
+    isSyncLoading.value = true;
+    await Promise.all([
+      await useCustomer.syncFromCloud({updated_by: userData.value.id}),
+      await useProduct.syncFromCloud({updated_by: userData.value.id}),
+      await useInventory.syncFromCloud({updated_by: userData.value.id}),
+      await usePromo.syncFromCloud({updated_by: userData.value.id}),
+    ]).finally (() => {
+      isSyncLoading.value = false;
+      router.go(0);
+    });
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      summary: 'Error Message',
+      detail: err,
+      life: 3000
+    });
+  }
+}
+
+async function syncToCloud() {
+  isSyncLoading.value = true;
+  await useSales.syncToCloud({updated_by: userData.value.id});
+  isSyncLoading.value = false
+  if (useSales.error.length) {
+    useSales.error.forEach((msg) => {
+      toast.add({
+        severity: 'error',
+        summary: 'Error Message',
+        detail: msg,
+        life: 3000
+      });
+    });
+    return
+  }
+  if (useSales.data.message === 'success') {
+    toast.add({ severity: 'success', summary: 'Success Message', detail: 'Synced successfully.', life: 3000 });
+  }
+}
+
 </script>
 
 <template>
@@ -128,8 +203,9 @@ async function formSubmit() {
     </div>
 
     <div ref="dropdownRef" class="flex items-center gap-x-2">
-      <BaseButton class="w-10 h-10" severity="primary" variant="outlined" icon="fa fa-question" rounded />
-      <BaseButton class="w-10 h-10" severity="primary" variant="solid" icon="pi pi-bell" rounded />
+      <BaseButton label="Sync All" severity="primary" variant="solid" icon="fa fa-sync" @click="syncAll" />
+      <BaseButton label="Sync to Cloud" severity="secondary" variant="solid" icon="fa fa-cloud-arrow-up" @click="syncToCloud" />
+      <BaseButton label="Sync from Cloud" severity="info" variant="solid" icon="fa fa-cloud-arrow-down" @click="syncFromCloud" />
     <div class="relative overflow-visible">
           <div
           class="flex justify-between text-black items-center bg-[#F8FAFC] hover:bg-gray-200 rounded-xl py-2 px-3 cursor-pointer"
@@ -202,6 +278,15 @@ async function formSubmit() {
             <BaseButton label="Cancel" severity="secondary" @click="openEditModal = false" />
             <BaseButton label="Update" severity="primary" @click="formSubmit" />
           </div>
+        </div>
+      </template>
+    </Dialog>
+
+    <Dialog v-model:visible="isSyncLoading" :modal="true" :draggable="false"
+      :position="'center'">
+      <template #container="{ closeCallback }">
+        <div class="flex flex-col p-4">
+          <i class="fa fa-spinner animate-spin text-3xl"></i>
         </div>
       </template>
     </Dialog>

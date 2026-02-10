@@ -75,6 +75,26 @@ async function deleteHandle(id) {
         categoryList.value = useCategory.categoryList;
     }
 }
+
+async function syncFromCloud() {
+    await useCategory.addCategory({updated_by: JSON.parse(localStorage.getItem('user')).id});
+    if (useCategory.error.length) {
+        useCategory.error.forEach((msg) => {
+            toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+            });
+        });
+        return
+    }
+    if (useCategory.data.message === 'success') {
+        toast.add({ severity: 'success', summary: 'Success Message', detail: 'Synced successfully.', life: 3000 });
+        categoryList.value = useCategory.data.data;
+    }
+}
+
 </script>
 
 <template>
@@ -82,8 +102,8 @@ async function deleteHandle(id) {
         <PageTitle title="Category List">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
-                    <BaseButton v-if="usePermission.can('Category', 'Create')" icon="fa fa-circle-plus" label="Create"
-                        severity="primary" @click="changeRoute('/category/create')" />
+                    <BaseButton v-if="usePermission.can('Category', 'Create')" icon="fa fa-cloud-arrow-down" label="Sync from Cloud"
+                        severity="primary" @click="syncFromCloud" />
                 </div>
             </template>
         </PageTitle>
