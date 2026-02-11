@@ -41,7 +41,7 @@ export const useUserRoleStore = defineStore('role', {
             this.error = [];
             try {
                 const response = await axios.post(`/roles`, formData);
-                this.roleList = response.data.data;
+                this.data = response.data;
             } catch(err) {
                 this.error = normalizeApiError(err);
             } finally {

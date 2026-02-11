@@ -77,6 +77,25 @@
         }
     }
 
+    async function syncFromCloud() {
+        await useWarehouse.addWarehouse({updated_by: JSON.parse(localStorage.getItem('user')).id});
+        if (useWarehouse.error.length) {
+            useWarehouse.error.forEach((msg) => {
+                toast.add({
+                    severity: 'error',
+                    summary: 'Error Message',
+                    detail: msg,
+                    life: 3000
+                });
+            });
+            return
+        }
+        if (useWarehouse.data.message === 'success') {
+            toast.add({ severity: 'success', summary: 'Success Message', detail: 'Synced successfully.', life: 3000 });
+            warehouseList.value = useWarehouse.data.data;
+        }
+    }
+
 </script>
 
 
@@ -88,10 +107,10 @@
                 <div class="flex gap-x-2 items-center">
                     <BaseButton 
                         v-if="usePermission.can('Warehouse', 'Create')"
-                        icon="fa fa-circle-plus" 
-                        label="Create" 
+                        icon="fa fa-cloud-arrow-down" 
+                        label="Sync from Cloud"
                         severity="primary" 
-                        @click="changeRoute('/warehouse/create')"  />
+                        @click="syncFromCloud"  />
                 </div>
             </template>
         </PageTitle>

@@ -123,12 +123,12 @@ async function deleteHandle(id) {
     <div class="p-4">
         <!-- Page Title -->
         <PageTitle title="Customer List">
-            <template #titleButtons>
+            <!-- <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton v-if="usePermission.can('Customer', 'Create')" icon="fa fa-circle-plus" label="Create"
                         severity="primary" @click="changeRoute('/customer/create')" />
                 </div>
-            </template>
+            </template> -->
         </PageTitle>
         <!-- DataTable -->
         <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Customer'"

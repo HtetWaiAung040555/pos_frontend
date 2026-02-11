@@ -78,6 +78,25 @@ async function deleteHandle(id) {
     }
 }
 
+async function syncFromCloud() {
+    await useRole.addRole({updated_by: JSON.parse(localStorage.getItem('user')).id});
+    if (useRole.error.length) {
+        useRole.error.forEach((msg) => {
+            toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+            });
+        });
+        return
+    }
+    if (useRole.data.message === 'success') {
+        toast.add({ severity: 'success', summary: 'Success Message', detail: 'Synced successfully.', life: 3000 });
+        roleList.value = useRole.data.data;
+    }
+}
+
 </script>
 
 <template>
@@ -86,8 +105,8 @@ async function deleteHandle(id) {
         <PageTitle title="Role List">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
-                    <BaseButton v-if="usePermission.can('Role', 'Create')" icon="fa fa-circle-plus" label="Create"
-                        severity="primary" @click="changeRoute('/role/create')" />
+                    <BaseButton v-if="usePermission.can('Role', 'Create')" icon="fa fa-cloud-arrow-down" label="Sync Fronm Cloud"
+                        severity="primary" @click="syncFromCloud" />
                 </div>
             </template>
         </PageTitle>

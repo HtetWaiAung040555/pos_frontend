@@ -143,7 +143,7 @@ watch([
     <div class="p-4">
         <!-- Page Title -->
         <PageTitle title="Stock List">
-            <template #titleButtons>
+            <!-- <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton 
                         v-if="usePermission.can('Inventory', 'Create')"
@@ -153,7 +153,7 @@ watch([
                         @click="changeRoute('/inventory/create')"  
                     />
                 </div>
-            </template>
+            </template> -->
         </PageTitle>
         <!-- DataTable -->
         <DataTable

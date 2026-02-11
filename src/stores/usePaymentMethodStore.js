@@ -44,7 +44,7 @@ export const usePaymentMethodStore = defineStore('payment_method', {
             this.error = [];
             try {
                 const response = await axios.post(`/payment_methods`, formData);
-                this.paymentMethodList = response.data.data;
+                this.data = response.data;
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

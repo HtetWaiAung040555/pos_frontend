@@ -49,8 +49,8 @@ export const useUserStore = defineStore('user', {
             this.loading = true;
             this.error = [];
             try {
-                const response = await axios.post(`/users`, formData);
-                this.users = response.data.data;
+                const response = await axios.post(`/users/sync`, formData);
+                this.data = response.data;
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

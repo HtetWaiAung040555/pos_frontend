@@ -42,7 +42,7 @@ export const useWarehouseStore = defineStore('warehouse', {
             this.error = [];
             try {
                 const response = await axios.post(`/warehouses`, formData);
-                this.warehouseList = response.data.data;
+                this.data = response.data;
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {

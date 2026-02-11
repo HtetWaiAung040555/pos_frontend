@@ -115,7 +115,7 @@
     <div class="p-4">
         <!-- Page Title -->
         <PageTitle title="Product List">
-            <template #titleButtons>
+            <!-- <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton 
                         v-if="usePermission.can('Product', 'Create')"
@@ -125,7 +125,7 @@
                         @click="changeRoute('/product/create')"  
                     />
                 </div>
-            </template>
+            </template> -->
         </PageTitle>
         <!-- DataTable -->
         <DataTable

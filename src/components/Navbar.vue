@@ -14,6 +14,7 @@ import { useInventoryStore } from '@/stores/useInventoryStore';
 import { useProductStore } from '@/stores/useProductStore';
 import { usePromotionStore } from '@/stores/usePromotionStore';
 import { useSaleStore } from '@/stores/useSalesStore';
+import { useSyncStore } from '@/stores/syncStore';
 
 const collapseSidebar = useCollapseSidebar();
 const openDropdown = ref(false);
@@ -27,6 +28,7 @@ const useInventory = useInventoryStore();
 const useProduct = useProductStore();
 const usePromo = usePromotionStore();
 const useSales = useSaleStore();
+const useSync = useSyncStore();
 const toast = useToast();
 const userData = ref({});
 const errorMsg = ref({
@@ -125,14 +127,9 @@ async function formSubmit() {
 async function syncAll() {
   try {
     isSyncLoading.value = true;
-    await Promise.all([
-      await useCustomer.syncFromCloud({updated_by: userData.value.id}),
-      await useProduct.syncFromCloud({updated_by: userData.value.id}),
-      await useInventory.syncFromCloud({updated_by: userData.value.id}),
-      await usePromo.syncFromCloud({updated_by: userData.value.id}),
-    ]).finally (() => {
+    await useSync.syncAll({updated_by: userData.value.id}).finally (() => {
       isSyncLoading.value = false;
-      router.push('/pos');
+      router.go(0);
     })
   } catch (err) {
     toast.add({

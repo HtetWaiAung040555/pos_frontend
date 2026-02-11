@@ -85,7 +85,7 @@
 <template>
     <div class="p-4">
         <PageTitle title="Promotion List">
-            <template #titleButtons>
+            <!-- <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton 
                         v-if="usePermission.can('Promotion', 'Create')"
@@ -94,7 +94,7 @@
                         severity="primary" 
                         @click="changeRoute('/promotion/create')"  />
                 </div>
-            </template>
+            </template> -->
         </PageTitle>
         <DataTable 
             :columns="columns" 

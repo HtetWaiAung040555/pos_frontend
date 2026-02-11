@@ -83,6 +83,25 @@ async function deleteHandle(id) {
     }
 }
 
+async function syncFromCloud() {
+    await useUser.addUser({updated_by: JSON.parse(localStorage.getItem('user')).id});
+    if (useUser.error.length) {
+        useUser.error.forEach((msg) => {
+            toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+            });
+        });
+        return
+    }
+    if (useUser.data.message === 'success') {
+        toast.add({ severity: 'success', summary: 'Success Message', detail: 'Synced successfully.', life: 3000 });
+        dataList.value = useUser.data.data;
+    }
+}
+
 </script>
 
 <template>
@@ -91,8 +110,8 @@ async function deleteHandle(id) {
         <PageTitle title="User List">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
-                    <BaseButton v-if="usePermission.can('User', 'Create')" icon="fa fa-circle-plus" label="Create"
-                        severity="primary" @click="changeRoute('/user/create')" />
+                    <BaseButton v-if="usePermission.can('User', 'Create')" icon="fa fa-cloud-arrow-down" label="Sync from Cloud"
+                        severity="primary" @click="syncFromCloud" />
                 </div>
             </template>
         </PageTitle>

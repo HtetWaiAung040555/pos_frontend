@@ -44,7 +44,7 @@ export const useUnitStore = defineStore('Unit', {
             this.error = [];
             try {
                 const response = await axios.post(`/units`, formData);
-                this.unitList = response.data.data;
+                this.data = response.data;
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {
