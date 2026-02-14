@@ -33,5 +33,28 @@ export const useSyncStore = defineStore('Sync Store', {
                 this.loading = false;
             }
         },
+        async syncToCloud(formData) {
+            this.loading = true;
+            this.error = [];
+
+            try {
+                const [customerRes, salesRes] = await Promise.all([
+                    axios.post('/customers_transactions/sync_to_cloud', formData),
+                    axios.post('/sales/sync_to_cloud', formData)
+                ]);
+
+                console.log('Both synced successfully');
+
+            } catch (err) {
+                // Stops immediately when first failure happens
+                this.error = [
+                    err.response?.data?.error ||
+                    err.response?.data?.message ||
+                    'Cloud sync failed'
+                ];
+            } finally {
+                this.loading = false;
+            }
+        }
     }
 });

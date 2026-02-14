@@ -77,6 +77,18 @@ export const useWalletStore = defineStore('wallet', {
             } finally {
                 this.deleteLoading = false;
             }
+        },
+        async syncToCloud(data) {
+            this.loading = true;
+            this.error = [];
+            try {
+                const response = await axios.post('/customers_transactions/sync_to_cloud', data)
+                this.data = response.data
+            } catch (err) {
+                this.error = normalizeApiError(err);
+            } finally {
+                this.loading = false;
+            }
         }
     }
 });

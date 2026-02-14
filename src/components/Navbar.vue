@@ -165,21 +165,31 @@ async function syncFromCloud() {
 
 async function syncToCloud() {
   isSyncLoading.value = true;
-  await useSales.syncToCloud({updated_by: userData.value.id});
-  isSyncLoading.value = false
-  if (useSales.error.length) {
-    useSales.error.forEach((msg) => {
-      toast.add({
-        severity: 'error',
-        summary: 'Error Message',
-        detail: msg,
-        life: 3000
-      });
+
+  try {
+    await useSync.syncToCloud({
+      updated_by: userData.value.id
     });
-    return
-  }
-  if (useSales.data.message === 'success') {
-    toast.add({ severity: 'success', summary: 'Success Message', detail: 'Synced successfully.', life: 3000 });
+
+    toast.add({
+      severity: 'success',
+      summary: 'Success Message',
+      detail: 'Synced successfully.',
+      life: 3000
+    });
+
+  } catch (err) {
+    console.log(err);
+
+    toast.add({
+      severity: 'error',
+      summary: 'Error Message',
+      detail: err?.response?.data?.message || err || 'Sync failed',
+      life: 3000
+    });
+
+  } finally {
+    isSyncLoading.value = false;
   }
 }
 
