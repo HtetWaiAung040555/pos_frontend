@@ -75,9 +75,9 @@ watch([
         { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.warehouse.name },
         { key: 'qty', label: 'Qty' },
         { key: 'expired_date', label: 'Expire', formatter: (row) => row.expired_date? moment(row.expired_date).format('DD-MM-YY') : "N/A" },
-        { key: 'created_by', label: 'Created By', formatter: (row) => row.created_by },
+        { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
-        { key: 'updated_by', label: 'Updated By', formatter: (row) => row.updated_by },
+        { key: 'updated_by.name', label: 'Updated By', formatter: (row) => row.updated_by.name },
         { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
     ];
 
