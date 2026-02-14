@@ -34,10 +34,55 @@ const fillMissingDates = (data, days = 30) => {
   }))
 }
 
+const getLastNMonths = (n) => {
+  const months = []
+  const today = new Date()
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
+    const month = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`
+    months.push(month)
+  }
+  return months
+}
+
+const fillMissingMonths = (data, months) => {
+  const lastMonths = getLastNMonths(months)
+  const dataMap = {}
+  data.forEach(item => {
+    dataMap[item.month] = parseFloat(item.total)
+  })
+
+  return lastMonths.map(month => ({
+    label: month,
+    total: dataMap[month] || 0,
+  }))
+}
+
+// Last N years
+const getLastNYears = (n) => {
+  const years = []
+  const currentYear = new Date().getFullYear()
+  for (let i = n - 1; i >= 0; i--) {
+    years.push(currentYear - i)
+  }
+  return years
+}
+
+const fillMissingYears = (data, years) => {
+  const lastYears = getLastNYears(years)
+  const dataMap = {}
+  data.forEach(item => {
+    dataMap[item.year] = parseFloat(item.total)
+  })
+
+  return lastYears.map(year => ({
+    label: year,
+    total: dataMap[year] || 0,
+  }))
+}
 
 const rawData = ref({
   daily: [],
-  weekly: [],
   monthly: [],
   yearly: [],
 })
@@ -47,7 +92,6 @@ const fetchSalesData = async () => {
   try {
     const endpoints = {
       daily: '/dashboard/dailysales',
-      // weekly: '/dashboard/weeklysales',
       monthly: '/dashboard/monthlysales',
       yearly: '/dashboard/yearlysales'
     }
@@ -60,9 +104,9 @@ const fetchSalesData = async () => {
       }))
 
       // fill missing dates
-      if (key === 'daily') {
-        formatted = fillMissingDates(response.data, 20)
-      }
+      if (key === 'daily') formatted = fillMissingDates(response.data, 20)
+      if (key === 'monthly') formatted = fillMissingMonths(response.data, 12)
+      if (key === 'yearly') formatted = fillMissingYears(response.data, 5)
     
       rawData.value[key] = formatted
     }

@@ -97,16 +97,16 @@ const chartOptions = {
             <tr>
               <th class="px-2 py-2 font-medium">ID</th>
               <th class="px-2 py-2 font-medium">Payment</th>
-              <th class="px-2 py-2 font-medium">Amount (Ks.)</th>
+              <th class="px-2 py-2 font-medium text-end">Amount (Ks.)</th>
               <th class="px-2 py-2 font-medium">Date</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="order in paginatedOrders" :key="order.id" class="hover:bg-gray-50">
-              <td class="px-2 py-2">{{ order.id }}</td>
-              <td class="px-2 py-2">{{ order.payment }}</td>
-              <td class="px-2 py-2">{{ order.amount }}</td>
-              <td class="px-2 py-2">{{ order.date }}</td>
+              <td class="px-2 py-2 text-center">{{ order.id }}</td>
+              <td class="px-2 py-2 text-center">{{ order.payment }}</td>
+              <td class="px-2 py-2 text-end">{{ Number(order.amount).toLocaleString() }}</td>
+              <td class="px-2 py-2 text-center">{{ order.date }}</td>
             </tr>
             <tr v-if="paginatedOrders.length === 0">
               <td colspan="4" class="px-2 py-3 text-center text-gray-400">No orders found</td>
