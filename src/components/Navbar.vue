@@ -162,7 +162,7 @@ async function formSubmit() {
                 <span>Go to POS</span>
               </div>
             </router-link>
-            <router-link v-else to="/">
+            <router-link v-else-if="usePermission.can('Admin Panel', 'View')" to="/">
               <div class="flex px-2 items-center py-3 gap-3 hover:bg-blue-100 cursor-pointer transition-all">
                 <i class="pi pi-shop"></i>
                 <span>Admin Panel</span>
