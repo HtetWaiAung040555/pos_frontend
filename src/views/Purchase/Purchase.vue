@@ -272,7 +272,7 @@ function selectMonthDay(dayObj) {
 
 const columns = [
     { key: 'id', label: 'Purchase No.', formatter: (row) => {
-        const href = router.resolve({ name: 'View Sales', query: { id: row.id } }).href;
+        const href = router.resolve({ name: 'View Purchase', query: { id: row.id } }).href;
         return `<a href="${href}">
             <span class="cursor-pointer text-blue-600 hover:underline">${row.id}</span>
         </a>`;
