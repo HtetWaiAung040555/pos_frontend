@@ -23,18 +23,19 @@ const startDate = ref('');
 const endDate = ref('');
 const dataList = ref([]);
 const filteredData = ref({
-    startedDate: moment().startOf('month').format('YYYY-MM-DDTHH:mm'),
-    endedData: moment().format('YYYY-MM-DDTHH:mm'),
+    startedDate: moment().startOf('week').format('YYYY-MM-DDTHH:mm'),
+    endedDate: moment().format('YYYY-MM-DDTHH:mm'),
     referenceType: 'adjustment',
 })
 
 onMounted(async () => {
     await useStockTransaction.fetchStockTransactions({
-        start_date: moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss'),
-        end_date: moment(filteredData.value.endedData).format('YYYY-MM-DD HH:mm:ss'),
-        reference_type: filteredData.value.referenceType,
+        start_date: filteredData.value.startedDate ? moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss') : "",
+        end_date: filteredData.value.endedDate ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss') : "",
+        reference_type: filteredData.value.referenceType ? filteredData.value.referenceType : "",
     });
     dataList.value = useStockTransaction.list;
+    console.log('Fetched stock transactions:', dataList.value);
 });
 
 // Table headers
@@ -107,7 +108,7 @@ async function deleteHandle(id) {
                 <div class="flex gap-2">
                     <BaseInput size="sm" type="datetime-local" v-model="filteredData.startedDate" placeholder="Search" width="200px"
                         height="h-[35px]" />
-                    <BaseInput size="sm" type="datetime-local" v-model="filteredData.endedData" placeholder="Search" width="200px"
+                    <BaseInput size="sm" type="datetime-local" v-model="filteredData.endedDate" placeholder="Search" width="200px"
                         height="h-[35px]" />
                     <BaseInput size="sm" v-model="searchValue" placeholder="Search" width="200px" height="h-[35px]"
                         icon="pi pi-search" />
