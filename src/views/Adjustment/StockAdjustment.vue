@@ -32,6 +32,13 @@ const filteredData = ref({
 })
 
 onMounted(async () => {
+    const saved = filter.getPageFilter('stock_adjustment');
+    if (saved) {
+        if (saved.startedDate) filteredData.value.startedDate = saved.startedDate;
+        if (saved.endedDate) filteredData.value.endedDate = saved.endedDate;
+        if (saved.searchValue) searchValue.value = saved.searchValue;
+    }
+
     if (filteredData.value.startedDate && filteredData.value.endedDate) {
         dateRange.value = [
             moment(filteredData.value.startedDate).toDate(),
@@ -41,7 +48,16 @@ onMounted(async () => {
     startDate.value = filteredData.value.startedDate;
     endDate.value = filteredData.value.endedDate;
     await fetchStockTransactions();
+    saveFilters();
 });
+
+function saveFilters() {
+    filter.setPageFilter('stock_adjustment', {
+        startedDate: filteredData.value.startedDate,
+        endedDate: filteredData.value.endedDate,
+        searchValue: searchValue.value,
+    });
+}
 
 async function fetchStockTransactions() {
     isDateLoading.value = true;
@@ -52,6 +68,8 @@ async function fetchStockTransactions() {
         reference_type: filteredData.value.referenceType ? filteredData.value.referenceType : "",
     });
     dataList.value = useStockTransaction.list;
+    console.log('Fetched Stock Transactions:', useStockTransaction.list);
+    saveFilters();
     } finally {
         isDateLoading.value = false;
     }
@@ -80,11 +98,20 @@ function applyPresetRange(preset) {
 
 watch(dateRange, async (val) => {
     setFilteredDatesFromRange(val);
+    console.log('Date Range Changed:', val);
     const hasFullRange = Array.isArray(val) && val[0] && val[1];
     const cleared = val === null;
     if (hasFullRange || cleared) {
         await fetchStockTransactions();
     }
+});
+
+watch([
+    () => filteredData.value.startedDate,
+    () => filteredData.value.endedDate,
+    () => searchValue.value,
+], () => {
+    saveFilters();
 });
 
 // Table headers
@@ -104,6 +131,7 @@ const columns = [
         }
     },
     { key: 'reference_type', label: 'Reference Type', formatter: (row) => row.reference_type.toUpperCase() },
+    { key: 'reference_date', label: 'Reference Date', formatter: (row) => row.reference_date ? moment(row.reference_date).format('DD-MM-YY') : "N/A" },
     { key: 'expired_date', label: 'Expire', formatter: (row) => row.inventory.expired_date ? moment(row.inventory.expired_date).format('DD-MM-YY') : "N/A" },
     { key: 'created_by', label: 'Created By', formatter: (row) => row.created_by.name },
     { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY HH:mm') },
@@ -116,10 +144,13 @@ function changeRoute(pathname) {
 
 // Filter Function
 const filteredRows = computed(() => {
-    const searchedData = filter.searchFunction(dataList.value, searchValue.value, [
-        "reference_type",
-    ]);
-    return filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value })
+    if (!searchValue.value) return dataList.value;
+    return dataList.value.filter(row => {
+        const productName = row.inventory.product.name.toLowerCase();
+        const warehouseName = row.inventory.warehouse.name.toLowerCase();
+        const search = searchValue.value.toLowerCase();
+        return productName.includes(search) || warehouseName.includes(search);
+    });
 });
 
 //Branch delete function
@@ -151,7 +182,7 @@ async function deleteHandle(id) {
         </PageTitle>
         <!-- DataTable -->
         <DataTable :columns="columns" :rows="filteredRows" :isPaginate="false" :isAction="false"
-            :isLoading="useStockTransaction.loading" :defaultSort="{ key: 'created_at', order: 'desc' }" @delete="deleteHandle">
+            :isLoading="useStockTransaction.loading" @delete="deleteHandle">
             <!-- Filter Section -->
             <template #filters>
                 <div class="flex gap-2 items-center">
