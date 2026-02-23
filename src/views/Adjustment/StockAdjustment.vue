@@ -4,13 +4,14 @@ import PageTitle from '@/components/PageTitle.vue';
 import DataTable from '@/components/DataTable.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import { useRouter } from 'vue-router';
-import { onMounted, ref, computed } from 'vue';
-import { useToast } from 'primevue';
+import { onMounted, ref, computed, watch } from 'vue';
+import { DatePicker, useToast } from 'primevue';
 import moment from 'moment'
 import { useFilterStore } from '@/stores/filterStore';
 import { usePermissionStore } from '@/stores/usePermissionStore';
 import BaseInput from '@/components/BaseInput.vue';
 import { useStockTransactionStore } from '@/stores/useStockTransactionStore';
+import { getPresetRange } from '@/utils/datePresets';
 
 const router = useRouter();
 const toast = useToast();
@@ -22,6 +23,8 @@ const searchValue = ref('');
 const startDate = ref('');
 const endDate = ref('');
 const dataList = ref([]);
+const dateRange = ref(null);
+const isDateLoading = ref(false);
 const filteredData = ref({
     startedDate: moment().startOf('week').format('YYYY-MM-DDTHH:mm'),
     endedDate: moment().format('YYYY-MM-DDTHH:mm'),
@@ -29,13 +32,59 @@ const filteredData = ref({
 })
 
 onMounted(async () => {
+    if (filteredData.value.startedDate && filteredData.value.endedDate) {
+        dateRange.value = [
+            moment(filteredData.value.startedDate).toDate(),
+            moment(filteredData.value.endedDate).toDate()
+        ];
+    }
+    startDate.value = filteredData.value.startedDate;
+    endDate.value = filteredData.value.endedDate;
+    await fetchStockTransactions();
+});
+
+async function fetchStockTransactions() {
+    isDateLoading.value = true;
+    try {
     await useStockTransaction.fetchStockTransactions({
         start_date: filteredData.value.startedDate ? moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss') : "",
         end_date: filteredData.value.endedDate ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss') : "",
         reference_type: filteredData.value.referenceType ? filteredData.value.referenceType : "",
     });
     dataList.value = useStockTransaction.list;
-    console.log('Fetched stock transactions:', dataList.value);
+    } finally {
+        isDateLoading.value = false;
+    }
+}
+
+function setFilteredDatesFromRange(range) {
+    if (Array.isArray(range) && range[0] && range[1]) {
+        const start = moment(range[0]).startOf('day');
+        const end = moment(range[1]).endOf('day');
+        filteredData.value.startedDate = start.format('YYYY-MM-DDTHH:mm');
+        filteredData.value.endedDate = end.format('YYYY-MM-DDTHH:mm');
+        startDate.value = start.toDate();
+        endDate.value = end.toDate();
+    } else {
+        filteredData.value.startedDate = "";
+        filteredData.value.endedDate = "";
+        startDate.value = '';
+        endDate.value = '';
+    }
+}
+
+function applyPresetRange(preset) {
+    const range = getPresetRange(preset);
+    dateRange.value = range ? range : null;
+}
+
+watch(dateRange, async (val) => {
+    setFilteredDatesFromRange(val);
+    const hasFullRange = Array.isArray(val) && val[0] && val[1];
+    const cleared = val === null;
+    if (hasFullRange || cleared) {
+        await fetchStockTransactions();
+    }
 });
 
 // Table headers
@@ -105,11 +154,36 @@ async function deleteHandle(id) {
             :isLoading="useStockTransaction.loading" :defaultSort="{ key: 'created_at', order: 'desc' }" @delete="deleteHandle">
             <!-- Filter Section -->
             <template #filters>
-                <div class="flex gap-2">
-                    <BaseInput size="sm" type="datetime-local" v-model="filteredData.startedDate" placeholder="Search" width="200px"
-                        height="h-[35px]" />
-                    <BaseInput size="sm" type="datetime-local" v-model="filteredData.endedDate" placeholder="Search" width="200px"
-                        height="h-[35px]" />
+                <div class="flex gap-2 items-center">
+                    <DatePicker
+                        v-model="dateRange"
+                        selectionMode="range"
+                        :manualInput="false"
+                        showButtonBar
+                        placeholder="Date range"
+                        inputClass="h-[35px]"
+                        :disabled="isDateLoading"
+                    >
+                        <template #buttonbar="{ clearCallback }">
+                            <div class="flex justify-between w-full px-2 pb-2 gap-2 flex-wrap items-center">
+                                <div class="flex gap-2 flex-wrap">
+                                    <BaseButton size="sm" label="Today" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('today')" />
+                                    <BaseButton size="sm" label="Yesterday" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('yesterday')" />
+                                    <BaseButton size="sm" label="This Week" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisWeek')" />
+                                    <BaseButton size="sm" label="This Month" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisMonth')" />
+                                    <BaseButton size="sm" label="This Year" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisYear')" />
+                                    <BaseButton size="sm" label="All" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('all')" />
+                                </div>
+                                <div class="flex gap-2 items-center">
+                                    <div v-if="isDateLoading" class="flex items-center text-xs text-gray-600 gap-2">
+                                        <i class="pi pi-spin pi-spinner"></i>
+                                        <span>Loading...</span>
+                                    </div>
+                                    <BaseButton size="sm" label="Clear" icon="pi pi-times" severity="danger" variant="outlined" :disabled="isDateLoading" @click="clearCallback" />
+                                </div>
+                            </div>
+                        </template>
+                    </DatePicker>
                     <BaseInput size="sm" v-model="searchValue" placeholder="Search" width="200px" height="h-[35px]"
                         icon="pi pi-search" />
                 </div>

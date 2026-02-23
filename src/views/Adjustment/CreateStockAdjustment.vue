@@ -13,6 +13,7 @@ import { Select } from 'primevue';
 import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
 import { errMsgList } from '@/utils/const';
 import { useInventoryStore } from '@/stores/useInventoryStore';
+import moment from 'moment';
 
 const router = useRouter();
 const route = useRoute();
@@ -27,6 +28,7 @@ const selectedInventory = ref({
     adjustType: '1',
     newQty: 0,
     reason: "",
+    adjustDate: moment().format('YYYY-MM-DDTHH:mm'), 
     product: {
         id: null,
         name: "",
@@ -55,6 +57,7 @@ onMounted(async () => {
             adjustType: '1',
             newQty: 0,
             reason: "",
+            adjustDate: moment().format('YYYY-MM-DDTHH:mm'),
         };
     }
     await useInventory.fetchAllStock();
@@ -78,9 +81,20 @@ const filteredStockList = computed(() => {
 });
 
 
-// Update stock function
+function confirmSelection(inventory) {
+    selectedInventory.value = {
+        ...inventory,
+        adjustType: '1',
+        newQty: 0,
+        reason: "",
+        adjustDate: moment().format('YYYY-MM-DDTHH:mm'),
+    };
+}
+
+
+// form submit function
 async function formSubmit() {
-    if (selectedInventory.value.qty <= 0) {
+    if (selectedInventory.value.newQty <= 0) {
         errorMsg.value = {
             qty: errMsgList.qty
         };
@@ -90,6 +104,7 @@ async function formSubmit() {
         inventory_id: selectedInventory.value.id,
         qty: selectedInventory.value.adjustType === '1'? Number(selectedInventory.value.newQty) : -Number(selectedInventory.value.newQty),
         reason: selectedInventory.value.reason || "Stock adjustment",
+        adjust_date: selectedInventory.value.adjustDate,
         created_by: userData.value.id,
     }
     await useInventory.adjustStock(payload);
@@ -151,8 +166,9 @@ async function formSubmit() {
                         </select>
                     </div>
                     <!-- New Qty input -->
-                    <BaseInput size="sm" v-model="selectedInventory.newQty" label="New Qty" placeholder="Stock Qty"
-                        height="h-[35px]" type="number" :isRequire="true" :error="errorMsg.qty" />
+                    <BaseInput size="sm" v-model="selectedInventory.newQty" label="New Qty" placeholder="Stock Qty" height="h-[35px]" type="number" :isRequire="true" :error="errorMsg.qty" />
+                    <!-- Adjust Date input -->
+                    <BaseInput size="sm" v-model="selectedInventory.adjustDate" label="Adjust Date" height="h-[35px]" type="datetime-local" />
                     <!-- Reason input -->
                     <BaseInput class="col-span-2" size="sm" v-model="selectedInventory.reason" label="Reason"
                         placeholder="Reason for adjustment" height="h-[35px]" type="text" />
@@ -191,7 +207,7 @@ async function formSubmit() {
                 <tbody>
                     <tr 
                         class="cursor-pointer hover:bg-blue-50" v-for="inventory in filteredStockList" :key="inventory.id" 
-                        @click="selectedInventory = { ...inventory, adjustType: '1', newQty: 0, reason: '' }"
+                        @click="confirmSelection(inventory)"
                     >
                         <td class="border-b border-gray-200 px-2 py-2">{{ inventory.id }}</td>
                         <td class="border-b border-gray-200 px-2 py-2">{{ inventory.product.name }}</td>
