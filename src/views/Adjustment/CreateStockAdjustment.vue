@@ -6,7 +6,7 @@ import BaseCard from '@/components/BaseCard.vue';
 import SubTitle from '@/components/SubTitle.vue';
 import { useRoute, useRouter } from 'vue-router';
 import BaseInput from '@/components/BaseInput.vue';
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import BaseLabel from '@/components/BaseLabel.vue';
 import { Select } from 'primevue';
@@ -21,6 +21,8 @@ const useInventory = useInventoryStore();
 
 const userData = ref({});
 const stockList = ref([]);
+const inventoryIdSearch = ref('');
+const productSearch = ref('');
 const selectedInventory = ref({
     adjustType: '1',
     newQty: 0,
@@ -58,6 +60,21 @@ onMounted(async () => {
     await useInventory.fetchAllStock();
     stockList.value = useInventory.stockList;
     oldQty.value = useInventory.stockList.qty;
+});
+
+const filteredStockList = computed(() => {
+    const inventoryQuery = inventoryIdSearch.value.trim().toLowerCase();
+    const productQuery = productSearch.value.trim().toLowerCase();
+
+    return stockList.value.filter((inventory) => {
+        const matchesInventoryId = inventoryQuery
+            ? String(inventory.id).toLowerCase().includes(inventoryQuery)
+            : true;
+        const matchesProduct = productQuery
+            ? inventory.product?.name?.toLowerCase().includes(productQuery)
+            : true;
+        return matchesInventoryId && matchesProduct;
+    });
 });
 
 
@@ -148,7 +165,19 @@ async function formSubmit() {
                 </div>
             </template>
         </BaseCard>
-        <div class="mt-3 max-h-[300px] overflow-y-auto">
+        <div class="mt-3">
+            <div class="flex flex-wrap gap-2 mb-2">
+                <div>
+                    <BaseInput size="sm" v-model="inventoryIdSearch" label=""
+                    placeholder="Search by Inventory Id" height="h-[35px]" />
+                </div>
+                <div>
+                    <BaseInput size="sm" v-model="productSearch" label=""
+                    placeholder="Search by Product" height="h-[35px]" />
+                </div>
+            </div>
+        </div>
+        <div class="max-h-[300px] overflow-y-auto">
             <table class="text-black w-full border-collapse border border-gray-200">
                 <thead class="sticky top-0">
                     <tr class="bg-gray-100 text-left">
@@ -161,7 +190,7 @@ async function formSubmit() {
                 </thead>
                 <tbody>
                     <tr 
-                        class="cursor-pointer hover:bg-blue-50" v-for="inventory in stockList" :key="inventory.id" 
+                        class="cursor-pointer hover:bg-blue-50" v-for="inventory in filteredStockList" :key="inventory.id" 
                         @click="selectedInventory = { ...inventory, adjustType: '1', newQty: 0, reason: '' }"
                     >
                         <td class="border-b border-gray-200 px-2 py-2">{{ inventory.id }}</td>
