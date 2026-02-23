@@ -206,7 +206,7 @@ function printSlip() {
     </div>
     <!-- Slip Section -->
     <div
-        class="mb-3 flex-[1.8] max-w-md w-full mx-auto p-6 bg-white shadow-lg border border-gray-300 rounded-sm text-sm font-mono text-black"
+        class="mb-3 flex-[1.8] max-w-md w-full mx-auto p-6 bg-white shadow-lg border border-gray-300 rounded-sm text-sm font-mono text-black hidden"
         id="slip-section">
         <!-- Header -->
         <header style="
@@ -327,5 +327,5 @@ function printSlip() {
           <div>Thanks for your business!</div>
           <div>Keep this invoice for your records</div>
         </footer>
-      </div>
+    </div>
 </template>
