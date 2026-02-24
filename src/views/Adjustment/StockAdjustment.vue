@@ -153,15 +153,16 @@ const filteredRows = computed(() => {
 
 //Branch delete function
 async function deleteHandle(id) {
-    await useUser.deleteUser(id);
-    if (useUser.error) {
-        toast.add({ severity: 'error', summary: 'Error Message', detail: useUser.error, life: 3000 });
+    await useStockTransaction.deleteStockAdjust(id);
+    if (useStockTransaction.error.length) {
+        console.error('Delete Error:', useStockTransaction.error);
+        toast.add({ severity: 'error', summary: 'Error Message', detail: useStockTransaction.error, life: 3000 });
         return
     }
-    if (useUser.data.status === 200) {
+    if (useStockTransaction.data.status === 200) {
         toast.add({ severity: 'success', summary: 'Success Message', detail: 'Inventory deleted successfully.', life: 3000 });
-        await useUser.fetchAllUsers();
-        dataList.value = useUser.users;
+        await fetchStockTransactions();
+        dataList.value = useStockTransaction.list;
     }
 }
 
@@ -179,8 +180,11 @@ async function deleteHandle(id) {
             </template>
         </PageTitle>
         <!-- DataTable -->
-        <DataTable :columns="columns" :rows="filteredRows" :isPaginate="false" :isAction="false"
-            :isLoading="useStockTransaction.loading" @delete="deleteHandle">
+        <DataTable 
+            :columns="columns" :rows="filteredRows" :isPaginate="false"
+            :isLoading="useStockTransaction.loading" @delete="deleteHandle"
+            :isDelete="!usePermission.can('Stock adjustment', 'Delete')"
+        >
             <!-- Filter Section -->
             <template #filters>
                 <div class="flex gap-2 items-center">
