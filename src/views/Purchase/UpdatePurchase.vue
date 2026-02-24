@@ -73,7 +73,6 @@ onMounted(async () => {
         inventoryId: p.inventory.id,
     }));
     oldSelectedProducts.value = JSON.parse(JSON.stringify(selectedProducts.value));
-    console.log('Old Selected Products:', oldSelectedProducts.value);
     await usePaymentMethod.fetchAllPaymentMethod();
     await useProduct.fetchAllProduct();
     productList.value = useProduct.productList || [];
@@ -156,7 +155,6 @@ watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.va
 
 function confirmProductSelection() {
     const existingMap = new Map(selectedProducts.value.map(p => [p.productId, p]));
-    console.log('Existing Map:', existingMap);
     selectedProducts.value = selectionBuffer.value.map(p => {
         const existing = existingMap.get(p.id);
         return {
@@ -248,7 +246,6 @@ async function formSubmit() {
     await usePurchase.editPurchase(payload, route.query.id);
     if (usePurchase.error.length) {
         usePurchase.error.forEach((msg) => {
-            console.log('Errors:', msg);
             toast.add({
               severity: 'error',
               summary: 'Error Message',

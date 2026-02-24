@@ -55,11 +55,27 @@ function changeRoute(pathname) {
 
 onMounted(async () => {
     userData.value = JSON.parse(localStorage.getItem('user'));
-    await useCategory.fetchAllCategory();
+    await useProduct.getLastCustomBarcode('KBAM');
     await useUnit.fetchAllUnit();
     selectedUnit.value = useUnit.unitList.filter(el => el.id === 1)[0] || selectedUnit.value;
-    
+    await useCategory.fetchAllCategory();
 });
+
+function generateBarcode() {
+    const prefix = 'KBAM';
+    const defaultSerial = 1;
+    const lastBarcode = (useProduct.lastCustomBarcode || '').toString().trim();
+
+    let nextSerial = defaultSerial;
+    if (lastBarcode) {
+        const match = lastBarcode.match(/^KBAM-(\d+)$/);
+        if (match) {
+            nextSerial = Number(match[1]) + 1;
+        }
+    }
+
+    formData.value.barcode = `${prefix}-${String(nextSerial).padStart(6, '0')}`;
+}
 
 function onImageSelected(event) {
     const file = event.target.files[0];
@@ -181,40 +197,37 @@ async function formSubmit(isNew) {
                             class="object-cover w-full h-full rounded-md" />
                     </div>
                 </div>
-                <div class="flex gap-x-4 mt-4">
+                <div class="grid grid-cols-2 gap-4 mt-4">
                     <!-- Name Input -->
-                    <BaseInput size="sm" v-model="formData.name" label="Name" placeholder="Name" width="300px"
+                    <BaseInput size="sm" v-model="formData.name" label="Name" placeholder="Name"
                         height="h-[35px]" :isRequire="true" :error="errorMsg.name" />
                     <!-- Status -->
-                    <div class="flex flex-col gap-y-1 w-[200px]">
+                    <div class="flex flex-col gap-y-1">
                         <BaseLabel label="Status" />
                         <BaseSwitch v-model="status" />
                     </div>
-                </div>
-                <div class="flex gap-x-4 mt-4">
                     <!-- Category Select -->
                     <div class="flex flex-col gap-y-1">
                         <BaseLabel label="Category" />
                         <Select v-model="selectedCategory" :options="useCategory.categoryList" showClear filter
-                            optionLabel="name" placeholder="Select category" class="w-[300px] h-[35px] items-center" />
+                            optionLabel="name" placeholder="Select category" class="h-[35px] items-center" />
                     </div>
                     <!-- Unit -->
                     <div class="flex flex-col gap-y-1">
                         <BaseLabel label="Unit" />
                         <Select v-model="selectedUnit" :options="useUnit.unitList" showClear filter optionLabel="name"
-                            placeholder="Select unit" class="w-[300px] h-[35px] items-center" />
+                            placeholder="Select unit" class="h-[35px] items-center" />
                         <BaseErrorLabel v-if="errorMsg.unit" :label="errorMsg.unit" />
                     </div>
-                </div>
-                <div class="flex gap-x-4 mt-4">
                     <!-- Barcode Input -->
-                    <BaseInput size="sm" v-model="formData.barcode" label="Barcode" placeholder="Barcode" width="300px"
+                    <div class="flex gap-x-2 items-end">
+                        <BaseInput size="sm" v-model="formData.barcode" label="Barcode" placeholder="Barcode"
                         height="h-[35px]" />
+                        <BaseButton icon="fa fa-refresh" severity="secondary" class="h-[35px]" @click="generateBarcode" />
+                    </div>
                     <!-- Secondary property input -->
                     <BaseInput size="sm" v-model="formData.sec_prop" label="Secondary Property"
-                        placeholder="Red, Green, Blue, ..." width="300px" height="h-[35px]" />
-                </div>
-                <div class="flex gap-x-4 mt-4">
+                        placeholder="Red, Green, Blue, ..." height="h-[35px]" />
                     <!-- Sales Price -->
                     <BaseInput size="sm" v-model="formData.price" label="Sales Price" width="300px" height="h-[35px]"
                         type="number" :isRequire="true" :error="errorMsg.price" />

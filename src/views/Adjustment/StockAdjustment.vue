@@ -68,7 +68,6 @@ async function fetchStockTransactions() {
         reference_type: filteredData.value.referenceType ? filteredData.value.referenceType : "",
     });
     dataList.value = useStockTransaction.list;
-    console.log('Fetched Stock Transactions:', useStockTransaction.list);
     saveFilters();
     } finally {
         isDateLoading.value = false;
@@ -98,7 +97,6 @@ function applyPresetRange(preset) {
 
 watch(dateRange, async (val) => {
     setFilteredDatesFromRange(val);
-    console.log('Date Range Changed:', val);
     const hasFullRange = Array.isArray(val) && val[0] && val[1];
     const cleared = val === null;
     if (hasFullRange || cleared) {
