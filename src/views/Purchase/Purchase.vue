@@ -11,16 +11,27 @@ import BaseInput from '@/components/BaseInput.vue';
 import { usePermissionStore } from '@/stores/usePermissionStore';
 import { useFilterStore } from '@/stores/filterStore';
 import { usePurchaseStore } from '@/stores/usePurchaseStore';
+import { useSupplierStore } from '@/stores/useSupplierStore';
+import { useWarehouseStore } from '@/stores/useWarehouseStore';
+import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
+import { useProductStore } from '@/stores/useProductStore';
 import DashboardCard from '@/components/DashboardCard.vue';
 import { statusBadgeHtml } from '@/utils/const';
 import { getPresetRange } from '@/utils/datePresets';
+import * as XLSX from 'xlsx';
 
 const router = useRouter();
 const usePurchase = usePurchaseStore();
+const useSupplier = useSupplierStore();
+const useWarehouse = useWarehouseStore();
+const usePaymentMethod = usePaymentMethodStore();
+const useProduct = useProductStore();
 const filter = useFilterStore();
 const toast = useToast();
 const usePermission = usePermissionStore();
 const purchaseList = ref([]);
+const importInputRef = ref(null);
+const isImporting = ref(false);
 // Date filter dialog visibility
 const visibleDateFilter = ref(false);
 // Date range for API fetch
@@ -391,6 +402,263 @@ async function deleteHandle(id) {
     }
 }
 
+function normalizeCell(value) {
+    if (value === null || value === undefined) return '';
+    return String(value).trim();
+}
+
+function normalizeKey(key) {
+    return normalizeCell(key).toLowerCase().replace(/\s+/g, '_');
+}
+
+function normalizeRowKeys(row) {
+    const normalized = {};
+    Object.keys(row || {}).forEach((key) => {
+        normalized[normalizeKey(key)] = row[key];
+    });
+    return normalized;
+}
+
+function excelDateToInput(dateValue) {
+    if (dateValue === null || dateValue === undefined || dateValue === '') return '';
+    if (typeof dateValue === 'number') {
+        const parsed = XLSX.SSF.parse_date_code(dateValue);
+        if (parsed) {
+            const dt = new Date(
+                parsed.y,
+                (parsed.m || 1) - 1,
+                parsed.d || 1,
+                parsed.H || 0,
+                parsed.M || 0,
+                Math.floor(parsed.S || 0)
+            );
+            return moment(dt).format('YYYY-MM-DDTHH:mm');
+        }
+    }
+    const input = normalizeCell(dateValue);
+    const parsed = moment(input, [
+        'YYYY-MM-DD HH:mm:ss',
+        'YYYY-MM-DD HH:mm',
+        'YYYY-MM-DDTHH:mm:ss',
+        'YYYY-MM-DDTHH:mm',
+        'YYYY-MM-DD',
+        'DD-MM-YYYY HH:mm:ss',
+        'DD-MM-YYYY HH:mm',
+        'DD-MM-YYYY',
+        'MM/DD/YYYY HH:mm:ss',
+        'MM/DD/YYYY HH:mm',
+        'MM/DD/YYYY'
+    ], true);
+    if (!parsed.isValid()) return '';
+    return parsed.format('YYYY-MM-DDTHH:mm');
+}
+
+function toNumber(value, defaultValue = 0) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : defaultValue;
+}
+
+async function ensureImportLookups() {
+    const jobs = [];
+    if (!Array.isArray(useSupplier.supplierList) || useSupplier.supplierList.length === 0) jobs.push(useSupplier.fetchAllSupplier());
+    if (!Array.isArray(useWarehouse.warehouseList) || useWarehouse.warehouseList.length === 0) jobs.push(useWarehouse.fetchAllWarehouse());
+    if (!Array.isArray(usePaymentMethod.paymentMethodList) || usePaymentMethod.paymentMethodList.length === 0) jobs.push(usePaymentMethod.fetchAllPaymentMethod());
+    if (!Array.isArray(useProduct.productList) || useProduct.productList.length === 0) jobs.push(useProduct.fetchAllProduct());
+    if (jobs.length > 0) await Promise.all(jobs);
+}
+
+function resolveIdByIdOrName(list, idValue, nameValue) {
+    const byId = normalizeCell(idValue);
+    if (byId) {
+        const foundById = (list || []).find((item) => String(item.id) === byId);
+        if (foundById) return foundById.id;
+    }
+    const byName = normalizeCell(nameValue).toLowerCase();
+    if (byName) {
+        const foundByName = (list || []).find((item) => normalizeCell(item.name).toLowerCase() === byName);
+        if (foundByName) return foundByName.id;
+    }
+    return null;
+}
+
+function resolveProduct(row) {
+    const products = useProduct.productList || [];
+    const productId = normalizeCell(row.product_id || row.product);
+    const barcode = normalizeCell(row.barcode || row.product_barcode).toLowerCase();
+    const name = normalizeCell(row.product_name || row.name).toLowerCase();
+
+    if (productId) {
+        const foundById = products.find((item) => String(item.id) === productId);
+        if (foundById) return foundById;
+    }
+    if (barcode) {
+        const foundByBarcode = products.find((item) => normalizeCell(item.barcode).toLowerCase() === barcode);
+        if (foundByBarcode) return foundByBarcode;
+    }
+    if (name) {
+        const foundByName = products.find((item) => normalizeCell(item.name).toLowerCase() === name);
+        if (foundByName) return foundByName;
+    }
+    return null;
+}
+
+function openImportPicker() {
+    importInputRef.value?.click();
+}
+
+function downloadImportTemplate() {
+    const link = document.createElement('a');
+    link.href = '/purchase_import_template.xlsx';
+    link.download = 'purchase_import_template.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+async function onImportExcel(event) {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+    isImporting.value = true;
+    try {
+        await ensureImportLookups();
+        const arrayBuffer = await file.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+        const sheetNames = workbook.SheetNames || [];
+        const purchasesSheetName = sheetNames.find((name) => normalizeCell(name).toLowerCase() === 'purchases');
+        const detailsSheetName = sheetNames.find((name) => normalizeCell(name).toLowerCase() === 'purchase_details');
+
+        let purchaseRows = [];
+        let detailRows = [];
+
+        if (purchasesSheetName && detailsSheetName) {
+            purchaseRows = XLSX.utils.sheet_to_json(workbook.Sheets[purchasesSheetName], { defval: '' }).map(normalizeRowKeys);
+            detailRows = XLSX.utils.sheet_to_json(workbook.Sheets[detailsSheetName], { defval: '' }).map(normalizeRowKeys);
+        } else {
+            const firstSheet = sheetNames[0];
+            if (!firstSheet) {
+                toast.add({ severity: 'error', summary: 'Import Failed', detail: 'Excel file has no sheet.', life: 3000 });
+                return;
+            }
+            detailRows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: '' }).map(normalizeRowKeys);
+        }
+
+        const grouped = new Map();
+
+        purchaseRows.forEach((row) => {
+            const purchaseRef = normalizeCell(row.purchase_ref || row.ref || row.purchase_no || row.purchase_id);
+            if (!purchaseRef) return;
+            grouped.set(purchaseRef, {
+                header: row,
+                details: []
+            });
+        });
+
+        detailRows.forEach((row) => {
+            const purchaseRef = normalizeCell(row.purchase_ref || row.ref || row.purchase_no || row.purchase_id);
+            if (!purchaseRef) return;
+            if (!grouped.has(purchaseRef)) {
+                grouped.set(purchaseRef, { header: row, details: [] });
+            }
+            grouped.get(purchaseRef).details.push(row);
+        });
+
+        if (grouped.size === 0) {
+            toast.add({ severity: 'error', summary: 'Import Failed', detail: 'No purchase rows found. Check purchase_ref column.', life: 3500 });
+            return;
+        }
+
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const failed = [];
+        let successCount = 0;
+
+        for (const [purchaseRef, value] of grouped.entries()) {
+            const header = value.header || {};
+            const details = value.details || [];
+
+            const supplierId = resolveIdByIdOrName(
+                useSupplier.supplierList,
+                header.supplier_id,
+                header.supplier_name || header.supplier
+            );
+            const warehouseId = resolveIdByIdOrName(
+                useWarehouse.warehouseList,
+                header.warehouse_id,
+                header.warehouse_name || header.warehouse
+            );
+            const paymentId = resolveIdByIdOrName(
+                usePaymentMethod.paymentMethodList,
+                header.payment_id,
+                header.payment_name || header.payment
+            );
+
+            const purchaseDate = excelDateToInput(header.purchase_date);
+            const statusId = toNumber(header.status_id, 7);
+            const remark = normalizeCell(header.remark);
+
+            const products = details.map((detail) => {
+                const product = resolveProduct(detail);
+                return {
+                    raw: detail,
+                    product
+                };
+            }).filter((entry) => entry.product).map((entry) => ({
+                product_id: entry.product.id,
+                quantity: toNumber(entry.raw.quantity, 0),
+                expired_date: normalizeCell(entry.raw.expired_date || entry.raw.expireddate),
+                purchase_price: toNumber(entry.raw.purchase_price || entry.raw.price, 0)
+            })).filter((item) => item.quantity > 0 && item.purchase_price >= 0);
+
+            if (!supplierId || !warehouseId || !purchaseDate || products.length === 0) {
+                failed.push(purchaseRef);
+                continue;
+            }
+
+            const payload = {
+                supplier_id: supplierId,
+                payment_id: paymentId || 1,
+                status_id: statusId,
+                remark,
+                purchase_date: purchaseDate,
+                warehouse_id: warehouseId,
+                created_by: user.id,
+                products
+            };
+
+            await usePurchase.addPurchase(payload);
+            if (usePurchase.error.length) {
+                failed.push(purchaseRef);
+                continue;
+            }
+            successCount += 1;
+        }
+
+        await fetchPurchaseByDate();
+
+        if (successCount > 0) {
+            toast.add({
+                severity: 'success',
+                summary: 'Import Completed',
+                detail: `${successCount} purchase(s) imported successfully.`,
+                life: 3500
+            });
+        }
+
+        if (failed.length > 0) {
+            toast.add({
+                severity: 'warn',
+                summary: 'Some Rows Failed',
+                detail: `Failed purchase_ref: ${failed.slice(0, 5).join(', ')}${failed.length > 5 ? ' ...' : ''}`,
+                life: 5000
+            });
+        }
+    } catch (error) {
+        toast.add({ severity: 'error', summary: 'Import Failed', detail: 'Unable to read Excel file.', life: 3500 });
+    } finally {
+        isImporting.value = false;
+        if (event?.target) event.target.value = '';
+    }
+}
+
 </script>
 
 
@@ -400,6 +668,28 @@ async function deleteHandle(id) {
         <PageTitle title="Purchase List">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
+                    <input
+                        ref="importInputRef"
+                        type="file"
+                        accept=".xlsx,.xls"
+                        class="hidden"
+                        @change="onImportExcel"
+                    />
+                    <BaseButton
+                        v-if="usePermission.can('Purchase', 'Create')"
+                        icon="fa fa-file-excel"
+                        :label="isImporting ? 'Importing...' : 'Import Excel'"
+                        severity="success"
+                        :disabled="isImporting"
+                        @click="openImportPicker"
+                    />
+                    <BaseButton
+                        v-if="usePermission.can('Purchase', 'Create')"
+                        icon="fa fa-download"
+                        label="Download Template"
+                        severity="secondary"
+                        @click="downloadImportTemplate"
+                    />
                     <BaseButton v-if="usePermission.can('Purchase', 'Create')" icon="fa fa-circle-plus" label="Create"
                         severity="primary" @click="changeRoute('/purchase/create')" />
                 </div>
@@ -412,9 +702,18 @@ async function deleteHandle(id) {
             <DashboardCard title="Total Kpay" :value="totalKpayAmount.toLocaleString('en-us')" icon="fa fa-credit-card" color="blue" />
             <DashboardCard title="Total Wallet" :value="totalWalletAmount.toLocaleString('en-us')" icon="fa fa-wallet" color="purple" />
         </div>
-        <DataTable :columns="columns" :rows="displayedPurchase" :editPath="'Update Purchase'"
-            :isLoading="usePurchase.loading" @delete="deleteHandle" :defaultSort="{ key: 'created_at', order: 'desc' }"
-            :isEdit="!usePermission.can('Purchase', 'Update')" :isDelete="!usePermission.can('Purchase', 'Delete')" filename="Purchase">
+        <DataTable 
+            :columns="columns" 
+            :rows="displayedPurchase" :editPath="'Update Purchase'"
+            :isLoading="usePurchase.loading" @delete="deleteHandle" 
+            :defaultSort="{ key: 'created_at', order: 'desc' }"
+            :isEdit="!usePermission.can('Purchase', 'Update')" 
+            :isDelete="!usePermission.can('Purchase', 'Delete')" 
+            filename="Purchase"
+            :detailHeaders="['Product ID', 'Product Name', 'Price', 'Qty', 'Total']"
+            detailField="details"
+            :detailKeys="['product.id', 'product.name', 'price', 'quantity', 'total']"
+        >
             <template #filters>
                 <div class="flex gap-2 items-center">
                     <DatePicker
