@@ -246,6 +246,7 @@ async function formSubmit() {
     await usePurchase.editPurchase(payload, route.query.id);
     if (usePurchase.error.length) {
         usePurchase.error.forEach((msg) => {
+            console.error(msg);
             toast.add({
               severity: 'error',
               summary: 'Error Message',

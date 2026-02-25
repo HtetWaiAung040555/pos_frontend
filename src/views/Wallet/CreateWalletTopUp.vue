@@ -97,7 +97,7 @@ async function formSubmit(isPrint = false) {
     return
   }
 
-  const topup = {
+  const payload = {
     customer_id: selectedCustomer.value.id,
     amount: Number(data.value.amount),
     remark: data.value.remark,
@@ -106,7 +106,7 @@ async function formSubmit(isPrint = false) {
     created_by: userData.value.id,
   };
 
-  await useWallet.addWallet(topup);
+  await useWallet.addWallet(payload);
 
   if (useWallet.error.length) {
     useWallet.error.forEach((msg) => {
