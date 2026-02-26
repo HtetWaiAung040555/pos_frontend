@@ -54,6 +54,12 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             icon: 'fas fa-arrow-up-right-dots',
             pathname: "/sales_price_change",
             permission: {name: 'Sales price change', action: "View"}
+          },
+          { 
+            name: 'Customer Transaction', 
+            icon: 'fas fa-exchange-alt',
+            pathname: "/customer_transaction",
+            permission: {name: 'Customer Transaction', action: "View"}
           }
         ],
       },

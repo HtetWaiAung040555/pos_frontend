@@ -87,6 +87,7 @@ import UpdateSalesPriceChange from './views/Sales_Price_Change/UpdateSalesPriceC
 import ViewSales from './views/Sales/ViewSales.vue';
 import Reports from './views/Report/Reports.vue';
 import SalesReport from './views/Report/SalesReport.vue';
+import CustomerTransaction from './views/Customer_Transaction/CustomerTransaction.vue';
 
 
 
@@ -169,6 +170,7 @@ const router = createRouter({
         {path: '/reports/sales', name: 'Sales Reports', component: SalesReport, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'Report' } }},
         {path: '/reports/purchase', name: 'Purchase Reports', component: Reports, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'Report' } }},
         {path: '/reports/inventory', name: 'Inventory Reports', component: Reports, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'Report' } }},
+        {path: '/customer_transaction', name: 'Customer Transaction', component: CustomerTransaction, meta: { requiresAuth: true, permission: { resource: 'Customer Transaction', action: 'View' } }},
         { path: '/', redirect: '/login' }
     ]
 });

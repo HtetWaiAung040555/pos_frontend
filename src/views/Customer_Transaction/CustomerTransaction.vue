@@ -11,19 +11,18 @@ import moment from 'moment'
 import { useFilterStore } from '@/stores/filterStore';
 import { usePermissionStore } from '@/stores/usePermissionStore';
 import BaseInput from '@/components/BaseInput.vue';
-
-import { useWalletStore } from '@/stores/useWalletStore';
 import DashboardCard from '@/components/DashboardCard.vue';
 import { statusBadgeHtml } from '@/utils/const';
 import { getPresetRange } from '@/utils/datePresets';
+import { useCustomerTransactionStore } from '@/stores/useCustomerTransaction';
 
 const router = useRouter();
 const toast = useToast();
 const filter = useFilterStore();
 const usePermission = usePermissionStore();
-const useWallet = useWalletStore();
+const useCustomerTransaction = useCustomerTransactionStore();
 const searchValue = ref('');
-const walletList = ref([]);
+const transactionList = ref([]);
 const selectedPaymentMethod = ref('');
 const selectedType = ref('');
 const filteredData = ref({
@@ -78,13 +77,13 @@ async function fetchTransaction() {
         const end = filteredData.value.endedDate
             ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss')
             : "";
-        await useWallet.fetchAllWallet({
+        await useCustomerTransaction.fetchAllTransaction({
             start_date: start,
             end_date: end,
             customer_id: "",
             status_id: 7, // completed status only
         });
-        walletList.value = useWallet.walletList || [];
+        transactionList.value = useCustomerTransaction.dataList || [];
         // persist current filters after fetch
         saveFilters();
     } finally {
@@ -142,6 +141,20 @@ const columns = [
     } },
     { key: 'payment_method.name', label: 'Payment Method', formatter: (row) => row.payment_method?.name },
     { key: 'pay_date', label: 'Date', formatter: (row) => moment(row.pay_date).format('DD-MM-YY hh:mm') },
+    {
+        key: 'reference_id', label: 'Reference', formatter: (row) => {
+            if (row.type === 'sale') {
+                return `<a href="/sale/${row.reference_id}" class="text-blue-600 hover:underline">${row.reference_id}</a>`;
+            }
+            return row.reference_id || '';
+        } 
+    },
+    {
+        key: 'type', label: 'Type', formatter: (row) => { 
+            const color = row.type === 'sale' ? 'blue' : (row.type === 'top-up' ? 'green' : 'gray');
+            return `<span class="capitalize text-${color}-700">${row.type}</span>`;
+        }
+    },
     { key: 'status.name', label: 'Status', formatter: (row) => statusBadgeHtml(row.status?.name) },
     { key: 'created_by', label: 'Created By', },
     { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
@@ -156,7 +169,7 @@ function changeRoute(pathname) {
 
 const paymentMethods = computed(() => {
     const map = new Map();
-    (walletList.value || []).forEach(w => {
+    (transactionList.value || []).forEach(w => {
         if (w.payment_method.name) map.set(w.payment_method.name);
     });
     return Array.from(map.entries()).map(([name]) => ({ name }));
@@ -164,7 +177,7 @@ const paymentMethods = computed(() => {
 
 // Filter Function
 const filteredRows = computed(() => {
-    let list = (walletList.value || []).slice();
+    let list = (transactionList.value || []).slice();
     // filter by payment method
     if (selectedPaymentMethod.value) {
         list = list.filter(w => String(w.payment_method.name) === String(selectedPaymentMethod.value));
@@ -207,25 +220,6 @@ const totalAmount = computed(() => {
         }, 0);
     });
 
-//  Delete function
-async function deleteHandle(id) {
-    await useWallet.deleteWallet(id);
-    if (useWallet.error.length) {
-        useWallet.error.forEach((msg) => {
-            toast.add({
-                severity: 'error',
-                summary: 'Error Message',
-                detail: msg,
-                life: 3000
-            });
-        });
-        return
-    }
-    if (useWallet.data.status === 200) {
-        toast.add({ severity: 'success', summary: 'Success Message', detail: 'Wallet transaction deleted successfully.', life: 3000 });
-        fetchTransaction();
-    }
-}
 </script>
 
 <template>
@@ -246,9 +240,8 @@ async function deleteHandle(id) {
             <DashboardCard title="Total Kpay" :value="totalKpayAmount.toLocaleString('en-us')" icon="fa fa-credit-card" color="blue" />
         </div>
         <!-- DataTable -->
-        <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Wallet Top Up'"
-            :isLoading="useWallet.loading" @delete="deleteHandle" :defaultSort="{ key: 'pay_date', order: 'desc' }"
-            :isEdit="!usePermission.can('Wallet', 'Update')" :isDelete="!usePermission.can('Wallet', 'Delete')" filename="Customer_Transaction">
+        <DataTable :columns="columns" :rows="filteredRows"
+            :isLoading="useCustomerTransaction.loading" :defaultSort="{ key: 'pay_date', order: 'desc' }" filename="Wallets_List">
             <!-- Filter Section -->
             <template #filters>
                 <div class="flex gap-2 items-center">

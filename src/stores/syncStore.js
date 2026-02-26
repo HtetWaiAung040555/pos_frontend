@@ -39,7 +39,7 @@ export const useSyncStore = defineStore('Sync Store', {
 
             try {
                 const [customerRes, salesRes] = await Promise.all([
-                    axios.post('/customers_transactions/sync_to_cloud', formData),
+                    axios.post('/wallets/sync_to_cloud', formData),
                     axios.post('/sales/sync_to_cloud', formData)
                 ]);
 
