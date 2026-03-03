@@ -120,6 +120,7 @@ const columns = [
             return `<img class="object-cover w-10 h-10 rounded" src="${row.inventory.product.image_url}" alt="${row.inventory.product.name}" />`;
         }
     },
+    { key: 'inventory.product.barcode', label: 'Barcode', formatter: (row) => row.inventory.product.barcode },
     { key: 'inventory.product.name', label: 'Product', formatter: (row) => row.inventory.product.name },
     { key: 'inventory.warehouse.name', label: 'Warehouse', formatter: (row) => row.inventory.warehouse.name },
     { key: 'quantity_change', label: 'Qty' },
@@ -128,10 +129,10 @@ const columns = [
             return `<span class="text-white px-2 py-1 rounded ${color}">${row.type.toUpperCase()}</span>`;
         }
     },
-    { key: 'reference_type', label: 'Reference Type', formatter: (row) => row.reference_type.toUpperCase() },
+    // { key: 'reference_type', label: 'Reference Type', formatter: (row) => row.reference_type.toUpperCase() },
     { key: 'reference_date', label: 'Reference Date', formatter: (row) => row.reference_date ? moment(row.reference_date).format('DD-MM-YY') : "N/A" },
     { key: 'expired_date', label: 'Expire', formatter: (row) => row.inventory.expired_date ? moment(row.inventory.expired_date).format('DD-MM-YY') : "N/A" },
-    { key: 'created_by', label: 'Created By', formatter: (row) => row.created_by.name },
+    { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
     { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY HH:mm') },
 ];
 
@@ -145,9 +146,9 @@ const filteredRows = computed(() => {
     if (!searchValue.value) return dataList.value;
     return dataList.value.filter(row => {
         const productName = row.inventory.product.name.toLowerCase();
-        const warehouseName = row.inventory.warehouse.name.toLowerCase();
+        const barcode = row.inventory.product.barcode.toLowerCase();
         const search = searchValue.value.toLowerCase();
-        return productName.includes(search) || warehouseName.includes(search);
+        return productName.includes(search) || barcode.includes(search);
     });
 });
 
@@ -183,6 +184,7 @@ async function deleteHandle(id) {
         <DataTable 
             :columns="columns" :rows="filteredRows" :isPaginate="false"
             :isLoading="useStockTransaction.loading" @delete="deleteHandle"
+            filename="Stock_Adjustment"
             :isDelete="!usePermission.can('Stock adjustment', 'Delete')"
         >
             <!-- Filter Section -->
