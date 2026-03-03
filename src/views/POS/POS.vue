@@ -652,6 +652,13 @@ function clickCustomerSelect() {
   console.log('Customer select clicked');
 }
 
+// Open Wallet Dialog
+function openWalletDialog() {
+  walletData.value.payDate = Date.now();
+  openWalletModal.value = true;
+  console.log(walletData.value.payDate);
+}
+
 // Print only the slip section between the markers
 function printSlip(isSale = true) {
   const slip = document.getElementById(isSale ? 'sales-slip' : 'wallet-slip');
@@ -734,7 +741,7 @@ function printSlip(isSale = true) {
             width="350px" icon="pi pi-search" @keyup.escape="searchQuery = ' '" />
           <div class="flex gap-x-2">
             <BaseButton label="Holds" severity="info" icon="fa fa-folder-open" @click="openHoldDialog" />
-            <BaseButton label="Top-up" severity="secondary" icon="fa fa-plus" @click="openWalletModal = true"
+            <BaseButton label="Top-up" severity="secondary" icon="fa fa-plus" @click="openWalletDialog"
               :disabled="salesData.paymentId != 3" />
           </div>
         </div>
