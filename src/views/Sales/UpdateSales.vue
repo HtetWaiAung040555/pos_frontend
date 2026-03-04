@@ -552,7 +552,8 @@ function printSlip() {
             <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
                 <span class="whitespace-nowrap">Paid Amount</span>
                 <span class="text-right">:</span>
-                <span class="font-bold text-right">{{ Number(formData.paidAmount).toLocaleString('en-us') }}</span>
+                <BaseInput size="sm" v-model="formData.paidAmount" height="h-[35px]" type="number" />
+                <!-- <span class="font-bold text-right">{{ Number(formData.paidAmount).toLocaleString('en-us') }}</span> -->
             </div>
         </div>
         <!-- Change Amount -->
@@ -720,5 +721,5 @@ function printSlip() {
           <div>Thanks for shopping with us!</div>
           <div>Keep this receipt for your records</div>
         </footer>
-      </div>
+    </div>
 </template>
