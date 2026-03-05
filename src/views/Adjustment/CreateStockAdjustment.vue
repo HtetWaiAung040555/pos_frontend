@@ -13,6 +13,7 @@ import { Select } from 'primevue';
 import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
 import { errMsgList } from '@/utils/const';
 import { useInventoryStore } from '@/stores/useInventoryStore';
+import moment from 'moment';
 
 const router = useRouter();
 const route = useRoute();
@@ -24,9 +25,10 @@ const stockList = ref([]);
 const inventoryIdSearch = ref('');
 const productSearch = ref('');
 const selectedInventory = ref({
-    adjustType: '1',
+    adjustType: 'in',
     newQty: 0,
     reason: "",
+    adjustDate: moment().format('YYYY-MM-DDTHH:mm'), 
     product: {
         id: null,
         name: "",
@@ -52,9 +54,10 @@ onMounted(async () => {
         await useInventory.fetchStock(route.query.id);
         selectedInventory.value = {
             ...useInventory.stockList,
-            adjustType: '1',
+            adjustType: 'in',
             newQty: 0,
             reason: "",
+            adjustDate: moment().format('YYYY-MM-DDTHH:mm'),
         };
     }
     await useInventory.fetchAllStock();
@@ -71,16 +74,27 @@ const filteredStockList = computed(() => {
             ? String(inventory.id).toLowerCase().includes(inventoryQuery)
             : true;
         const matchesProduct = productQuery
-            ? inventory.product?.name?.toLowerCase().includes(productQuery)
+            ? inventory.product?.name?.toLowerCase().includes(productQuery) || inventory.product?.barcode?.toLowerCase().includes(productQuery)
             : true;
         return matchesInventoryId && matchesProduct;
     });
 });
 
 
-// Update stock function
+function confirmSelection(inventory) {
+    selectedInventory.value = {
+        ...inventory,
+        adjustType: 'in',
+        newQty: 0,
+        reason: "",
+        adjustDate: moment().format('YYYY-MM-DDTHH:mm'),
+    };
+}
+
+
+// form submit function
 async function formSubmit() {
-    if (selectedInventory.value.qty <= 0) {
+    if (selectedInventory.value.newQty <= 0) {
         errorMsg.value = {
             qty: errMsgList.qty
         };
@@ -88,8 +102,10 @@ async function formSubmit() {
     }
     let payload = {
         inventory_id: selectedInventory.value.id,
-        qty: selectedInventory.value.adjustType === '1'? Number(selectedInventory.value.newQty) : -Number(selectedInventory.value.newQty),
+        qty: Number(selectedInventory.value.newQty),
         reason: selectedInventory.value.reason || "Stock adjustment",
+        type: selectedInventory.value.adjustType,
+        adjust_date: selectedInventory.value.adjustDate,
         created_by: userData.value.id,
     }
     await useInventory.adjustStock(payload);
@@ -146,13 +162,14 @@ async function formSubmit() {
                         <BaseLabel label="Adjustment Type:" />
                         <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
                             v-model="selectedInventory.adjustType">
-                            <option value="1">Gain</option>
-                            <option value="2">Loss</option>
+                            <option value="in">Gain</option>
+                            <option value="out">Loss</option>
                         </select>
                     </div>
                     <!-- New Qty input -->
-                    <BaseInput size="sm" v-model="selectedInventory.newQty" label="New Qty" placeholder="Stock Qty"
-                        height="h-[35px]" type="number" :isRequire="true" :error="errorMsg.qty" />
+                    <BaseInput size="sm" v-model="selectedInventory.newQty" label="New Qty" placeholder="Stock Qty" height="h-[35px]" type="number" :isRequire="true" :error="errorMsg.qty" />
+                    <!-- Adjust Date input -->
+                    <BaseInput size="sm" v-model="selectedInventory.adjustDate" label="Adjust Date" height="h-[35px]" type="datetime-local" />
                     <!-- Reason input -->
                     <BaseInput class="col-span-2" size="sm" v-model="selectedInventory.reason" label="Reason"
                         placeholder="Reason for adjustment" height="h-[35px]" type="text" />
@@ -173,7 +190,7 @@ async function formSubmit() {
                 </div>
                 <div>
                     <BaseInput size="sm" v-model="productSearch" label=""
-                    placeholder="Search by Product" height="h-[35px]" />
+                    placeholder="Search by Product name or barcode" height="h-[35px]" />
                 </div>
             </div>
         </div>
@@ -183,6 +200,7 @@ async function formSubmit() {
                     <tr class="bg-gray-100 text-left">
                         <th class="px-2 py-2">Inv ID</th>
                         <th class="px-2 py-2">Product</th>
+                        <th class="px-2 py-2">Barcode</th>
                         <th class="px-2 py-2">Warehouse</th>
                         <th class="px-2 py-2 text-right">Qty</th>
                         <th class="px-2 py-2">Expired Date</th>
@@ -191,10 +209,11 @@ async function formSubmit() {
                 <tbody>
                     <tr 
                         class="cursor-pointer hover:bg-blue-50" v-for="inventory in filteredStockList" :key="inventory.id" 
-                        @click="selectedInventory = { ...inventory, adjustType: '1', newQty: 0, reason: '' }"
+                        @click="confirmSelection(inventory)"
                     >
                         <td class="border-b border-gray-200 px-2 py-2">{{ inventory.id }}</td>
                         <td class="border-b border-gray-200 px-2 py-2">{{ inventory.product.name }}</td>
+                        <td class="border-b border-gray-200 px-2 py-2">{{ inventory.product.barcode }}</td>
                         <td class="border-b border-gray-200 px-2 py-2">{{ inventory.warehouse.name }}</td>
                         <td class="border-b border-gray-200 px-2 py-2 text-right">{{ inventory.qty }}</td>
                         <td class="border-b border-gray-200 px-2 py-2">{{ inventory.expired_date }}</td>

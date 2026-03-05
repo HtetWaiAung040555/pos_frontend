@@ -12,6 +12,7 @@
     import BaseInput from '@/components/BaseInput.vue';
     import BaseCheckbox from '@/components/BaseCheckbox.vue';
     import { useInventoryStore } from '@/stores/useInventoryStore';
+    import DashboardCard from '@/components/DashboardCard.vue';
 
     const router = useRouter();
     const toast = useToast();
@@ -137,6 +138,10 @@ watch([
         }
     }
 
+    const totalQty = computed(() => {
+        return filteredRows.value.reduce((sum, item) => sum + Number(item.qty), 0);
+    }); 
+
 </script>
 
 <template>
@@ -155,6 +160,9 @@ watch([
                 </div>
             </template>
         </PageTitle>
+        <div class="grid grid-cols-5 my-3 gap-x-4">
+            <DashboardCard title="Total Qty" :value="totalQty" icon="fa fa-receipt" color="green" />
+        </div>
         <!-- DataTable -->
         <DataTable
             :columns="columns"

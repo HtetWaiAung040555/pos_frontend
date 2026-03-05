@@ -15,7 +15,7 @@
     import { useFilterStore } from '@/stores/filterStore';
     import DashboardCard from '@/components/DashboardCard.vue';
     import { statusBadgeHtml } from '@/utils/const';
-import { getPresetRange } from '@/utils/datePresets';
+    import { getPresetRange } from '@/utils/datePresets';
 
     const router = useRouter();
     const route = useRoute();
@@ -63,6 +63,7 @@ import { getPresetRange } from '@/utils/datePresets';
             if (saved.selectedStatus) selectedStatus.value = saved.selectedStatus;
             if (saved.selectedPayment) selectedPayment.value = saved.selectedPayment;
             if (saved.searchValue) searchValue.value = saved.searchValue;
+            if (saved.productSearchValue) productSearchValue.value = saved.productSearchValue;
             if (saved.selectedYear) selectedYear.value = saved.selectedYear;
             if (saved.selectedMonth) selectedMonth.value = saved.selectedMonth;
             if (saved.selectedDay) selectedDay.value = saved.selectedDay;

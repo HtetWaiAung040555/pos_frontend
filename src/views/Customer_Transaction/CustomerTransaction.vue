@@ -13,31 +13,19 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
 import BaseInput from '@/components/BaseInput.vue';
 
 import { useWalletStore } from '@/stores/useWalletStore';
-import { useCustomerStore } from '@/stores/useCustomerStore';
-import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
 import DashboardCard from '@/components/DashboardCard.vue';
 import { statusBadgeHtml } from '@/utils/const';
 import { getPresetRange } from '@/utils/datePresets';
-import {
-    normalizeCell,
-    toNumber,
-    readWorkbookFromFile,
-    readNormalizedSheetRows,
-    parseExcelDateTime,
-    resolveIdByIdOrName
-} from '@/utils/excelImport';
+import { useCustomerTransactionStore } from '@/stores/useCustomerTransaction';
 
 const router = useRouter();
 const toast = useToast();
 const filter = useFilterStore();
 const usePermission = usePermissionStore();
 const useWallet = useWalletStore();
-const useCustomer = useCustomerStore();
-const usePaymentMethod = usePaymentMethodStore();
+const useCustomerTransaction = useCustomerTransactionStore();
 const searchValue = ref('');
 const walletList = ref([]);
-const importInputRef = ref(null);
-const isImporting = ref(false);
 const selectedPaymentMethod = ref('');
 const selectedType = ref('');
 const filteredData = ref({
@@ -82,13 +70,6 @@ onMounted(async () => {
     await fetchTransaction();
 });
 
-async function ensureImportLookups() {
-    const jobs = [];
-    if (!Array.isArray(useCustomer.customerList) || useCustomer.customerList.length === 0) jobs.push(useCustomer.fetchAllCustomer());
-    if (!Array.isArray(usePaymentMethod.paymentMethodList) || usePaymentMethod.paymentMethodList.length === 0) jobs.push(usePaymentMethod.fetchAllPaymentMethod());
-    if (jobs.length > 0) await Promise.all(jobs);
-}
-
 async function fetchTransaction() {
     isDateLoading.value = true;
     try {
@@ -99,13 +80,13 @@ async function fetchTransaction() {
         const end = filteredData.value.endedDate
             ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss')
             : "";
-        await useWallet.fetchAllWallet({
+        await useCustomerTransaction.fetchAllTransaction({
             start_date: start,
             end_date: end,
             customer_id: "",
             status_id: 7, // completed status only
         });
-        walletList.value = useWallet.walletList || [];
+        walletList.value = useCustomerTransaction.dataList || [];
         // persist current filters after fetch
         saveFilters();
     } finally {
@@ -163,6 +144,12 @@ const columns = [
     } },
     { key: 'payment_method.name', label: 'Payment Method', formatter: (row) => row.payment_method?.name },
     { key: 'pay_date', label: 'Date', formatter: (row) => moment(row.pay_date).format('DD-MM-YY hh:mm') },
+    { key: 'reference_id', label: 'Reference ID', formatter: (row) => row.reference_id, onClick: (row) => {
+        if (row.sale_id) {
+            router.push({ name: 'View Sales', query: { id: row.sale_id } });
+        }
+    }},
+    { key: 'type', label: 'Type' },
     { key: 'status.name', label: 'Status', formatter: (row) => statusBadgeHtml(row.status?.name) },
     { key: 'created_by', label: 'Created By', },
     { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
@@ -228,148 +215,18 @@ const totalAmount = computed(() => {
         }, 0);
     });
 
-//  Delete function
-async function deleteHandle(id) {
-    await useWallet.deleteWallet(id);
-    if (useWallet.error.length) {
-        useWallet.error.forEach((msg) => {
-            toast.add({
-                severity: 'error',
-                summary: 'Error Message',
-                detail: msg,
-                life: 3000
-            });
-        });
-        return
-    }
-    if (useWallet.data.status === 200) {
-        toast.add({ severity: 'success', summary: 'Success Message', detail: 'Wallet transaction deleted successfully.', life: 3000 });
-        fetchTransaction();
-    }
-}
-
-function openImportPicker() {
-    importInputRef.value?.click();
-}
-
-function downloadImportTemplate() {
-    const link = document.createElement('a');
-    link.href = '/wallet_import_template.xlsx';
-    link.download = 'wallet_import_template.xlsx';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-
-async function onImportExcel(event) {
-    const file = event.target?.files?.[0];
-    if (!file) return;
-
-    isImporting.value = true;
-    try {
-        await ensureImportLookups();
-        const workbook = await readWorkbookFromFile(file);
-        const rows = readNormalizedSheetRows(workbook, ['wallets', 'wallet_topup', 'wallet']);
-
-        if (rows.length === 0) {
-            toast.add({ severity: 'error', summary: 'Import Failed', detail: 'No rows found in Excel sheet.', life: 3500 });
-            return;
-        }
-
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        let successCount = 0;
-        const failedRows = [];
-
-        for (let i = 0; i < rows.length; i++) {
-            const row = rows[i];
-
-            const customerId = resolveIdByIdOrName(
-                useCustomer.customerList,
-                row.customer_id,
-                row.customer_name || row.customer
-            );
-            const paymentId = resolveIdByIdOrName(
-                usePaymentMethod.paymentMethodList,
-                row.payment_id,
-                row.payment_name || row.payment_method || row.payment
-            );
-
-            const amount = toNumber(row.amount, 0);
-            const payDate = parseExcelDateTime(row.pay_date || row.date || row.transaction_date, 'YYYY-MM-DD HH:mm:ss');
-            const remark = normalizeCell(row.remark);
-
-            if (!customerId || !paymentId || amount <= 0 || !payDate) {
-                failedRows.push(i + 2);
-                continue;
-            }
-
-            const payload = {
-                customer_id: customerId,
-                amount,
-                remark,
-                pay_date: payDate,
-                payment_id: paymentId,
-                created_by: user.id,
-            };
-
-            await useWallet.addWallet(payload);
-            if (useWallet.error.length) {
-                failedRows.push(i + 2);
-                continue;
-            }
-            successCount += 1;
-        }
-
-        await fetchTransaction();
-
-        if (successCount > 0) {
-            toast.add({
-                severity: 'success',
-                summary: 'Import Completed',
-                detail: `${successCount} wallet top-up row(s) imported.`,
-                life: 3500
-            });
-        }
-
-        if (failedRows.length > 0) {
-            toast.add({
-                severity: 'warn',
-                summary: 'Some Rows Failed',
-                detail: `Invalid rows: ${failedRows.slice(0, 8).join(', ')}${failedRows.length > 8 ? ' ...' : ''}`,
-                life: 5000
-            });
-        }
-    } catch (err) {
-        toast.add({ severity: 'error', summary: 'Import Failed', detail: 'Unable to read or import this file.', life: 3500 });
-    } finally {
-        isImporting.value = false;
-        if (event?.target) event.target.value = '';
-    }
-}
 </script>
 
 <template>
     <div class="p-4">
         <!-- Page Title -->
-        <PageTitle title="Wallet Top-up">
-            <template #titleButtons>
+        <PageTitle title="Customer Transaction List">
+            <!-- <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
-                    <input
-                        ref="importInputRef"
-                        type="file"
-                        accept=".xlsx,.xls"
-                        class="hidden"
-                        @change="onImportExcel"
-                    />
-                    <BaseButton v-if="usePermission.can('Wallet', 'Create')" icon="fa fa-file-excel"
-                        :label="isImporting ? 'Importing...' : 'Import Excel'" severity="success" :disabled="isImporting"
-                        @click="openImportPicker" />
-                    <BaseButton v-if="usePermission.can('Wallet', 'Create')" icon="fa fa-download"
-                        label="Download Template" severity="secondary" @click="downloadImportTemplate" />
                     <BaseButton v-if="usePermission.can('Wallet', 'Create')" icon="fa fa-circle-plus" label="Create"
                         severity="primary" @click="changeRoute('/wallet/createTopUp')" />
                 </div>
-            </template>
+            </template> -->
         </PageTitle>
         <div class="grid grid-cols-5 my-3 gap-x-4">
             <DashboardCard title="Total" :value="filteredRows.length" icon="fa fa-receipt" color="green" />
@@ -378,9 +235,15 @@ async function onImportExcel(event) {
             <DashboardCard title="Total Kpay" :value="totalKpayAmount.toLocaleString('en-us')" icon="fa fa-credit-card" color="blue" />
         </div>
         <!-- DataTable -->
-        <DataTable :columns="columns" :rows="filteredRows" :editPath="'Update Wallet Top Up'"
-            :isLoading="useWallet.loading" @delete="deleteHandle" :defaultSort="{ key: 'pay_date', order: 'desc' }"
-            :isEdit="!usePermission.can('Wallet', 'Update')" :isDelete="!usePermission.can('Wallet', 'Delete')" filename="Customer_Transaction">
+        <DataTable 
+            :columns="columns" 
+            :rows="filteredRows" 
+            :editPath="'Update Wallet Top Up'"
+            :isLoading="useCustomerTransaction.loading" 
+            :isAction="false" 
+            :defaultSort="{ key: 'pay_date', order: 'desc' }" 
+            filename="Customer_Transaction"
+        >
             <!-- Filter Section -->
             <template #filters>
                 <div class="flex gap-2 items-center">

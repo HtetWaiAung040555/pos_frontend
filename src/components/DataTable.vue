@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
 import BaseButton from './BaseButton.vue';
 import Loading from './Loading.vue';
 import Dialog from 'primevue/dialog';
@@ -52,6 +52,8 @@ const sortKey = ref(props.defaultSort.key);
 const sortOrder = ref(props.defaultSort.order); // 'asc' or 'desc'
 const visible = ref(false);
 const rowId = ref('');
+const tableContainerRef = ref(null);
+const tableContainerHeight = ref('auto');
 
 const totalsConfig = computed(() => ({
   enabled: !!props.totals?.enabled,
@@ -278,6 +280,33 @@ function formatTotalValue(row, colKey) {
   return raw;
 }
 
+function updateTableContainerHeight() {
+  if (!tableContainerRef.value) return;
+  const rect = tableContainerRef.value.getBoundingClientRect();
+  const viewportHeight = window.innerHeight;
+  const bottomSpacing = 34;
+  const available = viewportHeight - rect.top - bottomSpacing;
+  tableContainerHeight.value = `${Math.max(200, available)}px`;
+}
+
+onMounted(async () => {
+  await nextTick();
+  updateTableContainerHeight();
+  window.addEventListener('resize', updateTableContainerHeight);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateTableContainerHeight);
+});
+
+watch(
+  () => [props.isPaginate, props.isSearchable],
+  async () => {
+    await nextTick();
+    updateTableContainerHeight();
+  }
+);
+
 </script>
 
 <template>
@@ -309,10 +338,14 @@ function formatTotalValue(row, colKey) {
       </div>
     </div>
 
-    <div class="flex flex-col max-h-[450px] overflow-hidden">
+    <div
+      ref="tableContainerRef"
+      class="flex flex-col min-h-0 overflow-hidden"
+      :style="{ height: tableContainerHeight }"
+    >
 
       <!-- Table -->
-      <div class="flex-1 overflow-y-auto">
+      <div class="flex-1 min-h-0 overflow-y-auto">
         <table class="w-full">
           <thead class="sticky top-0 z-10">
             <tr class="bg-gray-100">

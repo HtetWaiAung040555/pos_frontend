@@ -31,6 +31,18 @@ export const useStockTransactionStore = defineStore('Stock Transaction', {
             } finally {
                 this.loading = false;
             }
+        },
+        async deleteStockAdjust(id) {
+            this.deleteLoading = true;
+            this.error = [];
+            try {
+                const response = await axios.delete(`/stock_transactions/${id}`);
+                this.data = response;
+            } catch (err) {
+                this.error = normalizeApiError(err);
+            } finally {
+                this.deleteLoading = false;
+            }
         }
     }
 
