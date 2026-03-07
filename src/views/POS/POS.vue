@@ -894,12 +894,12 @@ function printSlip(isSale = true) {
         <!-- Fixed bottom button group -->
         <div class="shrink-0 mt-4 flex justify-end gap-x-2 items-center">
           <BaseButton label="Reset" severity="danger" :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-rotate-left'"
-            :disabled="selectedProducts.length === 0 || useSales.loading" @click="resetData" />
+            :disabled="selectedProducts.length === 0 || useCustomer.loading || useSales.loading" @click="resetData" />
           <BaseButton label="Hold" severity="secondary" :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-hand'"
-            :disabled="selectedProducts.length === 0 || selectedHold.length != 0 || useSales.loading || (Number(remainingBalance) < 0 && salesData.paymentId == 3)"
+            :disabled="selectedProducts.length === 0 || selectedHold.length != 0 || useCustomer.loading || useSales.loading || (Number(remainingBalance) < 0 && salesData.paymentId == 3)"
             @click="holdSale" />
           <BaseButton label="Pay" severity="primary" :icon="useSales.loading ? 'fa fa-spinner' : 'fa fa-credit-card'"
-            :disabled="selectedProducts.length === 0 || useSales.loading || (Number(remainingBalance) < 0 && salesData.paymentId == 3)"
+            :disabled="selectedProducts.length === 0 || useCustomer.loading || useSales.loading || (Number(remainingBalance) < 0 && salesData.paymentId == 3)"
             @click="onPayClick" />
         </div>
       </div>

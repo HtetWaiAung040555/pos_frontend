@@ -38,6 +38,13 @@ const errorMsg = ref({
 });
 const openEditModal = ref(false);
 const isSyncLoading = ref(false);
+const syncProgress = ref(0);
+const syncStatus = ref('Preparing sync...');
+
+function setSyncState(progress, status) {
+  syncProgress.value = progress;
+  syncStatus.value = status;
+}
 
 onMounted(() => {
   userData.value = JSON.parse(localStorage.getItem('user'));
@@ -127,10 +134,34 @@ async function formSubmit() {
 async function syncAll() {
   try {
     isSyncLoading.value = true;
-    await useSync.syncAll({updated_by: userData.value.id}).finally (() => {
-      isSyncLoading.value = false;
-      router.go(0);
-    })
+    setSyncState(5, 'Preparing full sync...');
+    await useSync.syncAll(
+      { updated_by: userData.value.id },
+      ({ progress, status }) => {
+        setSyncState(progress, status);
+      }
+    );
+
+    if (useSync.error.length) {
+      useSync.error.forEach((msg) => {
+        toast.add({
+          severity: 'error',
+          summary: 'Error Message',
+          detail: msg,
+          life: 3000
+        });
+      });
+      return;
+    }
+
+    toast.add({
+      severity: 'success',
+      summary: 'Success Message',
+      detail: 'Synced successfully.',
+      life: 3000
+    });
+
+    router.go(0);
   } catch (err) {
     toast.add({
       severity: 'error',
@@ -138,21 +169,35 @@ async function syncAll() {
       detail: err,
       life: 3000
     });
+  } finally {
+    isSyncLoading.value = false;
   }
 }
 
 async function syncFromCloud() {
   try {
     isSyncLoading.value = true;
-    await Promise.all([
-      await useCustomer.syncFromCloud({updated_by: userData.value.id}),
-      await useProduct.syncFromCloud({updated_by: userData.value.id}),
-      await useInventory.syncFromCloud({updated_by: userData.value.id}),
-      await usePromo.syncFromCloud({updated_by: userData.value.id}),
-    ]).finally (() => {
-      isSyncLoading.value = false;
-      router.go(0);
+    setSyncState(10, 'Downloading customers...');
+    await useCustomer.syncFromCloud({ updated_by: userData.value.id });
+
+    setSyncState(35, 'Downloading products...');
+    await useProduct.syncFromCloud({ updated_by: userData.value.id });
+
+    setSyncState(60, 'Downloading inventories...');
+    await useInventory.syncFromCloud({ updated_by: userData.value.id });
+
+    setSyncState(85, 'Downloading promotions...');
+    await usePromo.syncFromCloud({ updated_by: userData.value.id });
+
+    setSyncState(100, 'Sync completed.');
+    toast.add({
+      severity: 'success',
+      summary: 'Success Message',
+      detail: 'Downloaded from cloud successfully.',
+      life: 3000
     });
+
+    router.go(0);
   } catch (err) {
     toast.add({
       severity: 'error',
@@ -160,16 +205,28 @@ async function syncFromCloud() {
       detail: err,
       life: 3000
     });
+  } finally {
+    isSyncLoading.value = false;
   }
 }
 
-async function syncToCloud() {
+async function runSync() {
   isSyncLoading.value = true;
+  setSyncState(5, 'Preparing cloud sync...');
 
   try {
-    await useSync.syncToCloud({
-      updated_by: userData.value.id
-    });
+    await useSync.syncToCloud(
+      {
+        updated_by: userData.value.id
+      },
+      ({ progress, status }) => {
+        setSyncState(progress, status);
+      }
+    );
+
+    if (useSync.error.length) {
+      throw new Error(useSync.error[0]);
+    }
 
     toast.add({
       severity: 'success',
@@ -211,8 +268,8 @@ async function syncToCloud() {
 
     <div ref="dropdownRef" class="flex items-center gap-x-2">
       <BaseButton label="Sync All" severity="primary" variant="solid" icon="fa fa-sync" @click="syncAll" />
-      <BaseButton label="Sync to Cloud" severity="secondary" variant="solid" icon="fa fa-cloud-arrow-up" @click="syncToCloud" />
-      <BaseButton label="Sync from Cloud" severity="info" variant="solid" icon="fa fa-cloud-arrow-down" @click="syncFromCloud" />
+      <BaseButton label="Sync with Cloud" severity="secondary" variant="solid" icon="fa fa-cloud-arrow-up" @click="runSync" />
+      <!-- <BaseButton label="Sync from Cloud" severity="info" variant="solid" icon="fa fa-cloud-arrow-down" @click="syncFromCloud" /> -->
     <div class="relative overflow-visible">
           <div
           class="flex justify-between text-black items-center bg-[#F8FAFC] hover:bg-gray-200 rounded-xl py-2 px-3 cursor-pointer"
@@ -292,8 +349,18 @@ async function syncToCloud() {
     <Dialog v-model:visible="isSyncLoading" :modal="true" :draggable="false"
       :position="'center'">
       <template #container="{ closeCallback }">
-        <div class="flex flex-col p-4">
-          <i class="fa fa-spinner animate-spin text-3xl"></i>
+        <div class="flex flex-col p-5 w-[360px] gap-3">
+          <div class="flex items-center gap-2">
+            <i class="fa fa-spinner animate-spin text-lg text-blue-600"></i>
+            <span class="font-semibold text-sm">{{ syncStatus }}</span>
+          </div>
+          <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              class="h-full bg-blue-600 transition-all duration-300"
+              :style="{ width: `${syncProgress}%` }"
+            ></div>
+          </div>
+          <div class="text-right text-xs text-gray-600">{{ syncProgress }}%</div>
         </div>
       </template>
     </Dialog>
