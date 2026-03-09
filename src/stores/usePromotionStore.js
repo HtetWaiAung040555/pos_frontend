@@ -5,7 +5,7 @@ import { normalizeApiError } from "@/utils/NormalizeApiError";
 
 const api_url = API_URL;
 
-export const usePromotionStore = defineStore('wallet', {
+export const usePromotionStore = defineStore('promotion', {
     state: () => ({
         promoList: [],
         loading: false,

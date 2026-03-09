@@ -153,8 +153,8 @@ function confirmProductSelection() {
         name: p.name,
         barcode: p.barcode,
         purchase_price: p.purchase_price,
-        quantity: 0,
-        expiredDate: '',
+        quantity: p.quantity || 0,
+        expiredDate: p.expiredDate || '',
         image_url: p.image_url
     }));
     isProductDialogVisible.value = false;

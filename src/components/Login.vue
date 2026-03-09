@@ -3,8 +3,10 @@
     import { ref, onMounted } from 'vue';
     import { useUserStore } from '@/stores/useUserStore';
     import { useRouter } from 'vue-router';
+import { usePermissionStore } from '@/stores/usePermissionStore';
 
     const useUser = useUserStore();
+    const usePermission = usePermissionStore();
     const router = useRouter();
     const showPass = ref(false);
     const formData = ref(
@@ -29,7 +31,11 @@
         return
       }
       await useUser.loginUser({email: formData.value.email, password: formData.value.password});
-      router.push("/");
+      if (usePermission.can('Admin Panel', 'View')) {
+        router.push('/');
+      } else {
+        router.push('/pos');
+      }
     }
 
 </script>
@@ -48,7 +54,9 @@
         </a>
       </div>
       <!-- Description -->
-      <p class="text-sm text-gray-400">Lorem ipsum dolor sit amet consectetur adipisicing elit. Nostrum, at veritatis? Iusto corrupti, ratione delectus tempora repudiandae vero sapiente praesentium officiis vel tempore consequuntur debitis asperiores nam? Nihil, magni voluptatum.</p>
+      <p class="text-sm text-gray-400">
+        Kaba Aung Myay Co Ltd is a Myanmar private enterprise based in Mandalay, Myanmar. We are a team of local young educated talents blended with seasoned business executives who see business opportunities during difficult times. We are one of eCommerce company in Myanmar.
+      </p>
     </div>
     <!-- End of content section -->
     <!-- Login form section -->

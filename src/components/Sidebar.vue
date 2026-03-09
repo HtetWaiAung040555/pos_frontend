@@ -54,6 +54,12 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
             icon: 'fas fa-arrow-up-right-dots',
             pathname: "/sales_price_change",
             permission: {name: 'Sales price change', action: "View"}
+          },
+          { 
+            name: 'Customer Transaction', 
+            icon: 'fas fa-exchange-alt',
+            pathname: "/customer_transaction",
+            permission: {name: 'Customer Transaction', action: "View"}
           }
         ],
       },
@@ -202,6 +208,32 @@ import { usePermissionStore } from '@/stores/usePermissionStore';
         icon: 'fas fa-solid fa-wallet',
         pathname: "/wallet",
         permission: {name: 'Wallet', action: "View"}
+      },
+      {
+        name: 'Reports',
+        icon: 'fa fa-clipboard-list',
+        pathname: '/reports',
+        permission: { name: 'Sales', action: 'Report' },
+        children: [
+          {
+            name: 'Sales',
+            icon: 'fa fa-chart-line',
+            pathname: '/reports/sales',
+            permission: { name: 'Sales', action: 'Report' }
+          },
+          {
+            name: 'Purchase',
+            icon: 'fa fa-cart-arrow-down',
+            pathname: '/reports/purchase',
+            permission: { name: 'Purchase', action: 'Report' }
+          },
+          {
+            name: 'Inventory Stock',
+            icon: 'fa fa-cubes',
+            pathname: '/reports/inventory',
+            permission: { name: 'Inventory', action: 'Report' }
+          },
+        ]
       },
   ];
 

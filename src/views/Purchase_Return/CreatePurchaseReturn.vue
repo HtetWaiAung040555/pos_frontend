@@ -174,8 +174,8 @@ function onReturnQtyChange(product) {
                     <!-- Warehouse -->
                     <BaseInput size="sm" v-model="selectedPurchase.warehouse.name" label="Warehouse"
                         placeholder="Warehouse" height="h-[35px]" disabled />
-                    <!-- Expired date input -->
-                    <BaseInput size="sm" v-model="formData.returnDate" label="Expired Date"
+                    <!-- Return date input -->
+                    <BaseInput size="sm" v-model="formData.returnDate" label="Return Date"
                         height="h-[35px]" type="datetime-local" />
                     <div class="flex flex-col gap-1">
                         <BaseLabel label="Payment Method:" />

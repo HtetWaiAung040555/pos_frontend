@@ -97,7 +97,7 @@ async function formSubmit(isPrint = false) {
     return
   }
 
-  const topup = {
+  const payload = {
     customer_id: selectedCustomer.value.id,
     amount: Number(data.value.amount),
     remark: data.value.remark,
@@ -106,7 +106,7 @@ async function formSubmit(isPrint = false) {
     created_by: userData.value.id,
   };
 
-  await useWallet.addWallet(topup);
+  await useWallet.addWallet(payload);
 
   if (useWallet.error.length) {
     useWallet.error.forEach((msg) => {
@@ -225,12 +225,6 @@ function onCustomerFilter(e) {
     <div class="flex gap-4 items-start">
       <!-- FORM -->
       <div class="flex-[1.2] grid grid-cols-2 gap-4 bg-white p-6 rounded-sm border border-gray-300 shadow-sm">
-        <!-- Customer -->
-        <!-- <div class="flex flex-col">
-          <BaseLabel label="Customer" :isRequire="true" />
-          <Select v-model="selectedCustomer" :options="useCustomer.customerList" showClear filter optionLabel="name"
-            placeholder="Select a customer" class="h-[35px]" />
-        </div> -->
         <div class="flex flex-col gap-y-1">
           <BaseLabel label="Customer" :isRequire="true" />
           <Select

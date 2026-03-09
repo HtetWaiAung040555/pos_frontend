@@ -4,13 +4,15 @@
     import DataTable from '@/components/DataTable.vue';
     import BaseButton from '@/components/BaseButton.vue';
     import { useRouter } from 'vue-router';
-    import { onMounted, ref, computed } from 'vue';
+    import { onMounted, ref, computed, watch } from 'vue';
     import { useToast } from 'primevue';
     import moment from 'moment'
     import { useFilterStore } from '@/stores/filterStore';
     import { usePermissionStore } from '@/stores/usePermissionStore';
     import BaseInput from '@/components/BaseInput.vue';
+    import BaseCheckbox from '@/components/BaseCheckbox.vue';
     import { useInventoryStore } from '@/stores/useInventoryStore';
+    import DashboardCard from '@/components/DashboardCard.vue';
 
     const router = useRouter();
     const toast = useToast();
@@ -23,13 +25,45 @@
     const endDate = ref('');
     const dataList = ref([]);
     const nearlyExpire = ref(false);
+    const negativeOnly = ref(false);
 
     onMounted(async () => {
+        // restore saved filters
+        const saved = filter.getPageFilter('inventory');
+        if (saved) {
+            if (saved.startDate) startDate.value = saved.startDate;
+            if (saved.endDate) endDate.value = saved.endDate;
+            if (saved.searchValue) searchValue.value = saved.searchValue;
+            if (typeof saved.nearlyExpire !== 'undefined') nearlyExpire.value = saved.nearlyExpire;
+            if (typeof saved.negativeOnly !== 'undefined') negativeOnly.value = saved.negativeOnly;
+        }
+
         await useInventory.fetchAllStock();
         const inventory = useInventory.stockList.filter(item => item.warehouse.id === JSON.parse(localStorage.getItem('user')).branch.warehouse_id);
         dataList.value = inventory;
-        console.log('Inventory List:', dataList.value);
+        saveFilters();
     });
+
+// persist filters for this page
+function saveFilters() {
+    filter.setPageFilter('inventory', {
+        startDate: startDate.value,
+        endDate: endDate.value,
+        searchValue: searchValue.value,
+        nearlyExpire: nearlyExpire.value,
+        negativeOnly: negativeOnly.value,
+    });
+}
+
+watch([
+    () => startDate.value,
+    () => endDate.value,
+    () => searchValue.value,
+    () => nearlyExpire.value,
+    () => negativeOnly.value
+], () => {
+    saveFilters();
+});
 
     // Table headers
     const columns = [
@@ -42,9 +76,9 @@
         { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.warehouse.name },
         { key: 'qty', label: 'Qty' },
         { key: 'expired_date', label: 'Expire', formatter: (row) => row.expired_date? moment(row.expired_date).format('DD-MM-YY') : "N/A" },
-        { key: 'created_by', label: 'Created By', formatter: (row) => row.created_by },
+        { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
-        { key: 'updated_by', label: 'Updated By', formatter: (row) => row.updated_by },
+        { key: 'updated_by.name', label: 'Updated By', formatter: (row) => row.updated_by.name },
         { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
     ];
 
@@ -57,15 +91,22 @@
     const filteredRows = computed(() => {
         const searchedData = filter.searchFunction(dataList.value, searchValue.value, [
             "product.name",
+            "product.barcode",
         ]);
 
-        if (nearlyExpire.value) {
-            const today = moment().startOf('day');
-            const twoMonths = moment().add(2, 'months').endOf('day');
-            return searchedData.filter(item => item.expired_date && moment(item.expired_date).isBetween(today, twoMonths, undefined, '[]'));
+        let result = nearlyExpire.value
+            ? searchedData.filter((item) => {
+                const today = moment().startOf('day');
+                const twoMonths = moment().add(2, 'months').endOf('day');
+                return item.expired_date && moment(item.expired_date).isBetween(today, twoMonths, undefined, '[]');
+            })
+            : filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value });
+
+        if (negativeOnly.value) {
+            result = result.filter((item) => Number(item.qty) < 0);
         }
 
-        return filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value })
+        return result;
     });
 
     //Branch delete function
@@ -97,6 +138,10 @@
         }
     }
 
+    const totalQty = computed(() => {
+        return filteredRows.value.reduce((sum, item) => sum + Number(item.qty), 0);
+    }); 
+
 </script>
 
 <template>
@@ -115,6 +160,9 @@
                 </div>
             </template>
         </PageTitle>
+        <div class="grid grid-cols-5 my-3 gap-x-4">
+            <DashboardCard title="Total Qty" :value="totalQty" icon="fa fa-receipt" color="green" />
+        </div>
         <!-- DataTable -->
         <DataTable
             :columns="columns"
@@ -130,7 +178,7 @@
         >
             <!-- Filter Section -->
             <template #filters>
-                <div class="flex gap-2">
+                <div class="flex gap-2 items-center">
                     <BaseInput
                         size="sm"
                         type="date"
@@ -153,6 +201,7 @@
                         height="h-[35px]"
                         icon="pi pi-search"
                     />
+                    <BaseCheckbox v-model="negativeOnly" label="Negative Qty" size="sm" />
                     <BaseButton label="Nearly Expire" severity="secondary" @click="handleNearlyExpire" />
                 </div>
             </template>

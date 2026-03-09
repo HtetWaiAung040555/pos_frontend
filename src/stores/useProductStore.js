@@ -6,6 +6,7 @@ import { defineStore } from "pinia";
 export const useProductStore = defineStore('product', {
     state: () => ({
         productList: [],
+        lastCustomBarcode: null,
         loading: false,
         deleteLoading: false,
         error: [],
@@ -35,6 +36,18 @@ export const useProductStore = defineStore('product', {
             } finally {
                 this.loading = false;
             }
+        },
+        async getLastCustomBarcode(prefix) {
+            this.loading = true;
+            this.error = [];
+            try {
+                const response = await axios.get(`/products/last-custom-barcode?prefix=${prefix}`);
+                this.lastCustomBarcode = response.data.barcode;
+            } catch (err) {
+                this.error = normalizeApiError(err);
+            } finally {               
+                this.loading = false;
+            }   
         },
         async addProduct(formData) {
             this.loading = true;
@@ -84,5 +97,11 @@ export const useProductStore = defineStore('product', {
                 this.loading = false;
             }
         },
+        async updateProductStock(productId, qty) {
+            const idx = this.productList.findIndex(p => p.id === productId);
+            if (idx !== -1) {
+                this.productList[idx].stock -= qty;
+            }
+        }
     }
 });

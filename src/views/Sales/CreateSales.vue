@@ -18,6 +18,7 @@ import { useProductStore } from '@/stores/useProductStore';
 import { useCustomerStore } from '@/stores/useCustomerStore';
 import { useSaleStore } from '@/stores/useSalesStore';
 import axios from 'axios';
+import { useStatusStore } from '@/stores/useStatusStore';
 
 const router = useRouter();
 const toast = useToast();
@@ -26,6 +27,7 @@ const usePaymentMethod = usePaymentMethodStore();
 const useCustomer = useCustomerStore();
 const useWarehouse = useWarehouseStore();
 const useProduct = useProductStore();
+const useStatus = useStatusStore();
 
 const userData = ref({});
 const customerSelect = ref(null)
@@ -61,13 +63,16 @@ function changeRoute(pathname) {
 
 onMounted(async () => {
     userData.value = JSON.parse(localStorage.getItem('user'));
-    await useCustomer.fetchAllCustomer();
-    await useWarehouse.fetchAllWarehouse();
-    await usePaymentMethod.fetchAllPaymentMethod();
-    await useProduct.fetchAllProduct();
+    await Promise.all([
+        useCustomer.fetchAllCustomer(),
+        useWarehouse.fetchAllWarehouse(),
+        usePaymentMethod.fetchAllPaymentMethod(),
+        useProduct.fetchAllProduct(),
+    ]);
     productList.value = useProduct.productList || [];
     selectedCustomer.value = useCustomer.customerList.filter(c => c.is_default)[0];
     selectedWarehouse.value = useWarehouse.warehouseList.filter(w => w.id === userData.value.branch.warehouse_id)[0];
+    await useStatus.fetchAllStatus();
 });
 
 const filteredProducts = computed(() => {
@@ -153,7 +158,7 @@ watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.va
 async function confirmProductSelection() {
     selectedProducts.value = [];
     selectionBuffer.value.forEach(async (p) => {
-        const checkPromo = await axios.get(`/promotions/checkprice/${p.id}`);
+        const checkPromo = await axios.post(`/promotions/checkprice`,{product_id: p.id, sale_date: formData.value.salesDate});
         if (checkPromo.data.promotion_id) {
             selectedProducts.value = [
                 ...selectedProducts.value,
@@ -161,7 +166,7 @@ async function confirmProductSelection() {
                     id: p.id,
                     name: p.name,
                     barcode: p.barcode,
-                    quantity: 1,
+                    quantity: p.quantity || 1,
                     image_url: p.image_url,
                     price: Number(p.price),
                     promotion_id: checkPromo.data.promotion_id,
@@ -178,7 +183,7 @@ async function confirmProductSelection() {
                     id: p.id,
                     name: p.name,
                     barcode: p.barcode,
-                    quantity: 1,
+                    quantity: p.quantity || 1,
                     image_url: p.image_url,
                     price: Number(p.price),
                     promotion_id: null,
@@ -212,7 +217,7 @@ async function formSubmit(isPrint = false) {
     let payload = {
         customer_id: selectedCustomer.value.id,
         payment_id: formData.value.paymentId,
-        status_id: formData.value.statusId,
+        status_id: useStatus.getStatusId('Complete'),
         remark: formData.value.remark,
         sale_date: formData.value.salesDate,
         warehouse_id: selectedWarehouse.value.id,
@@ -240,26 +245,26 @@ async function formSubmit(isPrint = false) {
         return;
     }
     if (useSales.salesList) {
-        let updatedSales = {
-            payment_id: formData.value.paymentId,
-            status_id: 7, // set to 'Completed' after creation
-            paid_amount: useSales.salesList.total_amount,
-            remark: formData.value.remark,
-            sale_date: formData.value.salesDate,
-            updated_by: userData.value.id,
-        };
-        await useSales.editSales(updatedSales, useSales.salesList.id);
-        if (useSales.error.length) {
-            useSales.error.forEach((msg) => {
-                toast.add({
-                    severity: 'error',
-                    summary: 'Error Message',
-                    detail: msg,
-                    life: 3000
-                });
-            });
-            return;
-        }
+        // let updatedSales = {
+        //     payment_id: formData.value.paymentId,
+        //     status_id: 7, // set to 'Completed' after creation
+        //     paid_amount: useSales.salesList.total_amount,
+        //     remark: formData.value.remark,
+        //     sale_date: formData.value.salesDate,
+        //     updated_by: userData.value.id,
+        // };
+        // await useSales.editSales(updatedSales, useSales.salesList.id);
+        // if (useSales.error.length) {
+        //     useSales.error.forEach((msg) => {
+        //         toast.add({
+        //             severity: 'error',
+        //             summary: 'Error Message',
+        //             detail: msg,
+        //             life: 3000
+        //         });
+        //     });
+        //     return;
+        // }
         toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales create successfully.', life: 3000 });
         if (isPrint) printSlip();
         router.push('/sales');

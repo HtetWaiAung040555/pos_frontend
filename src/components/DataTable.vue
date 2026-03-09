@@ -1,9 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
 import BaseButton from './BaseButton.vue';
 import Loading from './Loading.vue';
 import Dialog from 'primevue/dialog';
-import * as XLSX from 'xlsx';
+import { exportToXlsx } from '@/utils/exportXlsx';
 
 const props = defineProps({
   columns: { type: Array, required: true }, // [{ key: 'name', label: 'Name' }]
@@ -20,12 +20,28 @@ const props = defineProps({
   isDelete: {type: Boolean, default: true},
   isAdjust: {type: Boolean, default: false},
   filename: {type: String, default: 'export'},
+  isSearchable: {type: Boolean, default: false},
   // detailHeaders: array of column labels for detail rows. If empty, details won't be exported.
   detailHeaders: { type: Array, default: () => [] },
   // detailField: path on each row where detail(s) live (object or array). Default 'details'
   detailField: { type: String, default: 'details' },
   // detailKeys: array of key paths to extract from each detail object, matching detailHeaders order
-  detailKeys: { type: Array, default: () => ['product.id', 'product.name', 'price', 'quantity', 'total'] }
+  detailKeys: { type: Array, default: () => ['product.id', 'product.name', 'price', 'quantity', 'total'] },
+  // totals config: enable subtotal/grand total rows
+  totals: {
+    type: Object,
+    default: () => ({
+      enabled: false,
+      groupBy: null, // key/path for subtotal grouping (e.g. 'customer.id')
+      showSubtotal: true,
+      showGrandTotal: true,
+      subtotalLabel: 'Subtotal',
+      grandTotalLabel: 'Grand Total',
+      labelColumnKey: null, // default: first column key
+      blankValue: '–',
+      columns: [] // [{ key: 'amount', type: 'sum', formatter: (v)=>v }]
+    })
+  }
 });
 
 const emit = defineEmits(['delete']);
@@ -36,6 +52,28 @@ const sortKey = ref(props.defaultSort.key);
 const sortOrder = ref(props.defaultSort.order); // 'asc' or 'desc'
 const visible = ref(false);
 const rowId = ref('');
+const tableContainerRef = ref(null);
+const tableContainerHeight = ref('auto');
+
+const totalsConfig = computed(() => ({
+  enabled: !!props.totals?.enabled,
+  groupBy: props.totals?.groupBy ?? null,
+  showSubtotal: props.totals?.showSubtotal ?? true,
+  showGrandTotal: props.totals?.showGrandTotal ?? true,
+  subtotalLabel: props.totals?.subtotalLabel ?? 'Subtotal',
+  grandTotalLabel: props.totals?.grandTotalLabel ?? 'Grand Total',
+  labelColumnKey: props.totals?.labelColumnKey ?? (props.columns[0]?.key ?? null),
+  blankValue: props.totals?.blankValue ?? '',
+  groupCarryForward: props.totals?.groupCarryForward ?? false,
+  columns: Array.isArray(props.totals?.columns) ? props.totals.columns : []
+}));
+
+// Reset sort when defaultSort prop changes (e.g., switching table modes)
+watch(() => props.defaultSort, (val) => {
+  sortKey.value = val?.key ?? null;
+  sortOrder.value = val?.order ?? 'desc';
+  currentPage.value = 1;
+}, { deep: true });
 
 // Filtered rows by search
 const filteredRows = computed(() => {
@@ -59,6 +97,95 @@ const sortedRows = computed(() => {
   });
 });
 
+function getValueByPath(obj, path) {
+  if (!path) return undefined;
+  return path.split('.').reduce((acc, key) => (acc && acc[key] !== undefined ? acc[key] : undefined), obj);
+}
+
+function isEmptyGroupValue(val) {
+  return val === '' || val === null || val === undefined;
+}
+
+function initTotalsAcc() {
+  const acc = {};
+  totalsConfig.value.columns.forEach(col => {
+    acc[col.key] = 0;
+  });
+  return acc;
+}
+
+function accumulateTotals(row, acc) {
+  totalsConfig.value.columns.forEach(col => {
+    const type = col.type || 'sum';
+    if (type === 'count') {
+      acc[col.key] += 1;
+      return;
+    }
+    const raw = getValueByPath(row, col.key);
+    const val = Number(raw || 0);
+    acc[col.key] += isNaN(val) ? 0 : val;
+  });
+}
+
+function makeTotalRow(kind, totals, label, groupValue) {
+  return {
+    __type: kind,
+    __totals: { ...totals },
+    __label: label,
+    __groupValue: groupValue
+  };
+}
+
+const displayRows = computed(() => {
+  const baseRows = sortedRows.value;
+  if (!totalsConfig.value.enabled || totalsConfig.value.columns.length === 0) {
+    return baseRows;
+  }
+
+  const rowsWithTotals = [];
+  const hasGroup = !!totalsConfig.value.groupBy;
+  let currentGroup = null;
+  let lastNonEmptyGroup = null;
+  let subtotalAcc = initTotalsAcc();
+  let grandAcc = initTotalsAcc();
+
+  baseRows.forEach((row, idx) => {
+    const rawGroupVal = hasGroup ? getValueByPath(row, totalsConfig.value.groupBy) : null;
+    const groupVal = hasGroup && totalsConfig.value.groupCarryForward && isEmptyGroupValue(rawGroupVal)
+      ? lastNonEmptyGroup
+      : rawGroupVal;
+
+    if (hasGroup && !isEmptyGroupValue(rawGroupVal)) {
+      lastNonEmptyGroup = rawGroupVal;
+    }
+
+    if (hasGroup && currentGroup !== null && groupVal !== currentGroup && totalsConfig.value.showSubtotal) {
+      rowsWithTotals.push(makeTotalRow('subtotal', subtotalAcc, totalsConfig.value.subtotalLabel, currentGroup));
+      subtotalAcc = initTotalsAcc();
+    }
+
+    if (hasGroup && currentGroup === null) {
+      currentGroup = groupVal;
+    }
+
+    rowsWithTotals.push(row);
+    accumulateTotals(row, subtotalAcc);
+    accumulateTotals(row, grandAcc);
+
+    if (hasGroup) currentGroup = groupVal;
+
+    if (idx === baseRows.length - 1 && hasGroup && totalsConfig.value.showSubtotal) {
+      rowsWithTotals.push(makeTotalRow('subtotal', subtotalAcc, totalsConfig.value.subtotalLabel, currentGroup));
+    }
+  });
+
+  if (baseRows.length > 0 && totalsConfig.value.showGrandTotal) {
+    rowsWithTotals.push(makeTotalRow('grandtotal', grandAcc, totalsConfig.value.grandTotalLabel, null));
+  }
+
+  return rowsWithTotals;
+});
+
 function changeSort(key) {
   if (sortKey.value === key) {
     sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc';
@@ -75,14 +202,20 @@ function changePage(page) {
 }
 
 // Pagination
-const totalPages = computed(() => Math.ceil(sortedRows.value.length / props.pageSize));
+const totalPages = computed(() => Math.ceil(displayRows.value.length / props.pageSize));
 
 // Paginated rows
 const paginatedRows = computed(() => {
-  if (!props.isPaginate) return sortedRows.value;
+  if (!props.isPaginate) return displayRows.value;
   const start = (currentPage.value - 1) * props.pageSize;
-  return sortedRows.value.slice(start, start + props.pageSize);
+  return displayRows.value.slice(start, start + props.pageSize);
 });
+
+function getAlignClass(align) {
+  if (align === 'right') return 'text-right';
+  if (align === 'left') return 'text-left';
+  return 'text-center';
+}
 
 // Pagination Pages Array
 const paginationPages = computed(() => {
@@ -122,80 +255,57 @@ function confirmDelete() {
 }
 
 function exportToExcel() {
-  try {
-    // Parent headers come from provided columns
-    const parentHeaders = props.columns.map(c => (c.label || c.key));
-    // Use configured detail headers/keys. If none provided, no detail columns will be exported.
-    const configuredDetailHeaders = Array.isArray(props.detailHeaders) ? props.detailHeaders : [];
-    const configuredDetailKeys = Array.isArray(props.detailKeys) ? props.detailKeys : [];
-
-    // Determine whether to include details: only if headers provided and at least one row has the detail field
-    const getByPath = (obj, path) => {
-      return path.split('.').reduce((acc, k) => acc?.[k], obj);
-    };
-
-    const includeDetails = configuredDetailHeaders.length > 0 && props.rows.some(r => {
-      const d = getByPath(r, props.detailField);
-      return d !== undefined && d !== null && (Array.isArray(d) ? d.length > 0 : true);
-    });
-
-    const headers = includeDetails ? parentHeaders.concat(configuredDetailHeaders) : parentHeaders;
-
-    const data = [headers];
-
-    const formatParentValues = (row) => {
-      return props.columns.map(col => {
-        const val = getByPath(row, col.key);
-        return val === undefined || val === null ? '' : String(val);
-      });
-    };
-
-    const formatDetailValues = (d) => {
-      // Use configured detailKeys to extract values from detail object
-      if (!includeDetails) return [];
-      return configuredDetailKeys.map(k => {
-        const v = getByPath(d, k);
-        return v === undefined || v === null ? '' : String(v);
-      });
-    };
-
-    props.rows.forEach(r => {
-      const parentVals = formatParentValues(r);
-      const details = getByPath(r, props.detailField);
-
-      if (includeDetails) {
-        if (Array.isArray(details) && details.length > 0) {
-          // First detail row contains parent values
-          data.push(parentVals.concat(formatDetailValues(details[0])));
-          // Subsequent detail rows contain blanks for parent columns
-          for (let i = 1; i < details.length; i++) {
-            const blankParents = parentVals.map(() => '');
-            data.push(blankParents.concat(formatDetailValues(details[i])));
-          }
-        } else if (details && typeof details === 'object') {
-          // Single detail object
-          data.push(parentVals.concat(formatDetailValues(details)));
-        } else {
-          // No details: push parent row with empty detail columns
-          const emptyDetails = configuredDetailKeys.map(() => '');
-          data.push(parentVals.concat(emptyDetails));
-        }
-      } else {
-        // Not exporting details: push only parent values
-        data.push(parentVals);
-      }
-    });
-
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
-
-    const filename = `${props.filename}_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'_')}.xlsx`;
-    XLSX.writeFile(wb, filename);
-  } catch (err) {
-    console.error('Export to excel failed', err);
-  }
+  exportToXlsx({
+    columns: props.columns,
+    rows: props.rows,
+    filename: props.filename,
+    detailHeaders: props.detailHeaders,
+    detailField: props.detailField,
+    detailKeys: props.detailKeys,
+  });
 }
+
+function isTotalRow(row) {
+  return row && typeof row === 'object' && (row.__type === 'subtotal' || row.__type === 'grandtotal');
+}
+
+function isTotalColumn(colKey) {
+  return totalsConfig.value.columns.some(c => c.key === colKey);
+}
+
+function formatTotalValue(row, colKey) {
+  const colConfig = totalsConfig.value.columns.find(c => c.key === colKey);
+  const raw = row?.__totals?.[colKey] ?? 0;
+  if (colConfig?.formatter) return colConfig.formatter(raw, row);
+  return raw;
+}
+
+function updateTableContainerHeight() {
+  if (!tableContainerRef.value) return;
+  const rect = tableContainerRef.value.getBoundingClientRect();
+  const viewportHeight = window.innerHeight;
+  const bottomSpacing = 34;
+  const available = viewportHeight - rect.top - bottomSpacing;
+  tableContainerHeight.value = `${Math.max(200, available)}px`;
+}
+
+onMounted(async () => {
+  await nextTick();
+  updateTableContainerHeight();
+  window.addEventListener('resize', updateTableContainerHeight);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateTableContainerHeight);
+});
+
+watch(
+  () => [props.isPaginate, props.isSearchable],
+  async () => {
+    await nextTick();
+    updateTableContainerHeight();
+  }
+);
 
 </script>
 
@@ -207,7 +317,7 @@ function exportToExcel() {
         <div class="flex-1">
           <slot name="filters">
             <!-- Default fallback: search input -->
-            <input
+            <input v-if="isSearchable"
               type="text"
               v-model="searchQuery"
               placeholder="Search..."
@@ -228,17 +338,21 @@ function exportToExcel() {
       </div>
     </div>
 
-    <div class="flex flex-col max-h-[450px] overflow-hidden">
+    <div
+      ref="tableContainerRef"
+      class="flex flex-col min-h-0 overflow-hidden"
+      :style="{ height: tableContainerHeight }"
+    >
 
       <!-- Table -->
-      <div class="flex-1 overflow-y-auto">
+      <div class="flex-1 min-h-0 overflow-y-auto">
         <table class="w-full">
           <thead class="sticky top-0 z-10">
             <tr class="bg-gray-100">
               <th
                 v-for="col in columns"
                 :key="col.key"
-                class="px-4 py-2 cursor-pointer select-none text-black"
+                :class="['px-4 py-2 cursor-pointer select-none text-black', getAlignClass(col.align)]"
                 @click="changeSort(col.key)"
               >
                 {{ col.label }}
@@ -256,10 +370,10 @@ function exportToExcel() {
           </thead>
           <tbody>
             <tr v-if="paginatedRows.length === 0 && !isLoading">
-              <td :colspan="columns.length" class="text-center py-4 text-gray-500">No data found</td>
+              <td :colspan="columns.length + (props.isAction ? 1 : 0)" class="text-center py-4 text-gray-500">No data found</td>
             </tr>
             <tr v-if="isLoading">
-              <td :colspan="columns.length" class="py-4 text-gray-500">
+              <td :colspan="columns.length + (props.isAction ? 1 : 0)" class="py-4 text-gray-500">
                 <div class="flex items-center justify-center gap-2">
                   <Loading />
                 </div>
@@ -269,41 +383,77 @@ function exportToExcel() {
               v-else
               v-for="(row, idx) in paginatedRows"
               :key="idx"
-              class="hover:bg-gray-50 text-[13px]"
+              :class="isTotalRow(row) ? 'bg-gray-50 text-[13px] font-semibold sticky bottom-0' : 'hover:bg-gray-50 text-[13px]'"
             >
-              <td
-                v-for="col in columns"
-                :key="col.key"
-                class="p-2 text-center"
-                v-html="col.formatter ? col.formatter(row) : row[col.key]"
-              >
-              </td>
-              <td class="p-2 text-center w-[120px]" v-if="props.isAction">
-                <router-link v-if="isAdjust" :to="{name: props.adjustPath, query: {id: row.id}}">
+              <template v-if="isTotalRow(row)">
+                <td
+                  v-for="col in columns"
+                  :key="col.key"
+                  :class="['p-2', getAlignClass(col.align)]"
+                >
+                  <template v-if="col.key === totalsConfig.labelColumnKey">
+                    {{ row.__label }}
+                  </template>
+                  <template v-else-if="isTotalColumn(col.key)">
+                    {{ formatTotalValue(row, col.key) }}
+                  </template>
+                  <template v-else>
+                    {{ totalsConfig.blankValue }}
+                  </template>
+                </td>
+                <td v-if="props.isAction" class="p-2 text-center w-[120px]"></td>
+              </template>
+              <template v-else>
+                <td
+                  v-for="col in columns"
+                  :key="col.key"
+                  :class="['p-2', getAlignClass(col.align)]"
+                >
+                  <template v-if="col.onClick">
+                    <span
+                      class="cursor-pointer text-blue-600 hover:underline"
+                      @click="() => col.onClick(row)"
+                    >
+                      {{ col.formatter ? col.formatter(row) : row[col.key] }}
+                    </span>
+                  </template>
+                  <template v-else-if="col.to">
+                    <router-link
+                      class="cursor-pointer text-blue-600 hover:underline"
+                      :to="typeof col.to === 'function' ? col.to(row) : col.to"
+                    >
+                      {{ col.formatter ? col.formatter(row) : row[col.key] }}
+                    </router-link>
+                  </template>
+                  <span v-else v-html="col.formatter ? col.formatter(row) : row[col.key]"></span>
+                </td>
+                <td class="p-2 text-center w-[120px]" v-if="props.isAction">
+                  <router-link v-if="isAdjust" :to="{name: props.adjustPath, query: {id: row.id}}">
+                    <BaseButton 
+                      icon="pi pi-sliders-h" 
+                      variant="text" 
+                      size="sm" 
+                    />
+                  </router-link>
+                  <router-link :to="{name: props.editPath, query: {id: row.id}}">
+                    <BaseButton 
+                      icon="pi pi-pen-to-square" 
+                      variant="text" 
+                      severity="info" 
+                      size="sm" 
+                      :disabled="isEdit"
+                    />
+                  </router-link>
                   <BaseButton 
-                    icon="pi pi-sliders-h" 
+                    icon="pi pi-trash" 
                     variant="text" 
+                    severity="danger" 
                     size="sm" 
+                    @click="openModal(row.id)" 
+                    :disabled="isDelete"
                   />
-                </router-link>
-                <router-link :to="{name: props.editPath, query: {id: row.id}}">
-                  <BaseButton 
-                    icon="pi pi-pen-to-square" 
-                    variant="text" 
-                    severity="info" 
-                    size="sm" 
-                    :disabled="isEdit"
-                  />
-                </router-link>
-                <BaseButton 
-                  icon="pi pi-trash" 
-                  variant="text" 
-                  severity="danger" 
-                  size="sm" 
-                  @click="openModal(row.id)" 
-                  :disabled="isDelete"
-                />
-              </td>
+                </td>
+              </template>
             </tr>
           </tbody>
         </table>

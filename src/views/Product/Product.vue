@@ -4,7 +4,7 @@
     import DataTable from '@/components/DataTable.vue';
     import BaseButton from '@/components/BaseButton.vue';
     import { useRouter } from 'vue-router';
-    import { onMounted, ref, computed } from 'vue';
+    import { onMounted, ref, computed, watch } from 'vue';
     import { useToast } from 'primevue';
     import moment from 'moment'
     import { useFilterStore } from '@/stores/filterStore';
@@ -24,8 +24,31 @@
     const dataList = ref([]);
 
     onMounted(async () => {
+        // restore saved filters
+        const saved = filter.getPageFilter('product');
+        if (saved) {
+            if (saved.startDate) startDate.value = saved.startDate;
+            if (saved.endDate) endDate.value = saved.endDate;
+            if (saved.searchValue) searchValue.value = saved.searchValue;
+        }
+
         await useProduct.fetchAllProduct();
         dataList.value = useProduct.productList;
+        // persist current filters
+        saveFilters();
+    });
+
+    // persist filters for this page
+    function saveFilters() {
+        filter.setPageFilter('product', {
+            startDate: startDate.value,
+            endDate: endDate.value,
+            searchValue: searchValue.value,
+        });
+    }
+
+    watch([() => startDate.value, () => endDate.value, () => searchValue.value], () => {
+        saveFilters();
     });
 
     // Table headers

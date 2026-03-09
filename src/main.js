@@ -68,6 +68,7 @@ import UpdateSupplier from './views/Supplier/UpdateSupplier.vue';
 import Purchase from './views/Purchase/Purchase.vue';
 import CreatePurchase from './views/Purchase/CreatePurchase.vue';
 import UpdatePurchase from './views/Purchase/UpdatePurchase.vue';
+import ViewPurchase from './views/Purchase/ViewPurchase.vue';
 import PurchaseReturn from './views/Purchase_Return/PurchaseReturn.vue';
 import CreatePurchaseReturn from './views/Purchase_Return/CreatePurchaseReturn.vue';
 import UpdatePurchaseReturn from './views/Purchase_Return/UpdatePurchaseReturn.vue';
@@ -84,6 +85,10 @@ import UpdatePurchasePriceChange from './views/Purchase_Price_Change/UpdatePurch
 import SalesPriceChange from './views/Sales_Price_Change/SalesPriceChange.vue';
 import CreateSalesPriceChange from './views/Sales_Price_Change/CreateSalesPriceChange.vue';
 import UpdateSalesPriceChange from './views/Sales_Price_Change/UpdateSalesPriceChange.vue';
+import ViewSales from './views/Sales/ViewSales.vue';
+import Reports from './views/Report/Reports.vue';
+import SalesReport from './views/Report/SalesReport.vue';
+import CustomerTransaction from './views/Customer_Transaction/CustomerTransaction.vue';
 
 
 
@@ -130,6 +135,7 @@ const router = createRouter({
         {path: '/sales', name: 'Sales', component: Sales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'View' } }},
         {path: '/sales/create', name: 'Create Sales', component: CreateSales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'Create' } }},
         {path: '/sales/update', name: 'Update Sales', component: UpdateSales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'Update' } }},
+        {path: '/sales/view', name: 'View Sales', component: ViewSales, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'View' } }},
         {path: '/category', name: 'Category', component: Category, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'View' } }},
         {path: '/category/create', name: 'Create Category', component: CreateCategory, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'Create' } }},
         {path: '/category/update', name: 'Update Category', component: UpdateCategory, meta: { requiresAuth: true, permission: { resource: 'Category', action: 'Update' } }},
@@ -151,6 +157,7 @@ const router = createRouter({
         {path: '/purchase', name: 'Purchase', component: Purchase, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'View' } }},
         {path: '/purchase/create', name: 'Create Purchase', component: CreatePurchase, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'Create' } }},
         {path: '/purchase/update', name: 'Update Purchase', component: UpdatePurchase, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'Update' } }},
+        {path: '/purchase/view', name: 'View Purchase', component: ViewPurchase, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'View' } }},
         {path: '/purchase_return', name: 'Purchase Return', component: PurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'View' } }},
         {path: '/purchase_return/create', name: 'Create Purchase Return', component: CreatePurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'Create' } }},
         {path: '/purchase_return/update', name: 'Update Purchase Return', component: UpdatePurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'Update' } }},
@@ -160,6 +167,12 @@ const router = createRouter({
         {path: '/purchase_price_change', name: 'Purchase Price Change', component: PurchasePriceChange, meta: { requiresAuth: true, permission: { resource: 'Purchase price change', action: 'View' } }},
         {path: '/purchase_price_change/create', name: 'Create Purchase Price Change', component: CreatePurchasePriceChange, meta: { requiresAuth: true, permission: { resource: 'Purchase price change', action: 'Create' } }},
         {path: '/purchase_price_change/update', name: 'Update Purchase Price Change', component: UpdatePurchasePriceChange, meta: { requiresAuth: true, permission: { resource: 'Purchase price change', action: 'Update' } }},
+        // Reports
+        {path: '/reports', name: 'Reports', component: Reports, meta: { requiresAuth: true }},
+        {path: '/reports/sales', name: 'Sales Reports', component: SalesReport, meta: { requiresAuth: true, permission: { resource: 'Sales', action: 'Report' } }},
+        {path: '/reports/purchase', name: 'Purchase Reports', component: Reports, meta: { requiresAuth: true, permission: { resource: 'Purchase', action: 'Report' } }},
+        {path: '/reports/inventory', name: 'Inventory Reports', component: Reports, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'Report' } }},
+        {path: '/customer_transaction', name: 'Customer Transaction', component: CustomerTransaction, meta: { requiresAuth: true, permission: { resource: 'Customer Transaction', action: 'View' } }},
         { path: '/', redirect: '/login' }
     ]
 });

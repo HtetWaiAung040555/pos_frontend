@@ -83,7 +83,7 @@ async function toggleProductInBuffer(event, product) {
 
     // Check remote API whether product is already in a promotion
     try {
-        const response = await axios.get(`/promotions/checkprice/${product.id}`);
+        const response = await axios.post(`/promotions/checkprice`, {product_id: product.id});
         const data = response.data;
         // If promotion_id is present and not null -> product already in promotion
         if (data && data.promotion_id) {
@@ -119,7 +119,7 @@ async function selectAllInBuffer() {
 
         // API checks 
         const checks = await Promise.allSettled(
-            candidates.map(p => axios.get(`/promotions/checkprice/${p.id}`))
+            candidates.map(p => axios.post(`/promotions/checkprice`, {product_id: p.id}))
         );
 
         const skipped = [];
