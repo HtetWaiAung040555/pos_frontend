@@ -314,7 +314,14 @@ async function formSubmit() {
         <!-- Selected Product Section -->
         <div class="flex flex-col">
             <!-- Select Product Button -->
-            <BaseButton label="Select Products" class="w-fit mt-4 mb-4" @click="openProductDialog()" />
+            <BaseButton 
+                label="Select Products" 
+                class="w-fit mt-4 mb-4" 
+                :icon="usePurchase.loading || usePaymentMethod.loading || useProduct.loading ? 'fa fa-spinner' : ''"
+                :isLoading="usePurchase.loading || usePaymentMethod.loading || useProduct.loading"
+                :disabled="usePurchase.loading || usePaymentMethod.loading || useProduct.loading"
+                @click="openProductDialog()" 
+            />
         </div>
         <div class="mt-3 max-h-[250px] overflow-y-auto">
             <table class="text-black w-full border-collapse border border-gray-200">

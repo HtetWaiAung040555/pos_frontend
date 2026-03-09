@@ -432,7 +432,14 @@ function printSlip() {
             </template>
         </BaseCard>
             <div class="flex flex-col">
-              <BaseButton label="Select Products" class="w-fit mt-4 mb-4" @click="openProductDialog()" />
+              <BaseButton 
+                label="Select Products" 
+                class="w-fit mt-4 mb-4" 
+                :icon="useSales.loading || usePaymentMethod.loading || useProduct.loading ? 'fa fa-spinner' : ''"
+                :isLoading="useSales.loading || usePaymentMethod.loading || useProduct.loading"
+                :disabled="useSales.loading || usePaymentMethod.loading || useProduct.loading"
+                @click="openProductDialog()" 
+              />
             </div>
         <div class="mt-3 max-h-[250px] overflow-y-auto">
             <table class="text-black w-full border-collapse border border-gray-200">
