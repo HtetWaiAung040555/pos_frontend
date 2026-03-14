@@ -1042,7 +1042,7 @@ const reportTypeOptions = [
 				<div class="grid grid-cols-2 gap-3 items-center">
 					<div>
 						<BaseLabel label="Report Type" />
-						<select v-model="reportType" class="mt-1 w-full border rounded px-2 py-2 text-sm">
+						<select v-model="reportType" class="mt-1 border border-gray-300 w-full border rounded-md px-2 py-2 text-sm">
 							<option v-for="rt in reportTypeOptions" :key="rt.value" :value="rt.value">{{ rt.label }}</option>
 						</select>
 					</div>
@@ -1104,7 +1104,7 @@ const reportTypeOptions = [
 						<BaseLabel label="Payment Method" />
 						<select
 							v-model="selectedPaymentMethod"
-							class="w-full border border-gray-300 rounded px-2 py-2 text-sm mt-1"
+							class="w-full border border-gray-300 rounded-md px-2 py-2 text-sm mt-1"
 							:disabled="isPaymentReport"
 						>
 							<option v-for="p in paymentOptions" :key="p.value" :value="p.value">{{ p.label }}</option>
@@ -1112,7 +1112,7 @@ const reportTypeOptions = [
 					</div>
 					<div>
 						<BaseLabel label="Status" />
-						<select v-model="selectedStatus" class="w-full border border-gray-300 rounded px-2 py-2 text-sm mt-1">
+						<select v-model="selectedStatus" class="w-full border border-gray-300 rounded-md px-2 py-2 text-sm mt-1">
 							<option v-for="s in statusOptions" :key="s.value" :value="s.value">{{ s.label }}</option>
 						</select>
 					</div>

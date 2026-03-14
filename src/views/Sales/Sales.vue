@@ -16,9 +16,10 @@
     import DashboardCard from '@/components/DashboardCard.vue';
     import { statusBadgeHtml } from '@/utils/const';
     import { getPresetRange } from '@/utils/datePresets';
+import BaseLabel from '@/components/BaseLabel.vue';
+import exportToXlsx from '@/utils/exportXlsx';
 
     const router = useRouter();
-    const route = useRoute();
     const useSales = useSaleStore();
     const filter = useFilterStore();
     const toast = useToast();
@@ -26,7 +27,6 @@
     const salesList = ref([]);
     const isDateLoading = ref(false); // show loading while fetching on date changes
     const dateRange = ref(null); // PrimeVue date range
-    let suppressMonthYearWatch = false; // avoid double-fetch when presets set both range and year/month
     // Date range for API fetch
     const filteredData = ref({
         // Local values bound to datetime-local inputs (format: YYYY-MM-DDTHH:mm)
@@ -38,17 +38,18 @@
     const selectedYear = ref(String(new Date().getFullYear()));
     const selectedMonth = ref(String(new Date().getMonth() + 1).padStart(2, '0'));
     const selectedDay = ref('');
-    // Carousel window for days
-    const dayWindowStart = ref(0);
-    const windowSize = ref(7); // show 7 days at once
-    // Date filter modal visibility
-    const visibleDateFilter = ref(false);
+    // Sales filter modal visibility
+    const salesFilter = ref(false);
 
     // Client-side filters (apply on date-range fetched data)
     const selectedStatus = ref('');
     const selectedPayment = ref('');
     const searchValue = ref('');
+    const invoiceSearchValue = ref('');
     const productSearchValue = ref('');
+    const customerSearchValue = ref('');
+    const pagination = ref({});
+    const selectedPerPage = ref(100);
 
     onMounted(async () => {
         // default date-time range: start of current week at 00:00 to now
@@ -64,9 +65,12 @@
             if (saved.selectedPayment) selectedPayment.value = saved.selectedPayment;
             if (saved.searchValue) searchValue.value = saved.searchValue;
             if (saved.productSearchValue) productSearchValue.value = saved.productSearchValue;
+            if (saved.customerSearchValue) customerSearchValue.value = saved.customerSearchValue;
+            if (saved.invoiceSearchValue) invoiceSearchValue.value = saved.invoiceSearchValue;
             if (saved.selectedYear) selectedYear.value = saved.selectedYear;
             if (saved.selectedMonth) selectedMonth.value = saved.selectedMonth;
             if (saved.selectedDay) selectedDay.value = saved.selectedDay;
+            if (saved.selectedPerPage) selectedPerPage.value = Number(saved.selectedPerPage) || 100;
         }
 
         // Initialize PrimeVue date range from persisted values
@@ -80,7 +84,17 @@
         await fetchSalesByDate();
     });
 
-    async function fetchSalesByDate() {
+    async function fetchSalesByDate(pagePayload = 1) {
+        const payloadIsObject = pagePayload && typeof pagePayload === 'object';
+        const page = payloadIsObject ? Number(pagePayload.page || 1) : Number(pagePayload || 1);
+        const perPage = payloadIsObject
+            ? Number(pagePayload.perPage || selectedPerPage.value || 100)
+            : Number(selectedPerPage.value || 100);
+
+        if (payloadIsObject && pagePayload.perPage) {
+            selectedPerPage.value = perPage;
+        }
+
         isDateLoading.value = true;
         try {
             // convert local datetime-local strings to backend friendly format (YYYY-MM-DD HH:mm:ss)
@@ -90,11 +104,20 @@
             const end = filteredData.value.endDateTimeLocal
                 ? moment(filteredData.value.endDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
                 : '';
-            await useSales.fetchAllSales({
+            const payload = {
                 start_date: start,
-                end_date: end
-            });
+                end_date: end,
+                customer: customerSearchValue.value || null,
+                statusId: selectedStatus.value || null,
+                paymentId: selectedPayment.value || null,
+                warehouseId: null, // currently not used in UI but can be added as a filter later
+                product: productSearchValue.value || null,
+                invoice: invoiceSearchValue.value || null,
+            }
+            await useSales.fetchAllSales(payload, page, perPage);
             salesList.value = useSales.salesList || [];
+            pagination.value = useSales.pagination || {};
+            await useSales.fetchDashboardSales(payload);
             // persist current filters after fetch
             saveFilters();
         } finally {
@@ -111,9 +134,12 @@
             selectedPayment: selectedPayment.value,
             searchValue: searchValue.value,
             productSearchValue: productSearchValue.value,
+            customerSearchValue: customerSearchValue.value,
+            invoiceSearchValue: invoiceSearchValue.value,
             selectedYear: selectedYear.value,
             selectedMonth: selectedMonth.value,
             selectedDay: selectedDay.value,
+            selectedPerPage: selectedPerPage.value,
         });
     }
 
@@ -125,11 +151,24 @@
         () => selectedPayment.value,
         () => searchValue.value,
         () => productSearchValue.value,
+        () => customerSearchValue.value,
+        () => invoiceSearchValue.value,
         () => selectedYear.value,
         () => selectedMonth.value,
-        () => selectedDay.value
+        () => selectedDay.value,
+        () => selectedPerPage.value
     ], () => {
         saveFilters();
+    });
+
+    // Keep filteredData in sync with PrimeVue date range picker and trigger fetch
+    watch(dateRange, async (val) => {
+        setFilteredDatesFromRange(val);
+        const hasFullRange = Array.isArray(val) && val[0] && val[1];
+        const cleared = val === null
+        // if (hasFullRange || cleared) {
+        //     await fetchSalesByDate();
+        // }
     });
 
     function setFilteredDatesFromRange(range) {
@@ -144,196 +183,16 @@
         }
     }
 
-    // Keep filteredData in sync with PrimeVue date range picker and trigger fetch
-    watch(dateRange, async (val) => {
-        setFilteredDatesFromRange(val);
-        const hasFullRange = Array.isArray(val) && val[0] && val[1];
-        const cleared = val === null
-        if (hasFullRange || cleared) {
-            await fetchSalesByDate();
-        }
-    });
-
-    // Helper: list of years for selection (e.g., 2020..current+2)
-    const years = computed(() => {
-        const cur = new Date().getFullYear();
-        const start = cur - 3;
-        const end = cur + 2;
-        const arr = ["All"];
-        for (let y = start; y <= end; y++) arr.push(String(y));
-        return arr;
-    });
-
-    const months = [
-        { v: "All", name: "All" },
-        { v: '01', name: 'January' },
-        { v: '02', name: 'February' },
-        { v: '03', name: 'March' },
-        { v: '04', name: 'April' },
-        { v: '05', name: 'May' },
-        { v: '06', name: 'June' },
-        { v: '07', name: 'July' },
-        { v: '08', name: 'August' },
-        { v: '09', name: 'September' },
-        { v: '10', name: 'October' },
-        { v: '11', name: 'November' },
-        { v: '12', name: 'December' },
-    ];
-
-    // Compute all days for selected month-year with weekday labels
-    const monthDays = computed(() => {
-        const y = Number(selectedYear.value);
-        const m = Number(selectedMonth.value) - 1; // JS month index
-        const first = new Date(y, m, 1);
-        const daysInMonth = new Date(y, m + 1, 0).getDate();
-        const arr = [];
-        for (let d = 1; d <= daysInMonth; d++) {
-            const dt = new Date(y, m, d);
-            const dayName = moment(dt).format('ddd').toUpperCase(); // MON, TUE, ...
-            arr.push({
-                day: dayName,
-                date: String(d).padStart(2, '0'),
-                iso: moment(dt).format('YYYY-MM-DD')
-            });
-        }
-        return arr;
-    });
-
-    const maxWindowStart = computed(() => Math.max(0, monthDays.value.length - windowSize.value));
-
-    const monthDaysSlice = computed(() => {
-        return monthDays.value.slice(dayWindowStart.value, dayWindowStart.value + windowSize.value);
-    });
-
-    function prevDays() {
-        dayWindowStart.value = Math.max(0, dayWindowStart.value - windowSize.value);
-    }
-
-    function nextDays() {
-        dayWindowStart.value = Math.min(maxWindowStart.value, dayWindowStart.value + windowSize.value);
-    }
-
-    // reset window when month or year changes
-    // watch([selectedYear, selectedMonth], () => {
-    //     dayWindowStart.value = 0;
-    //     selectedDay.value = '';
-    // });
-
-    // When year changes, fetch that whole year
-    // watch(selectedYear, async (newYear) => {
-    //     if (suppressMonthYearWatch) return;
-    //     if (!newYear) return;
-    //     // Case 1: ALL years – show all data
-    //     if (newYear === "All") {
-    //         filteredData.value.startDateTimeLocal = "";
-    //         filteredData.value.endDateTimeLocal = "";
-    //         selectedMonth.value = "All"; 
-    //         dateRange.value = [null, null];
-    //         await fetchSalesByDate();
-    //         return;
-    //     }
-
-    //     // Case 2: Year selected but month = ALL → show full year
-    //     if (selectedMonth.value === "All") {
-    //         filteredData.value.startDateTimeLocal = `${newYear}-01-01T00:00`;
-    //         filteredData.value.endDateTimeLocal = `${newYear}-12-31T23:59`;
-    //         dateRange.value = [
-    //             moment(`${newYear}-01-01`).toDate(),
-    //             moment(`${newYear}-12-31`).toDate()
-    //         ];
-    //         await fetchSalesByDate();
-    //         return;
-    //     }
-
-    //     // Case 3: Year changed but month is still specific
-    //     const m = selectedMonth.value;
-    //     const daysInMonth = new Date(Number(newYear), Number(m), 0).getDate();
-    //     filteredData.value.startDateTimeLocal = `${newYear}-${m}-01T00:00`;
-    //     filteredData.value.endDateTimeLocal = `${newYear}-${m}-${String(daysInMonth).padStart(2, '0')}T23:59`;
-    //     dateRange.value = [
-    //         moment(`${newYear}-${m}-01`).toDate(),
-    //         moment(`${newYear}-${m}-${String(daysInMonth).padStart(2, '0')}`).toDate()
-    //     ];
-    //     await fetchSalesByDate();
-    // });
-
-    // When month changes, fetch that month within selectedYear
-    // watch(selectedMonth, async (newMonth) => {
-    //     if (suppressMonthYearWatch) return;
-    //     if (!newMonth || !selectedYear.value) return;
-    //     const y = selectedYear.value;
-    //     // Case 1: ALL Months + ALL Years
-    //     if (newMonth === "All" && y === "All") {
-    //         filteredData.value.startDateTimeLocal = "";
-    //         filteredData.value.endDateTimeLocal = "";
-    //         dateRange.value = [null, null];
-    //         await fetchSalesByDate();
-    //         return;
-    //     }
-
-    //     // Case 2: ALL Months but specific year
-    //     if (newMonth === "All") {
-    //         filteredData.value.startDateTimeLocal = `${y}-01-01T00:00`;
-    //         filteredData.value.endDateTimeLocal = `${y}-12-31T23:59`;
-    //         dateRange.value = [
-    //             moment(`${y}-01-01`).toDate(),
-    //             moment(`${y}-12-31`).toDate()
-    //         ];
-    //         await fetchSalesByDate();
-    //         return;
-    //     }
-
-    //     // Case 3: Specific month + specific year
-    //     const daysInMonth = new Date(Number(y), Number(newMonth), 0).getDate();
-    //     filteredData.value.startDateTimeLocal = `${y}-${newMonth}-01T00:00`;
-    //     filteredData.value.endDateTimeLocal = `${y}-${newMonth}-${String(daysInMonth).padStart(2, '0')}T23:59`;
-    //     dateRange.value = [
-    //         moment(`${y}-${newMonth}-01`).toDate(),
-    //         moment(`${y}-${newMonth}-${String(daysInMonth).padStart(2, '0')}`).toDate()
-    //     ];
-    //     await fetchSalesByDate();
-    // });
-
-    function openDateFilterDialog() {
-        visibleDateFilter.value = true;
-    }
-
     function applyRangeAndClose() {
         // use existing filteredData values and fetch
         fetchSalesByDate();
-        visibleDateFilter.value = false;
-    }
-
-    function selectMonthDay(dayObj) {
-        selectedDay.value = dayObj.iso;
-        // set datetime-local values for full day
-        filteredData.value.startDateTimeLocal = `${dayObj.iso}T00:00`;
-        filteredData.value.endDateTimeLocal = `${dayObj.iso}T23:59`;
-        // trigger fetch for the selected day
-        dateRange.value = [moment(dayObj.iso).toDate(), moment(dayObj.iso).toDate()];
-        fetchSalesByDate();
+        salesFilter.value = false;
     }
 
     function applyPresetRange(preset) {
-        const today = moment().startOf('day');
         let range = getPresetRange(preset);
-
-        // Keep UI selectors in sync without triggering their fetch logic
-        // suppressMonthYearWatch = true;
-        // selectedYear.value = start.format('YYYY');
-        // selectedMonth.value = start.format('MM');
-        // Only lock the exact day when the preset is today or yesterday
-        // selectedDay.value = (preset === 'today' || preset === 'yesterday')
-        //     ? start.format('YYYY-MM-DD')
-        //     : '';
         dateRange.value = range ? range : null;
-
-        // nextTick(() => {
-        //     suppressMonthYearWatch = false;
-        // });
     }
-
-    // Use shared status badge helper
 
     const columns = [
         { key: 'id', label: 'Invoice No.', formatter: (row) => row.id, onClick: (row) => {
@@ -349,91 +208,6 @@
         // { key: 'updated_by', label: 'Updated By', formatter: (row) => row.updated_by },
         // { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
     ];
-
-    // Derived options from fetched data for client-side filters
-    const statusOptions = computed(() => {
-        const map = new Map();
-        (salesList.value || []).forEach(s => {
-            if (s.status && s.status.id) map.set(s.status.id, s.status.name);
-        });
-        return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-    });
-
-    const paymentOptions = computed(() => {
-        const map = new Map();
-        (salesList.value || []).forEach(s => {
-            if (s.payment_method && s.payment_method.id) map.set(s.payment_method.id, s.payment_method.name);
-        });
-        return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-    });
-
-    // Final list shown in table after client-side filtering
-    const displayedSales = computed(() => {
-        let list = (salesList.value || []).slice();
-
-        // filter by status
-        if (selectedStatus.value) {
-            list = list.filter(s => String(s.status?.id) === String(selectedStatus.value));
-        }
-
-        // filter by payment method
-        if (selectedPayment.value) {
-            list = list.filter(s => String(s.payment_method?.id) === String(selectedPayment.value));
-        }
-
-        // search across invoice id, customer name
-        if (searchValue.value && searchValue.value.trim() !== '') {
-            const q = searchValue.value.toLowerCase().trim();
-            list = list.filter(s => {
-                const cust = s.customer?.name || '';
-                const id = s.id || '';
-                return cust.toLowerCase().includes(q) || id.toLowerCase().includes(q);
-            });
-        }
-
-        // search across product names in sale details
-        if (productSearchValue.value && productSearchValue.value.trim() !== '') {
-            const pq = productSearchValue.value.toLowerCase().trim();
-            list = list.filter(s => {
-                const prodBarcode = s.details?.map(d => d.product?.barcode || '').join(' ').toLowerCase();
-                const prodNames = (s.details || []).map(d => d.product?.name || '').join(' ').toLowerCase();
-                return prodNames.includes(pq) || prodBarcode.includes(pq);
-            });
-        }
-
-        return list;
-    });
-
-    const totalSalesAmount = computed(() => {
-        return displayedSales.value.reduce((sum, sale) => sum + (Number(sale.total_amount) || 0), 0);
-    });
-
-    const totalCashAmount = computed(() => {
-        return displayedSales.value.reduce((sum, sale) => {
-            if (sale.payment_method && sale.payment_method.name === 'Cash') {
-                return sum + (Number(sale.total_amount) || 0);
-            }
-            return sum;
-        }, 0);
-    });
-
-    const totalKpayAmount = computed(() => {
-        return displayedSales.value.reduce((sum, sale) => {
-            if (sale.payment_method && sale.payment_method.name === 'Kpay') {
-                return sum + (Number(sale.total_amount) || 0);
-            }
-            return sum;
-        }, 0);
-    });
-
-    const totalWalletAmount = computed(() => {
-        return displayedSales.value.reduce((sum, sale) => {
-            if (sale.payment_method && sale.payment_method.name === 'Wallet') {
-                return sum + (Number(sale.total_amount) || 0);
-            }
-            return sum;
-        }, 0);
-    });
 
     function changeRoute(pathname) {
         router.push(pathname);
@@ -453,6 +227,31 @@
         }
     }
 
+    async function exportToExcel() {
+        await useSales.exportSales({
+            start_date: filteredData.value.startDateTimeLocal
+                ? moment(filteredData.value.startDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
+                : '',
+            end_date: filteredData.value.endDateTimeLocal
+                ? moment(filteredData.value.endDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
+                : '',
+            customer: customerSearchValue.value || null,
+            statusId: selectedStatus.value || null,
+            paymentId: selectedPayment.value || null,
+            warehouseId: null, // currently not used in UI but can be added as a filter later
+            product: productSearchValue.value || null,
+            invoice: invoiceSearchValue.value || null,
+        });
+        exportToXlsx({
+            columns: columns,
+            rows: useSales.exportData,
+            filename: 'Sales',
+            detailHeaders: ['Product ID', 'Product Name', 'Price', 'Discount Amount', 'Discount Price', 'Qty', 'Total'],
+            detailField: 'details',
+            detailKeys: ['product.id', 'product.name', 'price', 'discount_amount', 'discount_price', 'quantity', 'total'],
+        });
+    }
+
 </script>
 
 
@@ -461,36 +260,6 @@
     <div class="p-4">
         <PageTitle title="Sales List">
             <template #titleButtons>
-                <!-- <div class="border-t flex gap-x-2 items-center">
-                    <div class="flex items-center gap-2 text-black mb-2">
-                        <select v-model="selectedYear" class="border p-2 rounded text-sm">
-                            <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
-                        </select>
-                        <select v-model="selectedMonth" class="border p-2 rounded text-sm" :disabled="selectedYear === 'All'">
-                            <option v-for="m in months" :key="m.v" :value="m.v">{{ m.name }}</option>
-                        </select>
-                    </div>
-
-                    <div class="flex items-center gap-x-2">
-                        <button @click="prevDays" :disabled="dayWindowStart === 0" class=" rounded text-black flex items-center justify-center cursor-pointer">
-                            <i class="fa fa-chevron-circle-left text-xl"></i>
-                        </button>
-                        <div class="flex gap-1 px-1 flex-wrap">
-                            <button
-                                v-for="d in monthDaysSlice"
-                                :key="d.iso"
-                                @click="selectMonthDay(d)"
-                                :class="['px-3 py-2 rounded text-sm whitespace-nowrap cursor-pointer text-black', selectedDay === d.iso ? 'bg-blue-500 text-white' : 'bg-white border border-gray-300']"
-                            >
-                                <div class="text-xs">{{ d.day }}</div>
-                                <div class="font-semibold">{{ d.date }}</div>
-                            </button>
-                        </div>
-                        <button @click="nextDays" :disabled="dayWindowStart >= maxWindowStart" class="rounded text-black flex items-center justify-center cursor-pointer">
-                            <i class="fa fa-chevron-circle-right text-xl"></i>
-                        </button>
-                    </div>
-                </div> -->
                 <div class="flex gap-x-2 items-center">
                     <BaseButton 
                         v-if="usePermission.can('Sales', 'Create')"
@@ -508,91 +277,27 @@
                 </div>
             </template>
         </PageTitle>
-        <!-- <Dialog v-model:visible="visibleDateFilter" :style="{ width: '700px' }" :modal="true" :draggable="false">
-            <template #container="{ closeCallback }">
-                <div class="p-4">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="text-lg font-semibold text-black">Date Filter</h3>
-                        <div class="flex gap-x-2">
-                            <BaseButton severity="secondary" variant="outlined" @click="() => { filteredData.startDateTimeLocal = ''; filteredData.endDateTimeLocal = ''; }" icon="pi pi-refresh" />
-                            <BaseButton severity="secondary" @click="visibleDateFilter = false" icon="fa fa-x" />
-                        </div>
-                    </div>
-
-                    <div class="flex gap-2 items-center mb-4">
-                        <BaseInput
-                            size="sm"
-                            v-model="filteredData.startDateTimeLocal"
-                            type="datetime-local"
-                            placeholder="Start DateTime"
-                            width="250px"
-                            height="h-[35px]"
-                        />
-                        <BaseInput
-                            size="sm"
-                            v-model="filteredData.endDateTimeLocal"
-                            type="datetime-local"
-                            placeholder="End DateTime"
-                            width="250px"
-                            height="h-[35px]"
-                        />
-                        <BaseButton label="Apply Range" severity="primary" @click="applyRangeAndClose" />
-                    </div>
-
-                    <div class="border-t pt-3">
-                        <div class="flex items-center gap-2 text-black mb-2">
-                            <select v-model="selectedYear" class="border p-2 rounded text-sm">
-                                <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
-                            </select>
-                            <select v-model="selectedMonth" class="border p-2 rounded text-sm" :disabled="selectedYear === 'All'">
-                                <option v-for="m in months" :key="m.v" :value="m.v">{{ m.name }}</option>
-                            </select>
-                        </div>
-
-                        <div class="flex items-center gap-x-2">
-                            <button @click="prevDays" :disabled="dayWindowStart === 0" class=" rounded bg-white flex items-center justify-center cursor-pointer">
-                                <i class="fa fa-chevron-circle-left text-xl"></i>
-                            </button>
-                            <div class="flex gap-1 px-1 flex-wrap">
-                                <button
-                                    v-for="d in monthDaysSlice"
-                                    :key="d.iso"
-                                    @click="selectMonthDay(d)"
-                                    :class="['px-3 py-2 rounded text-sm whitespace-nowrap cursor-pointer', selectedDay === d.iso ? 'bg-blue-400 text-white' : 'bg-white border']"
-                                >
-                                    <div class="text-xs text-gray-500">{{ d.day }}</div>
-                                    <div class="font-semibold">{{ d.date }}</div>
-                                </button>
-                            </div>
-                            <button @click="nextDays" :disabled="dayWindowStart >= maxWindowStart" class="rounded bg-white flex items-center justify-center cursor-pointer">
-                                <i class="fa fa-chevron-circle-right text-xl"></i>
-                            </button>
-                        </div>
-                        <div class="text-sm text-gray-500 mt-2">Select year → month → day to filter. Year/month selection auto-applies.</div>
-                    </div>
-                </div>
-            </template>
-        </Dialog> -->
         <div class="grid grid-cols-5 my-3 gap-x-4">
-            <DashboardCard title="Total Sales" :value="displayedSales.length" icon="fa fa-receipt" color="green" />
-            <DashboardCard title="Total Sales Amount" :value="totalSalesAmount.toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
-            <DashboardCard title="Total Cash" :value="totalCashAmount.toLocaleString('en-us')" icon="fa fa-hand-holding-dollar" color="gray" />
-            <DashboardCard title="Total Kpay" :value="totalKpayAmount.toLocaleString('en-us')" icon="fa fa-credit-card" color="blue" />
-            <DashboardCard title="Total Wallet" :value="totalWalletAmount.toLocaleString('en-us')" icon="fa fa-wallet" color="purple" />
+            <DashboardCard title="Total Sales" :value="useSales.dashboardData.total_invoice" icon="fa fa-receipt" color="green" />
+            <DashboardCard title="Total Sales Amount" :value="Number(useSales.dashboardData.total_sales).toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
+            <DashboardCard title="Total Cash" :value="Number(useSales.dashboardData.total_cash).toLocaleString('en-us')" icon="fa fa-hand-holding-dollar" color="gray" />
+            <DashboardCard title="Total Kpay" :value="Number(useSales.dashboardData.total_kpay).toLocaleString('en-us')" icon="fa fa-credit-card" color="blue" />
+            <DashboardCard title="Total Wallet" :value="Number(useSales.dashboardData.total_wallet).toLocaleString('en-us')" icon="fa fa-wallet" color="purple" />
         </div>
         <DataTable 
             :columns="columns" 
-            :rows="displayedSales" 
+            :rows="salesList" 
             :editPath="'Update Sales'" 
             :isLoading="useSales.loading" 
-            filename="Sales"
             @delete="deleteHandle"
             :defaultSort="{key: 'created_at', order: 'desc'}"
             :isEdit="!usePermission.can('Sales', 'Update')"
             :isDelete="!usePermission.can('Sales', 'Delete')"
-            :detailHeaders="['Product ID', 'Product Name', 'Price', 'Discount Amount', 'Discount Price', 'Qty', 'Total']"
-            detailField="details"
-            :detailKeys="['product.id', 'product.name', 'price', 'discount_amount', 'discount_price', 'quantity', 'total']"
+            :isExcelExport="false"
+            :paginationMeta="pagination"
+            :isPaginate = "true"
+            :serverPagination = "true"
+            @page-change="fetchSalesByDate"
         >
             <template #filters>
                 <div class="flex gap-2 items-center">
@@ -626,35 +331,116 @@
                             </div>
                         </template>
                     </DatePicker>
-                        
-                    <select v-model="selectedStatus" class="border p-2 rounded text-sm">
-                        <option value="">All Status</option>
-                        <option v-for="opt in statusOptions" :key="opt.id" :value="opt.id">{{ opt.name }}</option>
-                    </select>
-
-                    <select v-model="selectedPayment" class="border p-2 rounded text-sm">
-                        <option value="">All Payment</option>
-                        <option v-for="opt in paymentOptions" :key="opt.id" :value="opt.id">{{ opt.name }}</option>
-                    </select>
-
-                    <BaseInput 
-                        size="sm"
-                        v-model="searchValue"
-                        placeholder="Search by customer, invoice"
-                        icon="pi pi-search"
-                        width="200px"
-                        height="h-[35px]"
-                    />
-                    <BaseInput 
-                        size="sm"
-                        v-model="productSearchValue"
-                        placeholder="Search by product name, barcode"
-                        icon="pi pi-search"
-                        width="200px"
-                        height="h-[35px]"
-                    />
+                    <!-- Filter Button -->
+                    <BaseButton label="Filter" icon="pi pi-filter" severity="primary" @click="salesFilter = true" />
+                    <!-- Export Button -->
+                    <BaseButton label="Export" icon="pi pi-file-excel" severity="primary" variant="outlined" @click="exportToExcel" />
                 </div>
             </template>
         </DataTable>
     </div>
+
+    <!-- Filter Modal Dialog -->
+    <Dialog v-model:visible="salesFilter" :style="{ width: '700px' }" :modal="true" :draggable="false">
+        <template #container="{ closeCallback }">
+            <div class="p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-black">Sales Filter</h3>
+                    <BaseButton size="sm" icon="pi pi-times" severity="danger" variant="text" @click="closeCallback" />
+                </div>
+                <div class="grid grid-cols-2 gap-2 items-center">
+                    <div class="flex flex-col gap-1">
+                        <BaseLabel label="Date Range" />
+                        <DatePicker
+                            v-model="dateRange"
+                            selectionMode="range"
+                            :manualInput="false"
+                            showButtonBar
+                            placeholder="Date range"
+                            inputClass="h-[35px] w-full"
+                            :disabled="isDateLoading"
+                        >
+                            <template #buttonbar="{ clearCallback }">
+                                <div class="flex justify-between w-full p-2 gap-2 flex-wrap items-center">
+                                    <div class="flex gap-2 flex-wrap">
+                                        <BaseButton size="sm" label="Today" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('today')" />
+                                        <BaseButton size="sm" label="Yesterday" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('yesterday')" />
+                                        <BaseButton size="sm" label="This Week" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisWeek')" />
+                                        <BaseButton size="sm" label="This Month" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisMonth')" />
+                                        <BaseButton size="sm" label="This Year" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisYear')" />
+                                        <BaseButton size="sm" label="All" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('all')" />
+                                    </div>
+                                    <div class="flex gap-2 items-center">
+                                        <div v-if="isDateLoading" class="flex items-center text-xs text-gray-600 gap-2">
+                                            <i class="pi pi-spin pi-spinner"></i>
+                                            <span>Loading...</span>
+                                        </div>
+                                        <BaseButton size="sm" label="Clear" icon="pi pi-times" severity="danger" variant="outlined" :disabled="isDateLoading" @click="clearCallback" />
+                                    </div>
+                                </div>
+                            </template>
+                        </DatePicker>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <BaseLabel label="Invoice" />
+                        <BaseInput 
+                            size="sm"
+                            v-model="invoiceSearchValue"
+                            placeholder="Search by invoice"
+                            icon="pi pi-search"
+                            height="h-[35px]"
+                        />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <BaseLabel label="Customer" />
+                        <BaseInput 
+                            size="sm"
+                            v-model="customerSearchValue"
+                            placeholder="Search by customer name, ID"
+                            icon="pi pi-search"
+                            height="h-[35px]"
+                        />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <BaseLabel label="Product" />
+                        <BaseInput 
+                            size="sm"
+                            v-model="productSearchValue"
+                            placeholder="Search by product name, barcode"
+                            icon="pi pi-search"
+                            height="h-[35px]"
+                        />
+                    </div>
+                    <div class="flex flex-col gap-1">
+						<BaseLabel label="Payment Method" />
+						<select
+							v-model="selectedPayment"
+							class="w-full border border-gray-300 rounded-md px-2 py-2 text-sm"
+						>
+							<option value="">All</option>
+                            <option value="1">Cash</option>
+                            <option value="2">Credit</option>
+                            <option value="3">Wallet</option>
+                            <option value="4">Kpay</option>
+						</select>
+					</div>
+                    <div class="flex flex-col gap-1">
+						<BaseLabel label="Status" />
+						<select
+							v-model="selectedStatus"
+							class="w-full border border-gray-300 rounded-md px-2 py-2 text-sm"
+						>
+							<option value="">All</option>
+                            <option value="5">Hold</option>
+                            <option value="7">Complete</option>
+                            <option value="8">Void</option>
+						</select>
+					</div>
+                    <div class="col-span-2 flex items-center justify-end">
+                        <BaseButton label="Apply Filter" icon="pi pi-filter" severity="primary" @click="applyRangeAndClose" />
+                    </div>
+                </div>
+            </div>
+        </template>
+    </Dialog>
 </template>

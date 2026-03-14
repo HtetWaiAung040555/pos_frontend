@@ -4,13 +4,25 @@ import BaseButton from './BaseButton.vue';
 import Loading from './Loading.vue';
 import Dialog from 'primevue/dialog';
 import { exportToXlsx } from '@/utils/exportXlsx';
+import axios from 'axios';
 
 const props = defineProps({
   columns: { type: Array, required: true }, // [{ key: 'name', label: 'Name' }]
   rows: { type: Array, required: true },    // your data array
   pageSize: { type: Number, default: 10 },
   isPaginate: {type: Boolean, default: false},
+  serverPagination: { type: Boolean, default: false },
+  paginationMeta: {
+    type: Object,
+    default: () => ({
+      currentPage: 1,
+      lastPage: 1,
+      total: 0,
+      perPage: 10
+    })
+  },
   isAction: {type: Boolean, default: true},
+  isExcelExport: {type: Boolean, default: true},
   editPath: {type: String, default: ""},
   deletePath: {type: String, default: ""},
   adjustPath: {type: String, default: ""},
@@ -44,7 +56,10 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['delete']);
+const emit = defineEmits([
+  'delete',
+  'page-change'
+]);
 
 const searchQuery = ref('');
 const currentPage = ref(1);
@@ -54,6 +69,8 @@ const visible = ref(false);
 const rowId = ref('');
 const tableContainerRef = ref(null);
 const tableContainerHeight = ref('auto');
+const rowsPerPageOptions = [50, 100, 300, 500, 1000];
+const selectedPerPage = ref(rowsPerPageOptions.includes(props.pageSize) ? props.pageSize : rowsPerPageOptions[0]);
 
 const totalsConfig = computed(() => ({
   enabled: !!props.totals?.enabled,
@@ -196,19 +213,51 @@ function changeSort(key) {
 }
 
 function changePage(page) {
-  if (page >= 1 && page <= totalPages.value) {
-    currentPage.value = page;
+  const max = effectiveLastPage.value || 1;
+  const safePage = Math.min(Math.max(1, Number(page) || 1), max);
+  if (props.serverPagination) {
+    emit('page-change', {
+      page: safePage,
+      perPage: selectedPerPage.value
+    });
+    return;
   }
+  currentPage.value = safePage;
 }
 
 // Pagination
-const totalPages = computed(() => Math.ceil(displayRows.value.length / props.pageSize));
+const totalPages = computed(() => {
+  const size = Math.max(1, Number(selectedPerPage.value) || 1);
+  return Math.max(1, Math.ceil(displayRows.value.length / size));
+});
+const effectiveCurrentPage = computed(() => {
+  return props.serverPagination ? (props.paginationMeta?.currentPage || 1) : currentPage.value;
+});
+const effectiveLastPage = computed(() => {
+  return props.serverPagination ? (props.paginationMeta?.lastPage || 1) : totalPages.value;
+});
+const effectiveTotal = computed(() => {
+  return props.serverPagination ? (props.paginationMeta?.total || 0) : displayRows.value.length;
+});
+
+function changeRowsPerPage(event) {
+  selectedPerPage.value = Number(event.target.value);
+  currentPage.value = 1;
+  if (props.serverPagination) {
+    emit('page-change', {
+      page: 1,
+      perPage: selectedPerPage.value
+    });
+  }
+}
 
 // Paginated rows
 const paginatedRows = computed(() => {
   if (!props.isPaginate) return displayRows.value;
-  const start = (currentPage.value - 1) * props.pageSize;
-  return displayRows.value.slice(start, start + props.pageSize);
+  if (props.serverPagination) return displayRows.value;
+  const size = Math.max(1, Number(selectedPerPage.value) || 1);
+  const start = (currentPage.value - 1) * size;
+  return displayRows.value.slice(start, start + size);
 });
 
 function getAlignClass(align) {
@@ -220,8 +269,8 @@ function getAlignClass(align) {
 // Pagination Pages Array
 const paginationPages = computed(() => {
   const pages = [];
-  const total = totalPages.value;
-  const current = currentPage.value;
+  const total = effectiveLastPage.value || 1;
+  const current = effectiveCurrentPage.value || 1;
 
   if (total <= 7) {
     // Show all pages if small
@@ -254,7 +303,7 @@ function confirmDelete() {
   visible.value = !visible.value;
 }
 
-function exportToExcel() {
+async function exportToExcel() {
   exportToXlsx({
     columns: props.columns,
     rows: props.rows,
@@ -300,6 +349,25 @@ onBeforeUnmount(() => {
 });
 
 watch(
+  () => props.paginationMeta?.perPage,
+  (val) => {
+    if (!props.serverPagination) return;
+    const parsed = Number(val);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      selectedPerPage.value = parsed;
+    }
+  },
+  { immediate: true }
+);
+
+watch(totalPages, (val) => {
+  if (props.serverPagination) return;
+  if (currentPage.value > val) {
+    currentPage.value = val;
+  }
+});
+
+watch(
   () => [props.isPaginate, props.isSearchable],
   async () => {
     await nextTick();
@@ -325,7 +393,7 @@ watch(
             />
           </slot>
         </div>
-        <div class="">
+        <div v-if="isExcelExport" class="">
           <BaseButton
             label="Export"
             icon="fa fa-file-excel"
@@ -461,7 +529,23 @@ watch(
 
       <!-- Pagination -->
       <div v-if="isPaginate" class="sticky bottom-0 bg-white border-t border-gray-200">
-        <div class="flex items-center justify-end mt-3 gap-2">
+        <div class="flex items-center justify-between mt-3 gap-3 flex-wrap">
+          <div class="flex items-center gap-4 text-sm text-gray-700">
+            <!-- <div>
+              Total: <span class="font-semibold">{{ Number(effectiveTotal || 0).toLocaleString('en-us') }}</span>
+            </div> -->
+            <label class="flex items-center gap-2">
+              <span>Rows</span>
+              <select
+                class="border border-gray-300 rounded-md px-2 py-1 bg-white"
+                :value="selectedPerPage"
+                @change="changeRowsPerPage"
+              >
+                <option v-for="size in rowsPerPageOptions" :key="size" :value="size">{{ size }}</option>
+              </select>
+            </label>
+          </div>
+          <div class="flex items-center gap-2">
           <BaseButton 
             icon="fa fa-chevron-left" 
             variant="text"
@@ -469,8 +553,8 @@ watch(
             size="sm"
             class="w-6 h-6"
             rounded
-            :disabled="currentPage === 1"
-            @click="changePage(currentPage - 1)"
+            :disabled="effectiveCurrentPage === 1"
+            @click="changePage(effectiveCurrentPage - 1)"
           />
           <!-- Page Numbers -->
           <template v-for="(page, index) in paginationPages" :key="index">
@@ -483,7 +567,7 @@ watch(
             <BaseButton
               v-else
               :label="String(page)"
-              :variant="page === currentPage ? 'solid' : 'text'"
+              :variant="page === effectiveCurrentPage ? 'solid' : 'text'"
               severity="contrast"
               size="sm"
               class="w-6 h-6"
@@ -499,9 +583,10 @@ watch(
             size="sm"
             class="w-6 h-6"
             rounded
-            :disabled="currentPage === totalPages"
-            @click="changePage(currentPage + 1)"
+            :disabled="effectiveCurrentPage === effectiveLastPage"
+            @click="changePage(effectiveCurrentPage + 1)"
           />
+          </div>
         </div>
       </div>
 
