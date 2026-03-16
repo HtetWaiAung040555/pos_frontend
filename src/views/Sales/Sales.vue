@@ -16,8 +16,8 @@
     import DashboardCard from '@/components/DashboardCard.vue';
     import { statusBadgeHtml } from '@/utils/const';
     import { getPresetRange } from '@/utils/datePresets';
-import BaseLabel from '@/components/BaseLabel.vue';
-import exportToXlsx from '@/utils/exportXlsx';
+    import BaseLabel from '@/components/BaseLabel.vue';
+    import exportToXlsx from '@/utils/exportXlsx';
 
     const router = useRouter();
     const useSales = useSaleStore();
@@ -33,18 +33,11 @@ import exportToXlsx from '@/utils/exportXlsx';
         startDateTimeLocal: '',
         endDateTimeLocal: ''
     });
-
-    // Calendar selection: year, month, day
-    const selectedYear = ref(String(new Date().getFullYear()));
-    const selectedMonth = ref(String(new Date().getMonth() + 1).padStart(2, '0'));
-    const selectedDay = ref('');
     // Sales filter modal visibility
     const salesFilter = ref(false);
-
     // Client-side filters (apply on date-range fetched data)
     const selectedStatus = ref('');
     const selectedPayment = ref('');
-    const searchValue = ref('');
     const invoiceSearchValue = ref('');
     const productSearchValue = ref('');
     const customerSearchValue = ref('');
@@ -63,13 +56,9 @@ import exportToXlsx from '@/utils/exportXlsx';
             if (saved.endDateTimeLocal) filteredData.value.endDateTimeLocal = saved.endDateTimeLocal;
             if (saved.selectedStatus) selectedStatus.value = saved.selectedStatus;
             if (saved.selectedPayment) selectedPayment.value = saved.selectedPayment;
-            if (saved.searchValue) searchValue.value = saved.searchValue;
             if (saved.productSearchValue) productSearchValue.value = saved.productSearchValue;
             if (saved.customerSearchValue) customerSearchValue.value = saved.customerSearchValue;
             if (saved.invoiceSearchValue) invoiceSearchValue.value = saved.invoiceSearchValue;
-            if (saved.selectedYear) selectedYear.value = saved.selectedYear;
-            if (saved.selectedMonth) selectedMonth.value = saved.selectedMonth;
-            if (saved.selectedDay) selectedDay.value = saved.selectedDay;
             if (saved.selectedPerPage) selectedPerPage.value = Number(saved.selectedPerPage) || 100;
         }
 
@@ -132,13 +121,9 @@ import exportToXlsx from '@/utils/exportXlsx';
             endDateTimeLocal: filteredData.value.endDateTimeLocal,
             selectedStatus: selectedStatus.value,
             selectedPayment: selectedPayment.value,
-            searchValue: searchValue.value,
             productSearchValue: productSearchValue.value,
             customerSearchValue: customerSearchValue.value,
             invoiceSearchValue: invoiceSearchValue.value,
-            selectedYear: selectedYear.value,
-            selectedMonth: selectedMonth.value,
-            selectedDay: selectedDay.value,
             selectedPerPage: selectedPerPage.value,
         });
     }
@@ -149,13 +134,9 @@ import exportToXlsx from '@/utils/exportXlsx';
         () => filteredData.value.endDateTimeLocal,
         () => selectedStatus.value,
         () => selectedPayment.value,
-        () => searchValue.value,
         () => productSearchValue.value,
         () => customerSearchValue.value,
         () => invoiceSearchValue.value,
-        () => selectedYear.value,
-        () => selectedMonth.value,
-        () => selectedDay.value,
         () => selectedPerPage.value
     ], () => {
         saveFilters();
@@ -309,7 +290,7 @@ import exportToXlsx from '@/utils/exportXlsx';
                         showButtonBar
                         placeholder="Date range"
                         inputClass="h-[35px]"
-                        :disabled="isDateLoading"
+                        :disabled="true"
                     >
                         <template #buttonbar="{ clearCallback }">
                             <div class="flex justify-between w-full px-2 pb-2 gap-2 flex-wrap items-center">

@@ -19,6 +19,8 @@ import DashboardCard from '@/components/DashboardCard.vue';
 import { statusBadgeHtml } from '@/utils/const';
 import { getPresetRange } from '@/utils/datePresets';
 import * as XLSX from 'xlsx';
+import BaseLabel from '@/components/BaseLabel.vue';
+import exportToXlsx from '@/utils/exportXlsx';
 
 const router = useRouter();
 const usePurchase = usePurchaseStore();
@@ -29,33 +31,29 @@ const useProduct = useProductStore();
 const filter = useFilterStore();
 const toast = useToast();
 const usePermission = usePermissionStore();
+
 const purchaseList = ref([]);
 const importInputRef = ref(null);
 const isImporting = ref(false);
-// Date filter dialog visibility
-const visibleDateFilter = ref(false);
 // Date range for API fetch
 const filteredData = ref({
     // Local values bound to datetime-local inputs (format: YYYY-MM-DDTHH:mm)
     startedDate: moment().startOf('month').format('YYYY-MM-DDTHH:mm'),
     endedDate: moment().format('YYYY-MM-DDTHH:mm')
 });
-
 // Client-side filters (apply on date-range fetched data)
 const selectedStatus = ref('');
 const selectedPayment = ref('');
 const searchValue = ref('');
+const invoiceSearchValue = ref('');
 const productSearch = ref('');
-// Carousel window for days
-const dayWindowStart = ref(0);
-const windowSize = ref(7); // show 7 days at once
-// Year/month/day selection for DateRangeFilter
-const selectedDay = ref('');
-const selectedYear = ref(String(new Date().getFullYear()));
-const selectedMonth = ref(String(new Date().getMonth() + 1).padStart(2, '0'));
+const supplierSearchValue = ref('');
+const pagination = ref({});
+const selectedPerPage = ref(100);
 // New DatePicker range state
 const dateRange = ref(null); // [startDate, endDate]
 const isDateLoading = ref(false);
+const purchaseFilter = ref(false);
 
 onMounted(async () => {
     // restore saved filters for this page if present
@@ -65,7 +63,10 @@ onMounted(async () => {
         if (saved.endedDate) filteredData.value.endedDate = saved.endedDate;
         if (saved.selectedStatus) selectedStatus.value = saved.selectedStatus;
         if (saved.selectedPayment) selectedPayment.value = saved.selectedPayment;
-        if (saved.searchValue) searchValue.value = saved.searchValue;
+        if (saved.invoiceSearchValue) invoiceSearchValue.value = saved.invoiceSearchValue;
+        if (saved.productSearchValue) productSearch.value = saved.productSearchValue;
+        if (saved.supplierSearchValue) supplierSearchValue.value = saved.supplierSearchValue;
+        if (saved.selectedPerPage) selectedPerPage.value = saved.selectedPerPage;
     }
     if (filteredData.value.startedDate && filteredData.value.endedDate) {
         dateRange.value = [
@@ -77,7 +78,16 @@ onMounted(async () => {
     saveFilters();
 });
 
-async function fetchPurchaseByDate() {
+async function fetchPurchaseByDate(pagePayload = 1) {
+    const payloadIsObject = pagePayload && typeof pagePayload === 'object';
+    const page = payloadIsObject ? Number(pagePayload.page || 1) : Number(pagePayload || 1);
+    const perPage = payloadIsObject
+        ? Number(pagePayload.perPage || selectedPerPage.value || 100)
+        : Number(selectedPerPage.value || 100);
+
+    if (payloadIsObject && pagePayload.perPage) {
+        selectedPerPage.value = perPage;
+    }
     isDateLoading.value = true;
     try {
         // convert local datetime-local strings to backend friendly format (YYYY-MM-DD HH:mm:ss)
@@ -87,13 +97,20 @@ async function fetchPurchaseByDate() {
         const end = filteredData.value.endedDate
             ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss')
             : "";
-
-        // pass plain object to store method (server should accept datetime strings)
-        await usePurchase.fetchAllPurchase({
+        const payload = {
             start_date: start,
-            end_date: end
-        });
+            end_date: end,
+            supplier: supplierSearchValue.value || null,
+            statusId: selectedStatus.value || null,
+            paymentId: selectedPayment.value || null,
+            warehouseId: null,
+            product: productSearch.value || null,
+            invoice: invoiceSearchValue.value || null,
+        };
+        await usePurchase.fetchAllPurchase(payload, page, perPage);
         purchaseList.value = usePurchase.purchaseList || [];
+        pagination.value = usePurchase.pagination || {};
+        await usePurchase.fetchDashboardPurchases(payload);
         // persist current filters after fetch
         saveFilters();
     } finally {
@@ -109,6 +126,7 @@ function saveFilters() {
         selectedStatus: selectedStatus.value,
         selectedPayment: selectedPayment.value,
         searchValue: searchValue.value,
+        selectedPerPage: selectedPerPage.value,
     });
 }
 
@@ -132,11 +150,6 @@ function applyPresetRange(preset) {
 // Sync and auto-fetch when DatePicker range changes
 watch(dateRange, async (val) => {
     setFilteredDatesFromRange(val);
-    const hasFullRange = Array.isArray(val) && val[0] && val[1];
-    const cleared = val === null;
-    if (hasFullRange || cleared) {
-        await fetchPurchaseByDate();
-    }
 });
 
 // watch filter inputs and persist changes
@@ -145,140 +158,18 @@ watch([
     () => filteredData.value.endedDate,
     () => selectedStatus.value,
     () => selectedPayment.value,
-    () => searchValue.value
+    () => invoiceSearchValue.value,
+    () => productSearch.value,
+    () => supplierSearchValue.value,
+    () => selectedPerPage.value
 ], () => {
     saveFilters();
 });
 
-// Helper: list of years for selection (e.g., 2020..current+2)
-const years = computed(() => {
-    const cur = new Date().getFullYear();
-    const start = cur - 3;
-    const end = cur + 2;
-    const arr = ["All"];
-    for (let y = start; y <= end; y++) arr.push(String(y));
-    return arr;
-});
-
-const months = [
-    { v: "All", name: "All" },
-    { v: '01', name: 'January' },
-    { v: '02', name: 'February' },
-    { v: '03', name: 'March' },
-    { v: '04', name: 'April' },
-    { v: '05', name: 'May' },
-    { v: '06', name: 'June' },
-    { v: '07', name: 'July' },
-    { v: '08', name: 'August' },
-    { v: '09', name: 'September' },
-    { v: '10', name: 'October' },
-    { v: '11', name: 'November' },
-    { v: '12', name: 'December' },
-];
-
-// Compute all days for selected month-year with weekday labels
-const monthDays = computed(() => {
-    const y = Number(selectedYear.value);
-    const m = Number(selectedMonth.value) - 1; // JS month index
-    const first = new Date(y, m, 1);
-    const daysInMonth = new Date(y, m + 1, 0).getDate();
-    const arr = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-        const dt = new Date(y, m, d);
-        const dayName = moment(dt).format('ddd').toUpperCase(); // MON, TUE, ...
-        arr.push({
-            day: dayName,
-            date: String(d).padStart(2, '0'),
-            iso: moment(dt).format('YYYY-MM-DD')
-        });
-    }
-    return arr;
-});
-
-const maxWindowStart = computed(() => Math.max(0, monthDays.value.length - windowSize.value));
-
-const monthDaysSlice = computed(() => {
-    return monthDays.value.slice(dayWindowStart.value, dayWindowStart.value + windowSize.value);
-});
-
-function prevDays() {
-    dayWindowStart.value = Math.max(0, dayWindowStart.value - windowSize.value);
-}
-
-function nextDays() {
-    dayWindowStart.value = Math.min(maxWindowStart.value, dayWindowStart.value + windowSize.value);
-}
-
-// reset window when month or year changes
-watch([selectedYear, selectedMonth], () => {
-    dayWindowStart.value = 0;
-    selectedDay.value = '';
-});
-
-// When year changes, fetch that whole year
-watch(selectedYear, async (newYear) => {
-    if (!newYear) return;
-    if (newYear === 'All') {
-        filteredData.value.startedDate = '';
-        filteredData.value.endedDate = '';
-        selectedMonth.value = 'All';
-        await fetchPurchaseByDate();
-        return;
-    }
-
-    if (selectedMonth.value === 'All') {
-        filteredData.value.startedDate = `${newYear}-01-01T00:00`;
-        filteredData.value.endedDate = `${newYear}-12-31T23:59`;
-        await fetchPurchaseByDate();
-        return;
-    }
-
-    const m = selectedMonth.value;
-    const daysInMonth = new Date(Number(newYear), Number(m), 0).getDate();
-    filteredData.value.startedDate = `${newYear}-${m}-01T00:00`;
-    filteredData.value.endedDate = `${newYear}-${m}-${String(daysInMonth).padStart(2, '0')}T23:59`;
-    await fetchPurchaseByDate();
-});
-
-// When month changes, fetch that month within selectedYear
-watch(selectedMonth, async (newMonth) => {
-    if (!newMonth || !selectedYear.value) return;
-    const y = selectedYear.value;
-    if (newMonth === 'All' && y === 'All') {
-        filteredData.value.startedDate = '';
-        filteredData.value.endedDate = '';
-        await fetchPurchaseByDate();
-        return;
-    }
-    if (newMonth === 'All') {
-        filteredData.value.startedDate = `${y}-01-01T00:00`;
-        filteredData.value.endedDate = `${y}-12-31T23:59`;
-        await fetchPurchaseByDate();
-        return;
-    }
-    const daysInMonth = new Date(Number(y), Number(newMonth), 0).getDate();
-    filteredData.value.startedDate = `${y}-${newMonth}-01T00:00`;
-    filteredData.value.endedDate = `${y}-${newMonth}-${String(daysInMonth).padStart(2, '0')}T23:59`;
-    await fetchPurchaseByDate();
-});
-
-function openDateFilterDialog() {
-    visibleDateFilter.value = true;
-}
-
 function applyRangeAndClose() {
     // use existing filteredData values and fetch
     fetchPurchaseByDate();
-    visibleDateFilter.value = false;
-}
-
-function selectMonthDay(dayObj) {
-    selectedDay.value = dayObj.iso;
-    // set datetime-local values for full day
-    filteredData.value.startedDate = `${dayObj.iso}T00:00`;
-    filteredData.value.endedDate = `${dayObj.iso}T23:59`;
-    // trigger fetch for the selected day
-    fetchPurchaseByDate();
+    purchaseFilter.value = false;
 }
 
 const columns = [
@@ -300,90 +191,6 @@ const columns = [
     // { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
 ];
 
-// Derived options from fetched data for client-side filters
-const statusOptions = computed(() => {
-    const map = new Map();
-    (purchaseList.value || []).forEach(s => {
-        if (s.status && s.status.id) map.set(s.status.id, s.status.name);
-    });
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-});
-
-const paymentOptions = computed(() => {
-    const map = new Map();
-    (purchaseList.value || []).forEach(s => {
-        if (s.payment && s.payment.id) map.set(s.payment.id, s.payment.name);
-    });
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
-});
-
-// Final list shown in table after client-side filtering
-const displayedPurchase = computed(() => {
-    let list = (purchaseList.value || []).slice();
-
-    // filter by status
-    if (selectedStatus.value) {
-        list = list.filter(p => String(p.status?.id) === String(selectedStatus.value));
-    }
-
-    // filter by payment method
-    if (selectedPayment.value) {
-        list = list.filter(p => String(p.payment?.id) === String(selectedPayment.value));
-    }
-
-    // search across invoice id, supplier name
-    if (searchValue.value && searchValue.value.trim() !== '') {
-        const q = searchValue.value.toLowerCase().trim();
-        list = list.filter(s => {
-            const supplier = s.supplier?.name || '';
-            const id = s.id ? String(s.id) : '';
-            return supplier.toLowerCase().includes(q) || id.toLowerCase().includes(q);
-        });
-    }
-
-    // search across invoice id, supplier name
-    if (productSearch.value && productSearch.value.trim() !== '') {
-        const q = productSearch.value.toLowerCase().trim();
-        list = list.filter(s => {
-            const prodNames = (s.details || []).map(d => d.product?.name || '').join(' ').toLowerCase();
-            return prodNames.includes(q);
-        });
-    }
-
-    return list;
-});
-
-const totalPurchaseAmount = computed(() => {
-    return displayedPurchase.value.reduce((sum, purchase) => sum + (Number(purchase.total_amount) || 0), 0);
-});
-
-const totalCashAmount = computed(() => {
-    return displayedPurchase.value.reduce((sum, purchase) => {
-        if (purchase.payment && purchase.payment.name === 'Cash') {
-            return sum + (Number(purchase.total_amount) || 0);
-        }
-        return sum;
-    }, 0);
-});
-
-const totalKpayAmount = computed(() => {
-    return displayedPurchase.value.reduce((sum, purchase) => {
-        if (purchase.payment && purchase.payment.name === 'Kpay') {
-            return sum + (Number(purchase.total_amount) || 0);
-        }
-        return sum;
-    }, 0);
-});
-
-const totalWalletAmount = computed(() => {
-    return displayedPurchase.value.reduce((sum, purchase) => {
-        if (purchase.payment && purchase.payment.name === 'Wallet') {
-            return sum + (Number(purchase.total_amount) || 0);
-        }
-        return sum;
-    }, 0);
-});
-
 function changeRoute(pathname) {
     router.push(pathname);
 }
@@ -401,6 +208,8 @@ async function deleteHandle(id) {
         await fetchPurchaseByDate();
     }
 }
+
+// Excel import helpers
 
 function normalizeCell(value) {
     if (value === null || value === undefined) return '';
@@ -659,6 +468,33 @@ async function onImportExcel(event) {
     }
 }
 
+// End of Excel import helpers
+
+async function exportToExcel() {
+    await usePurchase.exportPurchases({
+        start_date: filteredData.value.startDateTimeLocal
+            ? moment(filteredData.value.startDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
+            : '',
+        end_date: filteredData.value.endDateTimeLocal
+            ? moment(filteredData.value.endDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
+            : '',
+        supplier: supplierSearchValue.value || null,
+        statusId: selectedStatus.value || null,
+        paymentId: selectedPayment.value || null,
+        warehouseId: null, // currently not used in UI but can be added as a filter later
+        product: productSearch.value || null,
+        invoice: invoiceSearchValue.value || null,
+    });
+    exportToXlsx({
+        columns: columns,
+        rows: usePurchase.exportData,
+        filename: 'Purchase',
+        detailHeaders: ['Product ID', 'Product Name', 'Price', 'Discount Amount', 'Discount Price', 'Qty', 'Total'],
+        detailField: 'details',
+        detailKeys: ['product.id', 'product.name', 'price', 'discount_amount', 'discount_price', 'quantity', 'total'],
+    });
+}
+
 </script>
 
 
@@ -696,23 +532,25 @@ async function onImportExcel(event) {
             </template>
         </PageTitle>
         <div class="grid grid-cols-5 my-3 gap-x-4">
-            <DashboardCard title="Total Purchase" :value="displayedPurchase.length" icon="fa fa-receipt" color="green" />
-            <DashboardCard title="Total Purchase Amount" :value="totalPurchaseAmount.toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
-            <DashboardCard title="Total Cash" :value="totalCashAmount.toLocaleString('en-us')" icon="fa fa-hand-holding-dollar" color="gray" />
-            <DashboardCard title="Total Kpay" :value="totalKpayAmount.toLocaleString('en-us')" icon="fa fa-credit-card" color="blue" />
-            <DashboardCard title="Total Wallet" :value="totalWalletAmount.toLocaleString('en-us')" icon="fa fa-wallet" color="purple" />
+            <DashboardCard title="Total Purchase" :value="Number(usePurchase.dashboardData.total_invoice).toLocaleString('en-us')" icon="fa fa-receipt" color="green" />
+            <DashboardCard title="Total Purchase Amount" :value="Number(usePurchase.dashboardData.total_purchases).toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
+            <DashboardCard title="Total Cash" :value="Number(usePurchase.dashboardData.total_cash).toLocaleString('en-us')" icon="fa fa-hand-holding-dollar" color="gray" />
+            <DashboardCard title="Total Kpay" :value="Number(usePurchase.dashboardData.total_kpay).toLocaleString('en-us')" icon="fa fa-credit-card" color="blue" />
+            <DashboardCard title="Total Credit" :value="Number(usePurchase.dashboardData.total_credit).toLocaleString('en-us')" icon="fa fa-wallet" color="purple" />
         </div>
         <DataTable 
             :columns="columns" 
-            :rows="displayedPurchase" :editPath="'Update Purchase'"
+            :rows="purchaseList" 
+            :editPath="'Update Purchase'"
             :isLoading="usePurchase.loading" @delete="deleteHandle" 
             :defaultSort="{ key: 'created_at', order: 'desc' }"
             :isEdit="!usePermission.can('Purchase', 'Update')" 
-            :isDelete="!usePermission.can('Purchase', 'Delete')" 
-            filename="Purchase"
-            :detailHeaders="['Product ID', 'Product Name', 'Price', 'Qty', 'Total']"
-            detailField="details"
-            :detailKeys="['product.id', 'product.name', 'price', 'quantity', 'total']"
+            :isDelete="!usePermission.can('Purchase', 'Delete')"
+            :isExcelExport="false"
+            :paginationMeta="pagination"
+            :isPaginate="true"
+            :serverPagination="true"
+            @pageChange="fetchPurchaseByDate"
         >
             <template #filters>
                 <div class="flex gap-2 items-center">
@@ -723,7 +561,7 @@ async function onImportExcel(event) {
                         showButtonBar
                         placeholder="Date range"
                         inputClass="h-[35px]"
-                        :disabled="isDateLoading"
+                        :disabled="true"
                     >
                         <template #buttonbar="{ clearCallback }">
                             <div class="flex justify-between w-full px-2 pb-2 gap-2 flex-wrap items-center">
@@ -745,23 +583,116 @@ async function onImportExcel(event) {
                             </div>
                         </template>
                     </DatePicker>
-                    <select v-model="selectedStatus" class="border p-2 rounded text-sm">
-                        <option value="">All Status</option>
-                        <option v-for="opt in statusOptions" :key="opt.id" :value="opt.id">{{ opt.name }}</option>
-                    </select>
-
-                    <select v-model="selectedPayment" class="border p-2 rounded text-sm">
-                        <option value="">All Payment</option>
-                        <option v-for="opt in paymentOptions" :key="opt.id" :value="opt.id">{{ opt.name }}</option>
-                    </select>
-
-                    <BaseInput size="sm" v-model="searchValue" placeholder="Search..." icon="pi pi-search" width="200px"
-                        height="h-[35px]" />
-
-                    <BaseInput size="sm" v-model="productSearch" placeholder="Product search..." icon="pi pi-search" width="200px"
-                        height="h-[35px]" />
+                    <!-- Filter Button -->
+                    <BaseButton label="Filter" icon="pi pi-filter" severity="primary" @click="purchaseFilter = true" />
+                    <!-- Export Button -->
+                    <BaseButton label="Export" icon="pi pi-file-excel" severity="primary" variant="outlined" @click="exportToExcel" />
                 </div>
             </template>
         </DataTable>
     </div>
+
+    <!-- Filter Modal Dialog -->
+    <Dialog v-model:visible="purchaseFilter" :style="{ width: '700px' }" :modal="true" :draggable="false">
+        <template #container="{ closeCallback }">
+            <div class="p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-black">Purchase Filter</h3>
+                    <BaseButton size="sm" icon="pi pi-times" severity="danger" variant="text" @click="closeCallback" />
+                </div>
+                <div class="grid grid-cols-2 gap-2 items-center">
+                    <div class="flex flex-col gap-1">
+                        <BaseLabel label="Date Range" />
+                        <DatePicker
+                            v-model="dateRange"
+                            selectionMode="range"
+                            :manualInput="false"
+                            showButtonBar
+                            placeholder="Date range"
+                            inputClass="h-[35px] w-full"
+                            :disabled="isDateLoading"
+                        >
+                            <template #buttonbar="{ clearCallback }">
+                                <div class="flex justify-between w-full p-2 gap-2 flex-wrap items-center">
+                                    <div class="flex gap-2 flex-wrap">
+                                        <BaseButton size="sm" label="Today" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('today')" />
+                                        <BaseButton size="sm" label="Yesterday" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('yesterday')" />
+                                        <BaseButton size="sm" label="This Week" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisWeek')" />
+                                        <BaseButton size="sm" label="This Month" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisMonth')" />
+                                        <BaseButton size="sm" label="This Year" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisYear')" />
+                                        <BaseButton size="sm" label="All" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('all')" />
+                                    </div>
+                                    <div class="flex gap-2 items-center">
+                                        <div v-if="isDateLoading" class="flex items-center text-xs text-gray-600 gap-2">
+                                            <i class="pi pi-spin pi-spinner"></i>
+                                            <span>Loading...</span>
+                                        </div>
+                                        <BaseButton size="sm" label="Clear" icon="pi pi-times" severity="danger" variant="outlined" :disabled="isDateLoading" @click="clearCallback" />
+                                    </div>
+                                </div>
+                            </template>
+                        </DatePicker>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <BaseLabel label="Invoice" />
+                        <BaseInput 
+                            size="sm"
+                            v-model="invoiceSearchValue"
+                            placeholder="Search by invoice"
+                            icon="pi pi-search"
+                            height="h-[35px]"
+                        />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <BaseLabel label="Supplier" />
+                        <BaseInput 
+                            size="sm"
+                            v-model="supplierSearchValue"
+                            placeholder="Search by supplier name, ID"
+                            icon="pi pi-search"
+                            height="h-[35px]"
+                        />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <BaseLabel label="Product" />
+                        <BaseInput 
+                            size="sm"
+                            v-model="productSearch"
+                            placeholder="Search by product name, barcode"
+                            icon="pi pi-search"
+                            height="h-[35px]"
+                        />
+                    </div>
+                    <div class="flex flex-col gap-1">
+						<BaseLabel label="Payment Method" />
+						<select
+							v-model="selectedPayment"
+							class="w-full border border-gray-300 rounded-md px-2 py-2 text-sm"
+						>
+							<option value="">All</option>
+                            <option value="1">Cash</option>
+                            <option value="2">Credit</option>
+                            <option value="3">Wallet</option>
+                            <option value="4">Kpay</option>
+						</select>
+					</div>
+                    <div class="flex flex-col gap-1">
+						<BaseLabel label="Status" />
+						<select
+							v-model="selectedStatus"
+							class="w-full border border-gray-300 rounded-md px-2 py-2 text-sm"
+						>
+							<option value="">All</option>
+                            <option value="5">Hold</option>
+                            <option value="7">Complete</option>
+                            <option value="8">Void</option>
+						</select>
+					</div>
+                    <div class="col-span-2 flex items-center justify-end">
+                        <BaseButton label="Apply Filter" icon="pi pi-filter" severity="primary" @click="applyRangeAndClose" />
+                    </div>
+                </div>
+            </div>
+        </template>
+    </Dialog>
 </template>

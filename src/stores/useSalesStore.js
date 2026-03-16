@@ -48,47 +48,11 @@ export const useSaleStore = defineStore('sales', {
                 };
 
             } catch (err) {
-
                 this.error = normalizeApiError(err);
-
             } finally {
-
                 this.loading = false;
-
             }
         },
-        // async fetchAllSales(filteredData) {
-        //     this.salesList = [];
-        //     this.loading = true;
-        //     this.error = [];
-        //     try {
-        //         const params = new URLSearchParams({
-        //             start_date: filteredData.start_date || "",
-        //             end_date: filteredData.end_date || "",
-        //         });
-        //         if (filteredData.customer_id) {
-        //             params.set("customer_id", filteredData.customer_id);
-        //         }
-        //         if (filteredData.status_id) {
-        //             params.set("status_id", filteredData.status_id);
-        //         }
-        //         const response = await axios.get(`/sales?${params.toString()}`);
-        //         this.salesList = response.data.data;
-        //         // let response;
-        //         // if (filteredData) {
-        //         //     response = await axios.get(`/sales?start_date=${filteredData.start_date}&end_date=${filteredData.end_date}&${filteredData.customer_id? customer_id=filteredData.customer_id : ""}&${filteredData.status_id? status_id=filteredData.status_id: ""}`);
-        //         //     this.salesList = response.data.data;
-        //         // } else {
-        //         //     response = await axios.get(`/sales`);
-        //         //     this.salesList = response.data.data;
-        //         // }
-                
-        //     } catch (err) {
-        //         this.error = normalizeApiError(err);
-        //     } finally {
-        //         this.loading = false;
-        //     }
-        // },
         async fetchSales(id) {
             this.loading = true;
             this.error = [];
@@ -177,8 +141,6 @@ export const useSaleStore = defineStore('sales', {
         },
         async filteredParams(filteredData = {}, page = 1, perPage = 100) {
             const params = new URLSearchParams();
-
-                console.log("Filtered Data in Store:", filteredData);
 
                 /* Date filters */
                 if (filteredData.start_date) {
