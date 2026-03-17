@@ -27,6 +27,7 @@ export const usePurchaseStore = defineStore('purchase', {
     }),
     actions: {
         async fetchAllPurchase(filteredData = {}, page = 1, perPage = 100) {
+            this.purchaseList = [];
             this.loading = true;
             this.error = [];
             try {
@@ -137,8 +138,6 @@ export const usePurchaseStore = defineStore('purchase', {
         },
         async filteredParams(filteredData = {}, page = 1, perPage = 100) {
             const params = new URLSearchParams();
-
-                console.log("Filtered Data in Store:", filteredData);
 
                 /* Date filters */
                 if (filteredData.start_date) {
