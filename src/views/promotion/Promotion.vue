@@ -78,6 +78,24 @@
         }
     }
 
+    async function syncToCloud() {
+        await usePromo.syncToCloud({updated_by: JSON.parse(localStorage.getItem('user')).id});
+        if(usePromo.error.length) {
+            usePromo.error.forEach((msg) => {
+                toast.add({
+                severity: 'error',
+                summary: 'Error Message',
+                detail: msg,
+                life: 3000
+                });
+            });
+        } else {
+            toast.add({ severity: 'success', summary: 'Success Message', detail: 'Promotions synced to cloud successfully.', life: 3000 });
+            await usePromo.fetchAllPromo();
+            promoList.value = usePromo.promoList;
+        }
+    }
+
 </script>
 
 
@@ -85,8 +103,14 @@
 <template>
     <div class="p-4">
         <PageTitle title="Promotion List">
-            <!-- <template #titleButtons>
+            <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
+                    <BaseButton 
+                        icon="fa fa-cloud-arrow-up" 
+                        label="Sync to Cloud" 
+                        severity="info"
+                        @click="syncToCloud"
+                    />
                     <BaseButton 
                         v-if="usePermission.can('Promotion', 'Create')"
                         icon="fa fa-circle-plus" 
@@ -94,7 +118,7 @@
                         severity="primary" 
                         @click="changeRoute('/promotion/create')"  />
                 </div>
-            </template> -->
+            </template>
         </PageTitle>
         <DataTable 
             :columns="columns" 
