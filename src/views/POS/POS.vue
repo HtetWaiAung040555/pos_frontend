@@ -298,7 +298,7 @@ async function holdSale() {
     })),
     payment_id: selectedCustomer.value?.is_default ? 1 : 3,
     sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
-    status_id: useStatus.getStatusId('Hold'),
+    status_id: useStatus.getStatusId('Hold') || 5,
     created_by: userData.value.id,
   };
   await useSales.addSales(payload);
@@ -323,7 +323,7 @@ async function holdSale() {
 
 async function fetchHoldList() {
   loadingHolds.value = true;
-  let status_id = useStatus.getStatusId('Hold');
+  let status_id = useStatus.getStatusId('Hold') || 5;
   try {
     await useSales.fetchSalesByStatus(status_id);
     holdList.value = useSales.salesList;
@@ -450,7 +450,7 @@ async function onPayClick() {
       total_amount: totalAmount.value,
       payment_id: salesData.value.paymentId,
       sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
-      status_id: useStatus.getStatusId('Complete'),
+      status_id: useStatus.getStatusId('Complete') || 7,
       updated_by: userData.value.id,
     }
 
@@ -505,7 +505,7 @@ async function onPayClick() {
       customer_id: selectedCustomer.value?.id ?? null,
       payment_id: salesData.value.paymentId,
       paid_amount: salesData.value.paidAmount,
-      status_id: useStatus.getStatusId('Complete'),
+      status_id: useStatus.getStatusId('Complete') || 7,
       warehouse_id: userData.value.branch.warehouse_id,
       products: selectedProducts.value.map(p => ({
         product_id: p.id,
