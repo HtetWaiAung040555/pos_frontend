@@ -201,6 +201,7 @@ function areSelectedProdsChange() {
     if (!id) return;
         prodMap.set(id, {
             quantity: Number(d.quantity),
+            purchasePrice: Number(d.purchasePrice),
             expiredDate: (d.expiredDate || '').toString(),
         });
   });
@@ -214,6 +215,10 @@ function areSelectedProdsChange() {
         const oldQty = Number(oldProd.quantity);
         const newQty = Number(p.quantity);
         if (oldQty !== newQty) return false;
+
+        const oldPrice = Number(oldProd.purchasePrice);
+        const newPrice = Number(p.purchasePrice);
+        if (oldPrice !== newPrice) return false;
 
         const oldExpiredDate = (oldProd.expiredDate || '').toString();
         const newExpiredDate = (p.expiredDate || '').toString();
@@ -243,6 +248,7 @@ async function formSubmit() {
             inventory_id: p.inventoryId || null,
         }));
     }
+    console.log(payload);
     await usePurchase.editPurchase(payload, route.query.id);
     if (usePurchase.error.length) {
         usePurchase.error.forEach((msg) => {
