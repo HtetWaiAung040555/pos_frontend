@@ -28,7 +28,7 @@ const props = defineProps({
   adjustPath: {type: String, default: ""},
   isLoading: {type: Boolean, default: false},
   defaultSort: {type: Object, default: () => ({key: null, order: 'desc'})},
-  isEdit: {type: Boolean, default: true},
+  isEdit: {type: [Boolean, Function], default: true},
   isDelete: {type: Boolean, default: true},
   isAdjust: {type: Boolean, default: false},
   filename: {type: String, default: 'export'},
@@ -117,6 +117,13 @@ const sortedRows = computed(() => {
 function getValueByPath(obj, path) {
   if (!path) return undefined;
   return path.split('.').reduce((acc, key) => (acc && acc[key] !== undefined ? acc[key] : undefined), obj);
+}
+
+function isEditDisabled(row) {
+  if (typeof props.isEdit === 'function') {
+    return props.isEdit(row);
+  }
+  return props.isEdit;
 }
 
 function isEmptyGroupValue(val) {
@@ -509,7 +516,7 @@ watch(
                       variant="text" 
                       severity="info" 
                       size="sm" 
-                      :disabled="isEdit"
+                      :disabled="isEditDisabled(row)"
                     />
                   </router-link>
                   <BaseButton 

@@ -47,6 +47,38 @@ function changeRoute(pathname) {
     router.push(pathname);
 }
 
+function mergeSelectedProducts(details = []) {
+    const mergedProducts = new Map();
+
+    details.forEach((p) => {
+        const productId = p.product.id;
+        const expiredDate = p.inventory.expired_date === null ? '' : moment(p.inventory.expired_date).format('YYYY-MM-DD');
+        const existing = mergedProducts.get(productId);
+
+        if (existing) {
+            existing.quantity += Number(p.quantity) || 0;
+            if (!existing.expiredDate && expiredDate) {
+                existing.expiredDate = expiredDate;
+            }
+            return;
+        }
+
+        mergedProducts.set(productId, {
+            productId,
+            productName: p.product.name,
+            quantity: Number(p.quantity) || 0,
+            expiredDate,
+            purchasePrice: p.price,
+            total: p.total,
+        });
+    });
+
+    return Array.from(mergedProducts.values()).map((product) => ({
+        ...product,
+        total: Number(product.quantity) * Number(product.purchasePrice),
+    }));
+}
+
 onMounted(async () => {
     userData.value = JSON.parse(localStorage.getItem('user'));
     await usePurchase.fetchPurchase(route.query.id);
@@ -63,15 +95,7 @@ onMounted(async () => {
         remark: usePurchase.purchaseList.remark,
         purchaseDate: moment(usePurchase.purchaseList.purchase_date).format('YYYY-MM-DDTHH:mm')
     };
-    selectedProducts.value = usePurchase.purchaseList.details.map(p => ({
-        productId: p.product.id,
-        productName: p.product.name,
-        quantity: p.quantity,
-        expiredDate: p.inventory.expired_date === null? "" : moment(p.inventory.expired_date).format('YYYY-MM-DD'),
-        purchasePrice: p.price,
-        total: p.total,
-        inventoryId: p.inventory.id,
-    }));
+    selectedProducts.value = mergeSelectedProducts(usePurchase.purchaseList.details);
     oldSelectedProducts.value = JSON.parse(JSON.stringify(selectedProducts.value));
     await usePaymentMethod.fetchAllPaymentMethod();
     await useProduct.fetchAllProduct();
@@ -164,7 +188,6 @@ function confirmProductSelection() {
             expiredDate: existing ? existing.expiredDate : '',
             purchasePrice: existing ? existing.purchasePrice : (Number(p.purchase_price) || 0),
             total: existing ? existing.total : 0,
-            inventoryId: existing ? existing.inventoryId : null,
         };
     });
     isProductDialogVisible.value = false;
@@ -245,7 +268,6 @@ async function formSubmit() {
             quantity: p.quantity,
             purchase_price: p.purchasePrice,
             expired_date: p.expiredDate || null,
-            inventory_id: p.inventoryId || null,
         }));
     }
     console.log(payload);
