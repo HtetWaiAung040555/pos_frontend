@@ -32,10 +32,10 @@
         { key: 'description', label: 'Description' },
         { key: 'type', label: 'Type'},
         { key: 'start_at', label: 'Start', formatter: (row) => moment(row.start_at).format('DD-MM-YY hh:mm') },
-        { key: 'end_at', label: 'End', formatter: (row) => moment(row.end_at).format('DD-MM-YY hh:mm') },
+        // { key: 'end_at', label: 'End', formatter: (row) => moment(row.end_at).format('DD-MM-YY hh:mm') },
         { key: 'status.name', label: 'Status', formatter: (row) => {
-            const color = row.status.name === 'Active' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';
-            return `<span class="text-white px-2 py-1 rounded ${color}">${row.status.name}</span>`;
+            const color = row.status.name === 'Active' ? 'bg-green-500' : row.status.name === 'Applied' ? 'bg-blue-500' : 'bg-red-500';
+            return `<span class="text-white px-2 py-1 rounded-md ${color}">${row.status.name}</span>`;
         } },
         { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by?.name },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
@@ -104,7 +104,7 @@
             :isLoading="usePriceChange.loading"
             @delete="deleteHandle"
             :defaultSort="{key: 'id', order: 'desc'}"
-            :isEdit="!usePermission.can('Sales price change', 'Update')"
+            :isEdit="(row) => !usePermission.can('Sales price change', 'Update') || row.status?.name === 'Applied'"
             :isDelete="!usePermission.can('Sales price change', 'Delete')"
             filename="Sales_Price_Change"
         >

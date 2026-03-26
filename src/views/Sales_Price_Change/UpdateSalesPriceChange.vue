@@ -248,7 +248,7 @@ async function formSubmit() {
     description: formData.value.description,
     type: formData.value.type,
     start_at: formData.value.startDate,
-    end_at: formData.value.endDate,
+    //end_at: formData.value.endDate,
     status_id: priceChangeStatus.value ? 1 : 2,
     updated_by: userData.value.id,
     products: selectedProducts.value.map(p => ({
@@ -290,23 +290,11 @@ async function formSubmit() {
       <!-- Basic Info -->
       <SubTitle label="Basic Info" />
       <div class="flex gap-x-4 mt-6">
-        <div class="flex flex-col gap-1 w-[300px]">
-          <BaseLabel label="Price Change Type" />
-          <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]" v-model="formData.type">
-            <option value="sale">Sale</option>
-            <!-- <option value="purchase">Purchase</option> -->
-          </select>
-        </div>
+        <BaseInput size="sm" v-model="formData.startDate" label="Started Datetime" width="300px" height="h-[35px]" type="datetime-local" />
         <div class="flex flex-col gap-y-1 w-[200px]">
           <BaseLabel label="Status" />
           <BaseSwitch v-model="priceChangeStatus" />
         </div>
-      </div>
-
-      <!-- Dates -->
-      <div class="flex gap-x-4 mt-6">
-        <BaseInput size="sm" v-model="formData.startDate" label="Started Datetime" width="300px" height="h-[35px]" type="datetime-local" />
-        <BaseInput size="sm" v-model="formData.endDate" label="Ended Datetime" width="300px" height="h-[35px]" type="datetime-local" />
       </div>
 
       <!-- Price Value -->

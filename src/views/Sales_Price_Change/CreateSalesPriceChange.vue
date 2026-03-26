@@ -16,15 +16,14 @@ import SubTitle from '@/components/SubTitle.vue';
 import { useProductStore } from '@/stores/useProductStore';
 import { usePriceChangeStore } from '@/stores/usePriceChangeStore';
 import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
+import { normalizeCell, readWorkbookFromFile, readNormalizedSheetRows } from '@/utils/excelImport';
 
 const router = useRouter();
 const toast = useToast();
-
 const usePriceChange = usePriceChangeStore();
 const useProduct = useProductStore();
 
 const userData = ref({});
-
 const formData = ref({
     description: '',
     type: 'sale',
@@ -33,7 +32,6 @@ const formData = ref({
     priceValueType: 'INCREASE',
     priceChangeValue: 0,
 });
-
 const selectedProducts = ref([]);
 const priceChangeStatus = ref(true);
 const isProductDialogVisible = ref(false);
@@ -43,12 +41,31 @@ const selectionBuffer = ref([]);
 const headerCheckboxRef = ref(null);
 const isCheckingAll = ref(false);
 const isSelectAllLoading = ref(false);
-
+const importInputRef = ref(null);
+const isImporting = ref(false);
+const importFailList = ref([]);
 const errorMsg = ref({
     type: "",
     priceChangeValue: "",
     products: "",
 });
+
+// function syncPriceChangeStatusByStartDate() {
+//     const start = (formData.value.startDate || '').toString().trim();
+//     if (!start) {
+//         priceChangeStatus.value = false;
+//         return;
+//     }
+
+//     const parsedStart = moment(start, [
+//         'YYYY-MM-DD HH:mm:ss',
+//         'YYYY-MM-DDTHH:mm:ss',
+//         'YYYY-MM-DDTHH:mm',
+//         'YYYY-MM-DD HH:mm'
+//     ], true);
+
+//     priceChangeStatus.value = parsedStart.isValid() ? parsedStart.isBefore(moment()) : false;
+// }
 
 // Change route function
 function changeRoute(pathname) {
@@ -154,6 +171,150 @@ async function selectAllInBuffer() {
     }
 }
 
+function openImportPicker() {
+    importInputRef.value?.click();
+}
+
+async function onImportExcel(event) {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+
+    isImporting.value = true;
+    importFailList.value = [];
+
+    try {
+        const workbook = await readWorkbookFromFile(file);
+        const rows = readNormalizedSheetRows(workbook, ['sales_price_change', 'price_change', 'products']);
+
+        if (rows.length === 0) {
+            toast.add({ severity: 'error', summary: 'Import Failed', detail: 'No rows found in Excel sheet.', life: 3500 });
+            return;
+        }
+
+        const selectedIds = new Set((selectedProducts.value || []).map((item) => item.id));
+        let successCount = 0;
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const excelRow = i + 2;
+
+            const productId = normalizeCell(row.product_id || row.id || row.product);
+            const newPriceRaw = normalizeCell(row.new_price || row.sale_new_price || row.price);
+            const newPrice = Number(newPriceRaw);
+
+            if (!productId) {
+                importFailList.value.push({
+                    row: excelRow,
+                    product_id: '',
+                    barcode: normalizeCell(row.barcode || row.product_barcode),
+                    name: normalizeCell(row.product_name || row.name),
+                    new_price: newPriceRaw,
+                    reason: 'Missing product_id'
+                });
+                continue;
+            }
+
+            if (!Number.isFinite(newPrice) || newPrice < 0) {
+                importFailList.value.push({
+                    row: excelRow,
+                    product_id: productId,
+                    barcode: normalizeCell(row.barcode || row.product_barcode),
+                    name: normalizeCell(row.product_name || row.name),
+                    new_price: newPriceRaw,
+                    reason: 'Invalid new_price'
+                });
+                continue;
+            }
+
+            const product = (productList.value || []).find((item) => String(item.id) === productId);
+            if (!product) {
+                importFailList.value.push({
+                    row: excelRow,
+                    product_id: productId,
+                    barcode: normalizeCell(row.barcode || row.product_barcode),
+                    name: normalizeCell(row.product_name || row.name),
+                    new_price: newPrice,
+                    reason: 'Product not found'
+                });
+                continue;
+            }
+
+            if (selectedIds.has(product.id)) {
+                importFailList.value.push({
+                    row: excelRow,
+                    product_id: productId,
+                    barcode: product.barcode || '',
+                    name: product.name || '',
+                    new_price: newPrice,
+                    reason: 'Product already selected'
+                });
+                continue;
+            }
+
+            try {
+                const response = await axios.post('/promotions/checkprice', { product_id: product.id });
+                const data = response.data;
+                if (data && data.promotion_id) {
+                    importFailList.value.push({
+                        row: excelRow,
+                        product_id: productId,
+                        barcode: product.barcode || '',
+                        name: product.name || '',
+                        new_price: newPrice,
+                        reason: 'Already in promotion'
+                    });
+                    continue;
+                }
+            } catch (e) {
+                importFailList.value.push({
+                    row: excelRow,
+                    product_id: productId,
+                    barcode: product.barcode || '',
+                    name: product.name || '',
+                    new_price: newPrice,
+                    reason: 'Promotion check failed'
+                });
+                continue;
+            }
+
+            selectedProducts.value.push({
+                ...product,
+                old_price: Number(product.price) || 0,
+                new_price: newPrice,
+            });
+            selectedIds.add(product.id);
+            successCount += 1;
+        }
+
+        if (isProductDialogVisible.value) {
+            selectionBuffer.value = selectedProducts.value.slice();
+        }
+
+        if (successCount > 0) {
+            toast.add({
+                severity: 'success',
+                summary: 'Import Completed',
+                detail: `${successCount} product(s) imported successfully.`,
+                life: 3500
+            });
+        }
+
+        if (importFailList.value.length > 0) {
+            toast.add({
+                severity: 'warn',
+                summary: 'Some Rows Failed',
+                detail: `Failed rows: ${importFailList.value.slice(0, 8).map((item) => item.row).join(', ')}${importFailList.value.length > 8 ? ' ...' : ''}`,
+                life: 5000
+            });
+        }
+    } catch (err) {
+        toast.add({ severity: 'error', summary: 'Import Failed', detail: 'Unable to read or import this file.', life: 3500 });
+    } finally {
+        isImporting.value = false;
+        if (event?.target) event.target.value = '';
+    }
+}
+
 function removeFilteredFromBuffer() {
     const filteredIds = new Set((filteredProducts.value || []).map(p => p.id));
     selectionBuffer.value = selectionBuffer.value.filter(p => !filteredIds.has(p.id));
@@ -184,6 +345,10 @@ watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.va
         headerCheckboxRef.value.indeterminate = someFilteredSelected.value;
     }
 });
+
+// watch(() => formData.value.startDate, () => {
+//     syncPriceChangeStatusByStartDate();
+// }, { immediate: true });
 
 //check for inputted price value & selected price value type 
 watch([() => formData.value.priceChangeValue, () => formData.value.priceValueType],() => {
@@ -264,7 +429,7 @@ async function formSubmit() {
     const payload = {
         description: formData.value.description,
         type: formData.value.type,
-        // start_at: formData.value.startDate,
+        start_at: formData.value.startDate,
         // end_at: formData.value.endDate, 
         status_id: priceChangeStatus.value ? 1 : 2,
         created_by: userData.value.id,
@@ -294,6 +459,7 @@ async function formSubmit() {
         router.push('/sales_price_change');
     }
 }
+
 </script>
 
 <template>
@@ -308,29 +474,11 @@ async function formSubmit() {
             </template>
         </PageTitle>
         <!-- Form Section -->
-        <BaseCard class="mt-3">
+        <BaseCard class="mt-3 w-fit">
             <template #cardElements>
                 <!-- Form section subtitle -->
                 <SubTitle label="Basic Info" />
                 <div class="flex gap-x-4 mt-6">
-                    <!--  Type select -->
-                    <div class="flex flex-col gap-1 w-[300px]">
-                        <BaseLabel label="Price Change Type" />
-                        <select
-                            class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
-                            v-model="formData.type">
-                            <option value="sale">Sale</option>
-                            <!-- <option value="purchase">Purchase</option> -->
-                        </select>
-                        <BaseErrorLabel v-if="errorMsg.type" :label="errorMsg.type" />
-                    </div>
-                    <!-- Status -->
-                    <div class="flex flex-col gap-y-1 w-[200px]">
-                        <BaseLabel label="Status" />
-                        <BaseSwitch v-model="priceChangeStatus" />
-                    </div>
-                </div>
-                <!-- <div class="flex gap-x-4 mt-6">
                     <BaseInput 
                         size="sm" 
                         v-model="formData.startDate"
@@ -339,6 +487,23 @@ async function formSubmit() {
                         height="h-[35px]" 
                         type="datetime-local"
                     />
+                    <!--  Type select -->
+                    <!-- <div class="flex flex-col gap-1 w-[300px]">
+                        <BaseLabel label="Price Change Type" />
+                        <select
+                            class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
+                            v-model="formData.type">
+                            <option value="sale">Sale</option>
+                        </select>
+                        <BaseErrorLabel v-if="errorMsg.type" :label="errorMsg.type" />
+                    </div> -->
+                    <!-- Status -->
+                    <div class="flex flex-col gap-y-1 w-[200px]">
+                        <BaseLabel label="Status" />
+                        <BaseSwitch v-model="priceChangeStatus" />
+                    </div>
+                </div>
+                <!-- <div class="flex gap-x-4 mt-6">
                     <BaseInput 
                         size="sm" 
                         v-model="formData.endDate"
@@ -378,45 +543,91 @@ async function formSubmit() {
                 </div>
                 <!-- Selected Product Section -->
                 <div class="flex flex-col">
-                    <!-- Select Product Button -->
-                    <BaseButton 
-                        label="Select Products"  
-                        class="w-fit mt-4 mb-4"
-                        @click="openProductDialog()"
+                    <input
+                        ref="importInputRef"
+                        type="file"
+                        accept=".xlsx,.xls"
+                        class="hidden"
+                        @change="onImportExcel"
                     />
+                    <!-- Select Product Button -->
+                    <div class="flex items-center gap-x-2 mt-4 mb-4">
+                        <BaseButton 
+                            label="Select Products"
+                            class="w-fit"
+                            @click="openProductDialog()"
+                        />
+                        <BaseButton
+                            icon="fa fa-file-excel"
+                            :label="isImporting ? 'Importing...' : 'Import Excel'"
+                            severity="info"
+                            :disabled="isImporting"
+                            @click="openImportPicker"
+                        />
+                    </div>
                     <span v-if="errorMsg.products" class="text-red-600 text-sm">{{ errorMsg.products }}</span>
                     <span v-if="errorMsg.priceChangeValue" class="text-red-600 text-sm">{{ errorMsg.priceChangeValue }}</span>
+                    <div v-if="importFailList.length" class="mt-3 rounded border border-red-200 bg-red-50 p-3">
+                        <div class="text-sm font-medium text-red-700">Import Failed List ({{ importFailList.length }})</div>
+                        <div class="mt-2 max-h-[180px] overflow-auto rounded border border-red-100 bg-white">
+                            <table class="w-full text-xs">
+                                <thead>
+                                    <tr class="bg-red-100 text-left text-red-700">
+                                        <th class="p-2">Row</th>
+                                        <th class="p-2">Product ID</th>
+                                        <th class="p-2">Barcode</th>
+                                        <th class="p-2">Name</th>
+                                        <th class="p-2">New Price</th>
+                                        <th class="p-2">Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(item, idx) in importFailList" :key="`${item.row}-${idx}`" class="border-b last:border-b-0">
+                                        <td class="p-2">{{ item.row }}</td>
+                                        <td class="p-2">{{ item.product_id || '-' }}</td>
+                                        <td class="p-2">{{ item.barcode || '-' }}</td>
+                                        <td class="p-2">{{ item.name || '-' }}</td>
+                                        <td class="p-2">{{ item.new_price || '-' }}</td>
+                                        <td class="p-2 text-red-700">{{ item.reason }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                     <!-- Selected Products Table (scrollable with fixed header) -->
                     <div class="mt-4">
                         <div class="max-h-[350px] overflow-y-auto rounded">
-                            <table class="w-full text-sm border-collapse">
+                            <table class="w-full text-sm">
                                 <thead>
-                                    <tr class="text-left text-gray-600">
-                                        <th class="py-2 sticky top-0 bg-white z-10 border-b">Image</th>
-                                        <th class="py-2 sticky top-0 bg-white z-10 border-b">Product Name</th>
-                                        <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Sale Old Price</th>
-                                        <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Sale New Price</th>
-                                        <th class="py-2 sticky top-0 bg-white z-10 border-b">&nbsp;</th>
+                                    <tr class="text-left bg-white text-gray-600 sticky top-0 border-b">
+                                        <th class="p-2">Image</th>
+                                        <th class="p-2">Barcode</th>
+                                        <th class="p-2">Product Name</th>
+                                        <th class="p-2 text-right">Sale Old Price</th>
+                                        <th class="p-2 text-right">Sale New Price</th>
+                                        <th class="p-2">&nbsp;</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr v-for="product in selectedProducts" :key="product.id" class="border-b hover:bg-gray-50">
-                                        <td class="py-2">
+                                        <td class="p-2">
                                             <div class="w-12 h-12 overflow-hidden rounded">
                                                 <img :src="product.image_url" alt="product" class="w-full h-full object-cover" />
                                             </div>
                                         </td>
-                                        <td class="py-2">{{ product.name }}</td>
+                                        <td class="p-2">{{ product.barcode }}</td>
+
+                                        <td class="p-2">{{ product.name }}</td>
                                         
-                                        <td class="py-2 text-right">{{ formatPrice(product.old_price || 0) }}</td>
-                                        <td class="border-b px-2 py-2 text-right">
+                                        <td class="p-2 text-right">{{ formatPrice(product.old_price || 0) }}</td>
+                                        <td class="border-b p-2 text-right">
                                             <input
                                                 type="number"
                                                 class="w-24 text-right px-1 py-1 border rounded"
                                                 v-model.number="product.new_price"
                                             />
                                         </td>
-                                        <td class="py-2 text-right">
+                                        <td class="p-2 text-right">
                                             <button class="text-red-600 hover:text-red-800 px-2 py-1" @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)"><i class="pi pi-trash"></i></button>
                                         </td>
                                     </tr>
@@ -425,65 +636,6 @@ async function formSubmit() {
                                     </tr>
                                 </tbody>
                             </table>
-                        </div>
-                    </div>
-                </div>
-                <!-- Product Selection Modal -->
-                <div v-if="isProductDialogVisible" class="fixed inset-0 z-50 flex items-center justify-center">
-                    <div class="absolute inset-0 bg-black opacity-50" @click="cancelProductSelection"></div>
-                    <div class="bg-white rounded shadow-lg w-[90%] max-w-4xl max-h-[80vh] overflow-hidden z-10 p-4">
-                        <div class="flex items-center justify-between py-4 border-b">
-                            <SubTitle label="Select Products" />
-                            <div class="text-sm text-gray-600">{{ selectionBuffer.length }} selected</div>
-                        </div>
-                        <div class="py-4 flex gap-x-2 items-center">
-                            <input v-model="searchTerm" placeholder="Search by name or barcode" class="border p-2 rounded w-full" />
-                        </div>
-                        <div class="py-4 overflow-auto max-h-[50vh]">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="text-left text-gray-600 border-b">
-                                        <th class="py-2">
-                                            <div class="flex items-center gap-x-2">
-                                                <span v-if="isSelectAllLoading" class="text-sm text-gray-600"><i class="fa fa-spinner fa-spin"></i></span>
-                                                <input v-else type="checkbox" :checked="allFilteredSelected" @change="toggleHeaderSelection" ref="headerCheckboxRef" :disabled="isCheckingAll || isSelectAllLoading" />
-                                            </div>
-                                        </th>
-                                        <th>Image</th>
-                                        <th class="py-2">Name</th>
-                                        <th class="py-2">Barcode</th>
-                                        <th class="py-2 text-end">Price</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="product in filteredProducts" :key="product.id" class="hover:bg-gray-50">
-                                        <td class="py-2">
-                                            <input type="checkbox" :checked="isBufferSelected(product)" @change="toggleProductInBuffer($event, product)" />
-                                        </td>
-                                        <td class="py-2">
-                                            <img class="object-cover w-10 h-10 rounded" :src="product.image_url" />
-                                        </td>
-                                        <td class="py-2">{{ product.name }}</td>
-                                        <td class="py-2">{{ product.barcode }}</td>
-                                        <td class="py-2 text-end">{{ Number(product.price).toLocaleString() || 0 }}</td>
-                                    </tr>
-                                    <tr v-if="(filteredProducts || []).length === 0">
-                                        <td colspan="4" class="py-4 text-center text-gray-500">No products found</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="flex justify-end gap-x-2 py-4 border-t">
-                            <BaseButton 
-                                severity="secondary" 
-                                label="Cancel"
-                                @click="cancelProductSelection" 
-                            />
-                            <BaseButton 
-                                label="Add Product"
-                                class="px-4 py-2 bg-blue-600 text-white rounded"
-                                @click="confirmProductSelection" 
-                            />
                         </div>
                     </div>
                 </div>
@@ -499,5 +651,64 @@ async function formSubmit() {
                 </div>
             </template>
         </BaseCard>
+    </div>
+    <!-- Product Selection Modal -->
+    <div v-if="isProductDialogVisible" class="fixed inset-0 z-50 flex items-center justify-center text-black">
+        <div class="absolute inset-0 bg-black opacity-50" @click="cancelProductSelection"></div>
+        <div class="bg-white rounded shadow-lg w-[90%] max-w-4xl max-h-[80vh] overflow-hidden z-10 p-4">
+            <div class="flex items-center justify-between py-4 border-b">
+                <SubTitle label="Select Products" />
+                <div class="text-sm text-gray-600">{{ selectionBuffer.length }} selected</div>
+            </div>
+            <div class="py-4 flex gap-x-2 items-center">
+                <input v-model="searchTerm" placeholder="Search by name or barcode" class="border p-2 rounded w-full" />
+            </div>
+            <div class="py-4 overflow-auto max-h-[50vh]">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-gray-600 border-b">
+                            <th class="py-2">
+                                <div class="flex items-center gap-x-2">
+                                    <span v-if="isSelectAllLoading" class="text-sm text-gray-600"><i class="fa fa-spinner fa-spin"></i></span>
+                                    <input v-else type="checkbox" :checked="allFilteredSelected" @change="toggleHeaderSelection" ref="headerCheckboxRef" :disabled="isCheckingAll || isSelectAllLoading" />
+                                </div>
+                            </th>
+                            <th>Image</th>
+                            <th class="py-2">Name</th>
+                            <th class="py-2">Barcode</th>
+                            <th class="py-2 text-end">Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="product in filteredProducts" :key="product.id" class="hover:bg-gray-50">
+                            <td class="py-2">
+                                <input type="checkbox" :checked="isBufferSelected(product)" @change="toggleProductInBuffer($event, product)" />
+                            </td>
+                            <td class="py-2">
+                                <img class="object-cover w-10 h-10 rounded" :src="product.image_url" />
+                            </td>
+                            <td class="py-2">{{ product.name }}</td>
+                            <td class="py-2">{{ product.barcode }}</td>
+                            <td class="py-2 text-end">{{ Number(product.price).toLocaleString() || 0 }}</td>
+                        </tr>
+                        <tr v-if="(filteredProducts || []).length === 0">
+                            <td colspan="4" class="py-4 text-center text-gray-500">No products found</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="flex justify-end gap-x-2 py-4 border-t">
+                <BaseButton 
+                    severity="secondary" 
+                    label="Cancel"
+                    @click="cancelProductSelection" 
+                />
+                <BaseButton 
+                    label="Add Product"
+                    class="px-4 py-2 bg-blue-600 text-white rounded"
+                    @click="confirmProductSelection" 
+                />
+            </div>
+        </div>
     </div>
 </template>
