@@ -28,7 +28,9 @@
     });
 
     const columns = [
-        { key: 'id', label: 'ID' },
+        { key: 'id', label: 'ID', formatter: (row) => row.id, onClick: (row) => {
+            router.push({name: 'View Sales Price Change', query: { id: row.id }});
+        }},
         { key: 'description', label: 'Description' },
         { key: 'type', label: 'Type'},
         { key: 'start_at', label: 'Start', formatter: (row) => moment(row.start_at).format('DD-MM-YY hh:mm') },

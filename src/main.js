@@ -89,6 +89,7 @@ import ViewSales from './views/Sales/ViewSales.vue';
 import Reports from './views/Report/Reports.vue';
 import SalesReport from './views/Report/SalesReport.vue';
 import CustomerTransaction from './views/Customer_Transaction/CustomerTransaction.vue';
+import ViewSalesPriceChange from './views/Sales_Price_Change/ViewSalesPriceChange.vue';
 
 
 
@@ -162,6 +163,7 @@ const router = createRouter({
         {path: '/purchase_return/create', name: 'Create Purchase Return', component: CreatePurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'Create' } }},
         {path: '/purchase_return/update', name: 'Update Purchase Return', component: UpdatePurchaseReturn, meta: { requiresAuth: true, permission: { resource: 'Purchase return', action: 'Update' } }},
         {path: '/sales_price_change', name: 'Sales Price Change', component: SalesPriceChange, meta: { requiresAuth: true, permission: { resource: 'Sales price change', action: 'View' } }},
+        {path: '/sales_price_change/view', name: 'View Sales Price Change', component: ViewSalesPriceChange, meta: { requiresAuth: true, permission: { resource: 'Sales price change', action: 'View' } }},
         {path: '/sales_price_change/create', name: 'Create Sales Price Change', component: CreateSalesPriceChange, meta: { requiresAuth: true, permission: { resource: 'Sales price change', action: 'Create' } }},
         {path: '/sales_price_change/update', name: 'Update Sales Price Change', component: UpdateSalesPriceChange, meta: { requiresAuth: true, permission: { resource: 'Sales price change', action: 'Update' } }},
         {path: '/purchase_price_change', name: 'Purchase Price Change', component: PurchasePriceChange, meta: { requiresAuth: true, permission: { resource: 'Purchase price change', action: 'View' } }},

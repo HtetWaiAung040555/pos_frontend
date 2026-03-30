@@ -68,11 +68,11 @@ onMounted(async () => {
 
     selectedProducts.value = usePriceChange.priceChangeList.products.map(p => {
         return {
-        id: p.id,
-        name: p.name,
-        image_url: p.image_url,
+        id: p.product.id,
+        name: p.product.name,
+        image_url: p.product.image_url,
         old_price: Number(p.old_price) || 0,
-        new_price: Number(p.price),
+        new_price: Number(p.new_price) || 0,
         individual_new_price: false
         }
     });
@@ -207,9 +207,6 @@ function confirmProductSelection() {
   isProductDialogVisible.value = false;
 }
 
-
-
-
 function cancelProductSelection() { isProductDialogVisible.value = false; }
 
 // Price calculation
@@ -257,6 +254,8 @@ async function formSubmit() {
       new_price: p.new_price    
     }))
   };
+
+  console.log('Submitting payload:', payload);
 
   if (!priceChangeId.value) {
     toast.add({ severity: 'error', summary: 'Missing ID', detail: 'Price change ID is missing.', life: 3000 });
@@ -325,26 +324,26 @@ async function formSubmit() {
             <table class="w-full text-sm border-collapse">
               <thead>
                 <tr class="text-left text-gray-600">
-                  <th class="py-2 sticky top-0 bg-white z-10 border-b">Image</th>
-                  <th class="py-2 sticky top-0 bg-white z-10 border-b">Product Name</th>
-                  <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Sales Old Price</th>
-                  <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Sales New Price</th>
-                  <th class="py-2 sticky top-0 bg-white z-10 border-b">&nbsp;</th>
+                  <th class="p-2 sticky top-0 bg-white z-10 border-b">Image</th>
+                  <th class="p-2 sticky top-0 bg-white z-10 border-b">Product Name</th>
+                  <th class="p-2 text-right sticky top-0 bg-white z-10 border-b">Sales Old Price</th>
+                  <th class="p-2 text-right sticky top-0 bg-white z-10 border-b">Sales New Price</th>
+                  <th class="p-2 sticky top-0 bg-white z-10 border-b">&nbsp;</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="product in selectedProducts" :key="product.id" class="border-b hover:bg-gray-50">
-                    <td class="py-2">
+                    <td class="p-2">
                         <div class="w-12 h-12 overflow-hidden rounded">
                             <img :src="product.image_url" alt="product" class="w-full h-full object-cover" />
                         </div>
                     </td>
-                    <td class="py-2">{{ product.name }}</td>
-                    <td class="py-2 text-right">{{ formatPrice(product.old_price) }}</td>
+                    <td class="p-2">{{ product.name }}</td>
+                    <td class="p-2 text-right">{{ formatPrice(product.old_price) }}</td>
 
                     
              
-                    <td class="py-2 text-right">
+                    <td class="p-2 text-right">
                        <input 
                             type="number"
                             class="w-24 text-right px-1 py-1 border rounded"
@@ -352,7 +351,7 @@ async function formSubmit() {
                         />
                     </td>
 
-                    <td class="py-2 text-right"><button class="text-red-600 hover:text-red-800 px-2 py-1" @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)"><i class="pi pi-trash"></i></button></td>
+                    <td class="p-2 text-right"><button class="text-red-600 hover:text-red-800 px-2 py-1" @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)"><i class="pi pi-trash"></i></button></td>
                 </tr>
                 <tr v-if="selectedProducts.length === 0"><td colspan="5" class="py-4 text-center text-gray-500">No products selected</td></tr>
               </tbody>
