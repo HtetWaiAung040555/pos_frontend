@@ -10,7 +10,6 @@
     import { useFilterStore } from '@/stores/filterStore';
     import { usePermissionStore } from '@/stores/usePermissionStore';
     import BaseInput from '@/components/BaseInput.vue';
-    import BaseCheckbox from '@/components/BaseCheckbox.vue';
     import { useInventoryStore } from '@/stores/useInventoryStore';
     import DashboardCard from '@/components/DashboardCard.vue';
 
@@ -25,7 +24,7 @@
     const endDate = ref('');
     const dataList = ref([]);
     const nearlyExpire = ref(false);
-    const negativeOnly = ref(false);
+    const qtyFilter = ref('');
 
     onMounted(async () => {
         // restore saved filters
@@ -35,7 +34,8 @@
             if (saved.endDate) endDate.value = saved.endDate;
             if (saved.searchValue) searchValue.value = saved.searchValue;
             if (typeof saved.nearlyExpire !== 'undefined') nearlyExpire.value = saved.nearlyExpire;
-            if (typeof saved.negativeOnly !== 'undefined') negativeOnly.value = saved.negativeOnly;
+            if (saved.qtyFilter) qtyFilter.value = saved.qtyFilter;
+            if (!saved.qtyFilter && saved.negativeOnly === true) qtyFilter.value = 'negative';
         }
 
         await useInventory.fetchAllStock();
@@ -51,7 +51,7 @@ function saveFilters() {
         endDate: endDate.value,
         searchValue: searchValue.value,
         nearlyExpire: nearlyExpire.value,
-        negativeOnly: negativeOnly.value,
+        qtyFilter: qtyFilter.value,
     });
 }
 
@@ -60,7 +60,7 @@ watch([
     () => endDate.value,
     () => searchValue.value,
     () => nearlyExpire.value,
-    () => negativeOnly.value
+    () => qtyFilter.value
 ], () => {
     saveFilters();
 });
@@ -102,8 +102,12 @@ watch([
             })
             : filter.dateRangeFilter(searchedData, { dateField: 'created_at', startDate: startDate.value, endDate: endDate.value });
 
-        if (negativeOnly.value) {
+        if (qtyFilter.value === 'negative') {
             result = result.filter((item) => Number(item.qty) < 0);
+        } else if (qtyFilter.value === 'positive') {
+            result = result.filter((item) => Number(item.qty) > 0);
+        } else if (qtyFilter.value === 'zero') {
+            result = result.filter((item) => Number(item.qty) === 0);
         }
 
         return result;
@@ -179,7 +183,7 @@ watch([
             <!-- Filter Section -->
             <template #filters>
                 <div class="flex gap-2 items-center">
-                    <BaseInput
+                    <!-- <BaseInput
                         size="sm"
                         type="date"
                         v-model="startDate"
@@ -192,7 +196,7 @@ watch([
                         v-model="endDate"
                         width="200px"
                         height="h-[35px]"
-                    />
+                    /> -->
                     <BaseInput
                         size="sm"
                         v-model="searchValue"
@@ -201,7 +205,15 @@ watch([
                         height="h-[35px]"
                         icon="pi pi-search"
                     />
-                    <BaseCheckbox v-model="negativeOnly" label="Negative Qty" size="sm" />
+                    <select
+                        v-model="qtyFilter"
+                        class="h-[35px] px-2 border rounded bg-white text-sm"
+                    >
+                        <option value="">All Qty</option>
+                        <option value="negative">Negative Qty</option>
+                        <option value="positive">Positive Qty</option>
+                        <option value="zero">Zero Qty</option>
+                    </select>
                     <BaseButton label="Nearly Expire" severity="secondary" @click="handleNearlyExpire" />
                 </div>
             </template>
