@@ -4,6 +4,7 @@ import PageTitle from '@/components/PageTitle.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import BaseCard from '@/components/BaseCard.vue';
 import SubTitle from '@/components/SubTitle.vue';
+import Loading from '@/components/Loading.vue';
 import { useRoute, useRouter } from 'vue-router';
 import BaseInput from '@/components/BaseInput.vue';
 import { computed, onMounted, ref, warn, watch } from 'vue';
@@ -53,18 +54,50 @@ const errorMsg = ref({
     warehouse: "",
 });
 
+const isInitLoading = ref(true);
+
 // Change route function
 function changeRoute(pathname) {
     router.push(pathname);
 }
 
 onMounted(async () => {
+    isInitLoading.value = true;
     userData.value = JSON.parse(localStorage.getItem('user'));
     await useSupplier.fetchAllSupplier();
     await useWarehouse.fetchAllWarehouse();
     await usePaymentMethod.fetchAllPaymentMethod();
     await useProduct.fetchAllProduct();
     productList.value = useProduct.productList || [];
+
+    // Prefill if copiedPurchase exists
+    const copied = localStorage.getItem('copiedPurchase');
+    if (copied) {
+        try {
+            const purchase = JSON.parse(copied);
+            selectedSupplier.value = useSupplier.supplierList.find(s => s.id === purchase.supplier?.id) || null;
+            selectedWarehouse.value = useWarehouse.warehouseList.find(w => w.id === purchase.warehouse?.id) || null;
+            formData.value.paymentId = purchase.payment?.id ? String(purchase.payment.id) : '1';
+            formData.value.remark = purchase.remark || '';
+            formData.value.purchaseDate = moment().format('YYYY-MM-DDTHH:mm');
+            if (Array.isArray(purchase.details)) {
+                selectedProducts.value = purchase.details.map(d => {
+                    const prod = useProduct.productList.find(p => p.id === d.product?.id);
+                    return {
+                        id: d.product?.id,
+                        name: d.product?.name,
+                        barcode: d.product?.barcode,
+                        purchase_price: d.price,
+                        quantity: d.quantity,
+                        expiredDate: d.expired_date || '',
+                        image_url: prod?.image_url || ''
+                    };
+                });
+            }
+        } catch (e) {}
+        localStorage.removeItem('copiedPurchase');
+    }
+    isInitLoading.value = false;
 });
 
 const filteredProducts = computed(() => {
@@ -219,6 +252,12 @@ async function formSubmit() {
 
 <template>
     <div class="p-4">
+        <div v-if="isInitLoading" class="fixed inset-0 z-50 flex items-center justify-center bg-opacity-30">
+            <div class="bg-white rounded-lg shadow-lg p-8 flex flex-col items-center">
+                <Loading loadingWidth="w-[40px]" />
+                <div class="mt-4 text-lg text-gray-700">Loading...</div>
+            </div>
+        </div>
         <!-- Page Title -->
         <PageTitle title="Create Purchase">
             <template #titleButtons>

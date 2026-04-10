@@ -32,6 +32,7 @@ const baseClass = computed(() => {
     secondary: 'bg-gray-500 text-white hover:bg-gray-600',
     info: 'bg-sky-500 text-white hover:bg-sky-600',
     danger: 'bg-red-500 text-white hover:bg-red-600',
+    success: 'bg-green-500 text-white hover:bg-green-600',
     contrast: 'bg-black text-white hover:bg-gray-800'
   };
 
@@ -40,6 +41,7 @@ const baseClass = computed(() => {
     secondary: 'border border-gray-500 text-gray-500 hover:bg-gray-50',
     info: 'border border-sky-500 text-sky-500 hover:bg-sky-50',
     danger: 'border border-red-500 text-red-500 hover:bg-red-50',
+    success: 'border border-green-500 text-green-500 hover:bg-green-50',
     contrast: 'border border-black text-black hover:bg-gray-100'
   };
 
@@ -48,6 +50,7 @@ const baseClass = computed(() => {
     secondary: 'text-gray-600 hover:bg-gray-50',
     info: 'text-sky-500 hover:bg-sky-50',
     danger: 'text-red-500 hover:bg-red-50',
+    success: 'text-green-500 hover:bg-green-50',
     contrast: 'text-black hover:bg-gray-100'
   };
 

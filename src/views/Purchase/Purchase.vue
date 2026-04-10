@@ -186,9 +186,7 @@ const columns = [
     { key: 'payment.name', label: 'Payment', formatter: (row) => row.payment.name },
     { key: 'status.name', label: 'Status', formatter: (row) => statusBadgeHtml(row.status?.name) },
     { key: 'created_by', label: 'Created By' },
-    { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
-    // { key: 'updated_by', label: 'Updated By' },
-    // { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
+    { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') }
 ];
 
 function changeRoute(pathname) {
@@ -207,6 +205,12 @@ async function deleteHandle(id) {
         // refetch with current date range
         await fetchPurchaseByDate();
     }
+}
+
+// Purchase copy function
+function copyPurchase(row) {
+    localStorage.setItem('copiedPurchase', JSON.stringify(row));
+    router.push('/purchase/create');
 }
 
 // Excel import helpers
@@ -542,7 +546,10 @@ async function exportToExcel() {
             :columns="columns" 
             :rows="purchaseList" 
             :editPath="'Update Purchase'"
-            :isLoading="usePurchase.loading" @delete="deleteHandle" 
+            :isLoading="usePurchase.loading"
+            :copy-button = "true"
+            @copy="copyPurchase"
+            @delete="deleteHandle" 
             :defaultSort="{ key: 'created_at', order: 'desc' }"
             :isEdit="!usePermission.can('Purchase', 'Update')" 
             :isDelete="!usePermission.can('Purchase', 'Delete')"

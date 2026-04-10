@@ -255,8 +255,6 @@ async function formSubmit() {
     }))
   };
 
-  console.log('Submitting payload:', payload);
-
   if (!priceChangeId.value) {
     toast.add({ severity: 'error', summary: 'Missing ID', detail: 'Price change ID is missing.', life: 3000 });
     return;

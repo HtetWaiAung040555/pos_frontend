@@ -4,7 +4,6 @@ import BaseButton from './BaseButton.vue';
 import Loading from './Loading.vue';
 import Dialog from 'primevue/dialog';
 import { exportToXlsx } from '@/utils/exportXlsx';
-import axios from 'axios';
 
 const props = defineProps({
   columns: { type: Array, required: true }, // [{ key: 'name', label: 'Name' }]
@@ -22,6 +21,7 @@ const props = defineProps({
     })
   },
   isAction: {type: Boolean, default: true},
+  copyButton: {type: Boolean, default: false},
   isExcelExport: {type: Boolean, default: true},
   editPath: {type: String, default: ""},
   deletePath: {type: String, default: ""},
@@ -33,32 +33,29 @@ const props = defineProps({
   isAdjust: {type: Boolean, default: false},
   filename: {type: String, default: 'export'},
   isSearchable: {type: Boolean, default: false},
-  // detailHeaders: array of column labels for detail rows. If empty, details won't be exported.
   detailHeaders: { type: Array, default: () => [] },
-  // detailField: path on each row where detail(s) live (object or array). Default 'details'
   detailField: { type: String, default: 'details' },
-  // detailKeys: array of key paths to extract from each detail object, matching detailHeaders order
   detailKeys: { type: Array, default: () => ['product.id', 'product.name', 'price', 'quantity', 'total'] },
-  // totals config: enable subtotal/grand total rows
   totals: {
     type: Object,
     default: () => ({
       enabled: false,
-      groupBy: null, // key/path for subtotal grouping (e.g. 'customer.id')
+      groupBy: null,
       showSubtotal: true,
       showGrandTotal: true,
       subtotalLabel: 'Subtotal',
       grandTotalLabel: 'Grand Total',
-      labelColumnKey: null, // default: first column key
+      labelColumnKey: null,
       blankValue: '–',
-      columns: [] // [{ key: 'amount', type: 'sum', formatter: (v)=>v }]
+      columns: []
     })
   }
 });
 
 const emit = defineEmits([
   'delete',
-  'page-change'
+  'page-change',
+  'copy'
 ]);
 
 const searchQuery = ref('');
@@ -519,6 +516,14 @@ watch(
                       :disabled="isEditDisabled(row)"
                     />
                   </router-link>
+                  <BaseButton 
+                    v-if="copyButton"
+                    icon="pi pi-copy" 
+                    variant="text" 
+                    severity="success" 
+                    size="sm" 
+                    @click="$emit('copy', row)"
+                  />
                   <BaseButton 
                     icon="pi pi-trash" 
                     variant="text" 

@@ -270,7 +270,6 @@ async function formSubmit() {
             expired_date: p.expiredDate || null,
         }));
     }
-    console.log(payload);
     await usePurchase.editPurchase(payload, route.query.id);
     if (usePurchase.error.length) {
         usePurchase.error.forEach((msg) => {
