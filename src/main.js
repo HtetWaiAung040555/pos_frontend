@@ -90,6 +90,7 @@ import Reports from './views/Report/Reports.vue';
 import SalesReport from './views/Report/SalesReport.vue';
 import CustomerTransaction from './views/Customer_Transaction/CustomerTransaction.vue';
 import ViewSalesPriceChange from './views/Sales_Price_Change/ViewSalesPriceChange.vue';
+import ViewPromotion from './views/promotion/ViewPromotion.vue';
 
 
 
@@ -149,6 +150,7 @@ const router = createRouter({
         {path: '/promotion', name: 'Promotion', component: Promotion, meta: { requiresAuth: true, permission: { resource: 'Promotion', action: 'View' } }},
         {path: '/promotion/create', name: 'Create Promotion', component: CreatePromotion, meta: { requiresAuth: true, permission: { resource: 'Promotion', action: 'Create' } }},
         {path: '/promotion/update', name: 'Update Promotion', component: UpdatePromotion, meta: { requiresAuth: true, permission: { resource: 'Promotion', action: 'Update' } }},
+        {path: '/promotion/view', name: 'View Promotion', component: ViewPromotion, meta: { requiresAuth: true, permission: { resource: 'Promotion', action: 'View' } }},
         {path: '/sales_return', name: 'Sales Return', component: SalesReturn, meta: { requiresAuth: true, permission: { resource: 'Sales return', action: 'View' } }},
         {path: '/sales_return/create', name: 'Create Sales Return', component: CreateSalesReturn, meta: { requiresAuth: true, permission: { resource: 'Sales return', action: 'Create' } }},
         {path: '/sales_return/update', name: 'Update Sales Return', component: UpdateSalesReturn, meta: { requiresAuth: true, permission: { resource: 'Sales return', action: 'Update' } }},

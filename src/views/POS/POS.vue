@@ -60,6 +60,7 @@ const savedSalesData = ref({});
 const defaultCurrency = ref('Ks');
 const oldCustomerBalance = ref(0);
 const initialLoading = ref(false);
+const orderDiscountAmount = ref(0);
 
 const sortedHoldList = computed(() => {
   return [...(holdList.value || [])].sort((a, b) => {
@@ -119,14 +120,67 @@ watch(visible, (newVal) => {
   }
 });
 
+// async function addProduct(product) {
+//   const productId = product?.id;
+//   if (!productId) return;
+//   if (pendingAddIds.value.has(productId)) return;
+//   pendingAddIds.value.add(productId);
+
+//   let checkQty = product.qty <= 0;
+//   if (checkQty) {
+//     toast.add({
+//       severity: 'warn',
+//       summary: 'Stock Qty Warning',
+//       detail: "Insufficient quantity.",
+//       life: 3000
+//     });
+//   }
+//   try {
+//     let exist = selectedProducts.value.find(p => p.id === product.id);
+//     if (exist) {
+//       selectedPId.value = product.id;
+//       increaseQty(exist);
+//       //visible.value = true;
+//       return;
+//     }
+//     const checkPromo = await axios.post(`/promotions/checkprice`, { product_id: product.id });
+//     if (checkPromo.data.promotion_id) {
+//       selectedProducts.value = [
+//         ...selectedProducts.value,
+//         {
+//           ...product,
+//           qty: 1,
+//           promotion_id: checkPromo.data.promotion_id,
+//           discount_value: checkPromo.data.discount_value,
+//           discount_amount: checkPromo.data.discount_amount,
+//           discount_type: checkPromo.data.discount_type,
+//           discount_price: product.price - checkPromo.data.discount_amount
+//         }
+//       ];
+//       selectedPId.value = product.id;
+//     } else {
+//       selectedProducts.value = [
+//         ...selectedProducts.value,
+//         {
+//           ...product,
+//           qty: 1
+//         }
+//       ];
+//       selectedPId.value = product.id;
+//     }
+//   } finally {
+//     pendingAddIds.value.delete(productId);
+//   }
+// }
+
 async function addProduct(product) {
   const productId = product?.id;
   if (!productId) return;
+
   if (pendingAddIds.value.has(productId)) return;
   pendingAddIds.value.add(productId);
 
-  let checkQty = product.qty <= 0;
-  if (checkQty) {
+  if (product.qty <= 0) {
     toast.add({
       severity: 'warn',
       summary: 'Stock Qty Warning',
@@ -134,39 +188,33 @@ async function addProduct(product) {
       life: 3000
     });
   }
+
   try {
-    let exist = selectedProducts.value.find(p => p.id === product.id);
+    const exist = selectedProducts.value.find(p => p.id === product.id);
+
     if (exist) {
-      selectedPId.value = product.id;
-      increaseQty(exist);
-      //visible.value = true;
-      return;
-    }
-    const checkPromo = await axios.post(`/promotions/checkprice`, { product_id: product.id });
-    if (checkPromo.data.promotion_id) {
-      selectedProducts.value = [
-        ...selectedProducts.value,
-        {
-          ...product,
-          qty: 1,
-          promotion_id: checkPromo.data.promotion_id,
-          discount_value: checkPromo.data.discount_value,
-          discount_amount: checkPromo.data.discount_amount,
-          discount_type: checkPromo.data.discount_type,
-          discount_price: product.price - checkPromo.data.discount_amount
-        }
-      ];
+      exist.qty += 1;
       selectedPId.value = product.id;
     } else {
-      selectedProducts.value = [
-        ...selectedProducts.value,
-        {
-          ...product,
-          qty: 1
-        }
-      ];
+      selectedProducts.value.push({
+        ...product,
+        qty: 1,
+        promotion_id: null,
+        discount_value: 0,
+        discount_amount: 0,
+        discount_type: null,
+        discount_price: product.price,
+        is_free: false
+      });
+
       selectedPId.value = product.id;
     }
+
+    await nextTick();
+    await recalculatePromotions();
+
+  } catch (err) {
+    console.error('Add product error:', err);
   } finally {
     pendingAddIds.value.delete(productId);
   }
@@ -205,24 +253,24 @@ function addQty() {
   visible.value = false;
 }
 
-// Increase quantity by 1
 function increaseQty(product) {
   product.qty += 1;
+  recalculatePromotions();
   nextTick(() => barcodeInput.value?.focus());
 }
 
-// Decrease quantity by 1
 function decreaseQty(product) {
   if (product.qty <= 1) {
     nextTick(() => barcodeInput.value?.focus());
     return
   } else {
     product.qty -= 1;
+    recalculatePromotions();
     nextTick(() => barcodeInput.value?.focus());
   }
 }
 
-// 🧾 Barcode Scan Handler
+// Barcode Scan Handler
 function handleBarcodeInput(e) {
   //If Enter key is pressed after typing the barcode 
   if (e.key === "Enter" && e.target.value.trim() !== "") {
@@ -242,7 +290,6 @@ function handleBarcodeInput(e) {
   }
 }
 
-// When Enter is pressed in the Select filter input, pick a matching customer
 function onSelectEnter(e) {
   // Prefer the event target value, fall back to the active element value (works on mobile)
   const inputVal = (e.target?.value || (document.activeElement && (document.activeElement.value || '')) || '').toString().trim();
@@ -261,10 +308,6 @@ function onSelectEnter(e) {
     try { e.target.blur(); } catch (err) { }
   }
 }
-
-// -------------------------
-// Hold / Resume Sale logic
-// -------------------------
 
 async function holdSale() {
   if (!selectedProducts.value || selectedProducts.value.length === 0) return;
@@ -652,6 +695,102 @@ function clickCustomerSelect() {
   console.log('Customer select clicked');
 }
 
+function removeProduct(product) {
+  selectedProducts.value = selectedProducts.value.filter(p => p.id !== product.id);
+  recalculatePromotions();
+  nextTick(() => barcodeInput.value?.focus());
+}
+
+async function recalculatePromotions() {
+  if (!selectedProducts.value.length) return;
+
+  try {
+    const payload = {
+      cart: selectedProducts.value.map(p => ({
+        product_id: p.id,
+        qty: p.qty,
+        price: p.promotion_id ? p.discount_price : p.price,
+      })),
+      sale_date: moment().format("YYYY-MM-DD HH:mm:ss")
+    };
+
+    const res = await axios.post('/promotions/checkprice', payload);
+
+    const data = res.data;
+
+    // Save order discount amount for UI
+    orderDiscountAmount.value = data.order_discount_amount || 0;
+
+    selectedProducts.value = selectedProducts.value.map(p => ({
+      ...p,
+      promotion_id: null,
+      discount_amount: 0,
+      discount_price: p.price
+    }));
+
+    if (data.product_discounts) {
+      selectedProducts.value = selectedProducts.value.map(p => {
+        const promo = data.product_discounts.find(d => d.product_id === p.id);
+
+        if (promo) {
+          return {
+            ...p,
+            promotion_id: promo.promotion_id,
+            discount_value: promo.discount_value,
+            discount_type: promo.discount_type,
+            discount_amount: promo.discount_amount,
+            discount_price: p.price - promo.discount_amount
+          };
+        }
+        return p;
+      });
+    }
+
+    if (data.order_discount_amount) {
+      const total = selectedProducts.value.reduce((sum, p) => sum + (p.price * p.qty), 0);
+
+      // selectedProducts.value = selectedProducts.value.map(p => {
+      //   const ratio = (p.price * p.qty) / total;
+      //   const discountShare = data.order_discount_amount * ratio;
+
+      //   return {
+      //     ...p,
+      //     promotion_id: p.promotion_id || 'order-level',
+      //     discount_value: ratio || 0,
+      //     discount_amount: (p.discount_amount || 0) + discountShare / p.qty,
+      //     discount_price: p.price - ((p.discount_amount || 0) + discountShare / p.qty)
+      //   };
+      // });
+    }
+
+    if (data.free_items?.length) {
+      data.free_items.forEach(free => {
+        const exist = selectedProducts.value.find(p => p.id === free.product_id);
+
+        if (exist) {
+          exist.qty = free.qty;
+          exist.is_free = true;
+        } else {
+          const product = productList.value.find(p => p.id === free.product_id);
+
+          if (product) {
+            selectedProducts.value.push({
+              ...product,
+              qty: free.qty,
+              price: 0,
+              discount_price: 0,
+              is_free: true
+            });
+          }
+        }
+      });
+    }
+
+  } catch (err) {
+    console.error('Promotion calculation failed', err);
+  }
+}
+
 // Print only the slip section between the markers
 function printSlip(isSale = true) {
   const slip = document.getElementById(isSale ? 'sales-slip' : 'wallet-slip');
@@ -823,12 +962,18 @@ function printSlip(isSale = true) {
                 <td class="border-b p-2 border-gray-200">
                   <div class="flex flex-col">
                     <span class="leading-tight line-clamp-1">{{ item.name }}</span>
-                    <div class="text-[13px] flex items-center gap-x-2">
+                    <div v-if="!item.is_free" class="text-[13px] flex items-center gap-x-2">
                       <i class="fa fa-circle-minus text-xl cursor-pointer text-gray-500" @click="decreaseQty(item)"></i>
                       <span class="font-semibold"> {{ item.qty }} </span>
                       <i class="fa fa-circle-plus text-xl cursor-pointer text-gray-500" @click="increaseQty(item)"></i>
                       <span> x </span>
                       <span class="font-semibold">{{ Number(item.price).toLocaleString() }}</span>
+                    </div>
+                    <div v-else class="text-[13px] flex items-center gap-x-2">
+                      <span class="font-semibold"> {{ item.qty }} </span>
+                      <span> x </span>
+                      <span class="font-semibold">{{ Number(item.price).toLocaleString() }}</span>
+                      <span class="text-blue-500 bg-blue-100 font-bold px-2 rounded-md"> FREE GIFT </span>
                     </div>
                     <div>
                       <span v-if="item.promotion_id" class="font-semibold">Discount: [ - {{ item.discount_type ===
@@ -846,7 +991,7 @@ function printSlip(isSale = true) {
                 </td>
                 <td class="border-b p-2 border-gray-200">
                   <i class="fa fa-trash text-red-500 cursor-pointer"
-                    @click="selectedProducts = selectedProducts.filter(p => p.id !== item.id)"></i>
+                    @click="removeProduct(item)"></i>
                 </td>
               </tr>
             </tbody>
@@ -857,10 +1002,15 @@ function printSlip(isSale = true) {
         <div class="mt-2 w-full">
           <div class="grid grid-cols-2 gap-y-1 text-sm items-center">
             <!-- Total -->
-            <div class="text-right font-semibold">Total :</div>
+            <div class="text-right font-semibold"> {{ orderDiscountAmount > 0 ? 'Product Total' : 'Total' }} :</div>
             <div class="text-right font-semibold">
               {{ `${defaultCurrency} ${Number(totalAmount).toLocaleString('en-us')}` }}
             </div>
+            <!-- Order Discount (if any) -->
+            <div v-if="orderDiscountAmount > 0" class="text-right font-semibold">Order Discount :</div>
+            <div v-if="orderDiscountAmount > 0" class="text-right font-semibold">-{{ `${defaultCurrency} ${Number(orderDiscountAmount).toLocaleString('en-us')}` }}</div>
+            <div v-if="orderDiscountAmount > 0" class="text-right font-semibold">Total :</div>
+            <div v-if="orderDiscountAmount > 0" class="text-right font-semibold">{{ `${defaultCurrency} ${Number(totalAmount - orderDiscountAmount).toLocaleString('en-us')}` }}</div>
             <!-- Pay Amount -->
             <div class="text-right font-semibold" v-if="salesData.paymentId == 1">Pay Amount :</div>
             <div class="flex justify-end items-center font-semibold gap-x-1" v-if="salesData.paymentId == 1">

@@ -23,11 +23,19 @@ export const errMsgList = {
 export function statusBadgeHtml(name) {
     const n = String(name || '').toLowerCase();
     
-    let cls = 'bg-gray-100 text-gray-800';
+    let cls = 'bg-gray-200 text-gray-800';
     if (n.includes('hold')) cls = 'bg-yellow-100 text-yellow-800';
-    else if (n.includes('complete')) cls = 'bg-green-100 text-green-800';
-    else if (n.includes('void') || n.includes('cancel')) cls = 'bg-red-100 text-red-800';
+    else if (n.includes('void')) cls = 'bg-red-100 text-red-800';
+    else if (n.includes('inactive')) cls = 'bg-gray-200 text-gray-800';
+    else if (n.includes('complete') || n.includes('active')) cls = 'bg-green-100 text-green-800';
     else if (n.includes('applied')) cls = 'bg-blue-100 text-blue-800';
+    else if (n.includes('foc')) cls = 'bg-indigo-100 text-indigo-800';
+    else if (n.includes('product_discount')) cls = 'bg-orange-100 text-orange-800';
+    else if (n.includes('order_discount')) cls = 'bg-cyan-100 text-cyan-800';
 
     return `<span class="px-2 py-1 rounded ${cls}">${name ?? ''}</span>`;
+}
+
+export function formatPrice(value) {
+    return Number(value).toLocaleString();
 }

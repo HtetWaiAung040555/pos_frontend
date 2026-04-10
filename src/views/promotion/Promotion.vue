@@ -11,6 +11,7 @@
     import BaseInput from '@/components/BaseInput.vue';
     import { usePermissionStore } from '@/stores/usePermissionStore';
     import { usePromotionStore } from '@/stores/usePromotionStore';
+import { statusBadgeHtml } from '@/utils/const';
 
     const router = useRouter();
     const usePromo = usePromotionStore();
@@ -28,20 +29,20 @@
     });
 
     const columns = [
-        { key: 'id', label: 'ID' },
+        { key: 'id', label: 'ID', formatter: (row) => row.id, onClick: (row) => {
+            router.push({name: 'View Promotion', query: { id: row.id }});
+        }},
         { key: 'name', label: 'Name' },
-        { key: 'discount_type', label: 'Type' },
-        { key: 'discount_value', label: 'Discount Value', formatter: (row) => `${Number(row.discount_value).toLocaleString('en-us')}${row.discount_type === 'Percentage' ? '%' : ''}` },
+        { key: 'promo_type', label: 'Promo Type', formatter: (row) => statusBadgeHtml(row.promo_type)},
+        // { key: 'discount_type', label: 'Type' },
+        // { key: 'discount_value', label: 'Discount Value', formatter: (row) => `${Number(row.discount_value).toLocaleString('en-us')}${row.discount_type === 'Percentage' ? '%' : ''}` },
         { key: 'start_at', label: 'Start', formatter: (row) => moment(row.start_at).format('DD-MM-YY hh:mm') },
         { key: 'end_at', label: 'End', formatter: (row) => moment(row.end_at).format('DD-MM-YY hh:mm') },
-        { key: 'status', label: 'Status', formatter: (row) => {
-            const color = row.status.name === 'Active' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';
-            return `<span class="text-white px-2 py-1 rounded ${color}">${row.status.name}</span>`;
-        } },
+        { key: 'status', label: 'Status', formatter: (row) => statusBadgeHtml(row.status?.name) },
         { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by?.name },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
-        { key: 'updated_by.name', label: 'Updated By', formatter: (row) => row.updated_by?.name },
-        { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
+        // { key: 'updated_by.name', label: 'Updated By', formatter: (row) => row.updated_by?.name },
+        // { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
     ];
 
     function changeRoute(pathname) {
@@ -79,8 +80,6 @@
     }
 
 </script>
-
-
 
 <template>
     <div class="p-4">
