@@ -61,6 +61,41 @@ function changeRoute(pathname) {
     router.push(pathname);
 }
 
+function mergeSelectedProducts(details = []) {
+    const mergedProducts = new Map();
+
+    details.forEach((d) => {
+        const productId = d.product?.id;
+        if (!productId) return;
+
+        const quantity = Number(d.quantity) || 0;
+        const purchasePrice = Number(d.price) || 0;
+        const expiredDate = d.expired_date || '';
+
+        // Merge by product + price + expired date so inventory-split rows collapse safely.
+        const mergeKey = `${productId}`;
+        const existing = mergedProducts.get(mergeKey);
+
+        if (existing) {
+            existing.quantity += quantity;
+            return;
+        }
+
+        const prod = useProduct.productList.find(p => p.id === productId);
+        mergedProducts.set(mergeKey, {
+            id: productId,
+            name: d.product?.name,
+            barcode: d.product?.barcode,
+            purchase_price: purchasePrice,
+            quantity,
+            expiredDate,
+            image_url: prod?.image_url || '',
+        });
+    });
+
+    return Array.from(mergedProducts.values());
+}
+
 onMounted(async () => {
     isInitLoading.value = true;
     userData.value = JSON.parse(localStorage.getItem('user'));
@@ -81,18 +116,7 @@ onMounted(async () => {
             formData.value.remark = purchase.remark || '';
             formData.value.purchaseDate = moment().format('YYYY-MM-DDTHH:mm');
             if (Array.isArray(purchase.details)) {
-                selectedProducts.value = purchase.details.map(d => {
-                    const prod = useProduct.productList.find(p => p.id === d.product?.id);
-                    return {
-                        id: d.product?.id,
-                        name: d.product?.name,
-                        barcode: d.product?.barcode,
-                        purchase_price: d.price,
-                        quantity: d.quantity,
-                        expiredDate: d.expired_date || '',
-                        image_url: prod?.image_url || ''
-                    };
-                });
+                selectedProducts.value = mergeSelectedProducts(purchase.details);
             }
         } catch (e) {}
         localStorage.removeItem('copiedPurchase');

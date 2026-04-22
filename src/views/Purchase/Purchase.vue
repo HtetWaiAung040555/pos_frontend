@@ -260,10 +260,69 @@ function excelDateToInput(dateValue) {
         'DD-MM-YYYY',
         'MM/DD/YYYY HH:mm:ss',
         'MM/DD/YYYY HH:mm',
-        'MM/DD/YYYY'
+        'MM/DD/YYYY',
+        'M/D/YYYY H:mm',
+        'M/D/YYYY H:mm:ss',
+        'M/D/YY H:mm',
+        'M/D/YY H:mm:ss', 
+        'M/D/YYYY',
+        'M/D/YY', 
     ], true);
     if (!parsed.isValid()) return '';
     return parsed.format('YYYY-MM-DDTHH:mm');
+}
+
+function fixExcelDate(value, { withTime = true } = {}) {
+    if (!value) return null;
+
+    let date;
+
+    console.log('Fixing date value:', value, 'withTime:', withTime);
+
+    if (value instanceof Date) {
+        date = new Date(value);
+
+        date.setMinutes(Math.round(date.getMinutes()));
+    }
+
+    else if (typeof value === 'number') {
+        // Excel epoch starts at 1899-12-30
+        date = new Date(Math.round((value - 25569) * 86400 * 1000));
+    }
+
+    else if (typeof value === 'string') {
+        const trimmed = value.trim();
+
+        date = moment(trimmed, [
+            'D/M/YYYY H:mm',
+            'D/M/YYYY H:mm:ss',
+            'D/M/YYYY',
+            'D/M/YY H:mm',
+            'D/M/YY H:mm:ss', 
+            'D/M/YYYY',
+            'D/M/YY', 
+            'YYYY-MM-DD HH:mm:ss',
+            'YYYY-MM-DD HH:mm',
+            'YYYY-MM-DD',
+        ], true).toDate();
+
+        if (!date || isNaN(date.getTime())) {
+            return null;
+        }
+    }
+
+    else {
+        return null;
+    }
+
+    if (!withTime) {
+        date.setHours(0, 0, 0, 0);
+    } else {
+        date.setSeconds(0);
+        date.setMilliseconds(0);
+    }
+
+    return date;
 }
 
 function toNumber(value, defaultValue = 0) {
@@ -335,7 +394,7 @@ async function onImportExcel(event) {
     try {
         await ensureImportLookups();
         const arrayBuffer = await file.arrayBuffer();
-        const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
         const sheetNames = workbook.SheetNames || [];
         const purchasesSheetName = sheetNames.find((name) => normalizeCell(name).toLowerCase() === 'purchases');
         const detailsSheetName = sheetNames.find((name) => normalizeCell(name).toLowerCase() === 'purchase_details');
@@ -344,15 +403,15 @@ async function onImportExcel(event) {
         let detailRows = [];
 
         if (purchasesSheetName && detailsSheetName) {
-            purchaseRows = XLSX.utils.sheet_to_json(workbook.Sheets[purchasesSheetName], { defval: '' }).map(normalizeRowKeys);
-            detailRows = XLSX.utils.sheet_to_json(workbook.Sheets[detailsSheetName], { defval: '' }).map(normalizeRowKeys);
+            purchaseRows = XLSX.utils.sheet_to_json(workbook.Sheets[purchasesSheetName], { defval: '', raw: false }).map(normalizeRowKeys);
+            detailRows = XLSX.utils.sheet_to_json(workbook.Sheets[detailsSheetName], { defval: '', raw: false }).map(normalizeRowKeys);
         } else {
             const firstSheet = sheetNames[0];
             if (!firstSheet) {
                 toast.add({ severity: 'error', summary: 'Import Failed', detail: 'Excel file has no sheet.', life: 3000 });
                 return;
             }
-            detailRows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: '' }).map(normalizeRowKeys);
+            detailRows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { defval: '', raw: false }).map(normalizeRowKeys);
         }
 
         const grouped = new Map();
@@ -384,9 +443,13 @@ async function onImportExcel(event) {
         const failed = [];
         let successCount = 0;
 
+        console.log('purchase rows: ', purchaseRows);
+        console.log('details row: ', detailRows);
+
         for (const [purchaseRef, value] of grouped.entries()) {
             const header = value.header || {};
             const details = value.details || [];
+            console.log(`Processing purchase_ref ${purchaseRef} with header:`, header, 'and details:', details);
 
             const supplierId = resolveIdByIdOrName(
                 useSupplier.supplierList,
@@ -404,9 +467,11 @@ async function onImportExcel(event) {
                 header.payment_name || header.payment
             );
 
-            const purchaseDate = excelDateToInput(header.purchase_date);
+            const purchaseDate = moment(fixExcelDate(header.purchase_date)).format('YYYY-MM-DD HH:mm:ss');
             const statusId = toNumber(header.status_id, 7);
             const remark = normalizeCell(header.remark);
+
+            console.log("purchaseDate", header.purchase_date , purchaseDate);
 
             const products = details.map((detail) => {
                 const product = resolveProduct(detail);
@@ -417,11 +482,17 @@ async function onImportExcel(event) {
             }).filter((entry) => entry.product).map((entry) => ({
                 product_id: entry.product.id,
                 quantity: toNumber(entry.raw.quantity, 0),
-                expired_date: normalizeCell(entry.raw.expired_date || entry.raw.expireddate),
+                expired_date: moment(fixExcelDate(entry.raw.expired_date)).format('YYYY-MM-DD'),
                 purchase_price: toNumber(entry.raw.purchase_price || entry.raw.price, 0)
             })).filter((item) => item.quantity > 0 && item.purchase_price >= 0);
 
             if (!supplierId || !warehouseId || !purchaseDate || products.length === 0) {
+                console.error(`Skipping purchase_ref ${purchaseRef} due to missing required fields.`, {
+                    supplierId,
+                    warehouseId,
+                    purchaseDate,
+                    products
+                });
                 failed.push(purchaseRef);
                 continue;
             }
@@ -437,13 +508,18 @@ async function onImportExcel(event) {
                 products
             };
 
+            console.log(`Importing purchase_ref ${purchaseRef} with payload:`, payload);
+
             await usePurchase.addPurchase(payload);
             if (usePurchase.error.length) {
+                console.error(`Failed to import purchase_ref ${purchaseRef}:`, usePurchase.error);
                 failed.push(purchaseRef);
                 continue;
             }
             successCount += 1;
         }
+
+        console.log('Import completed. Success:', successCount, 'Failed:', failed);
 
         await fetchPurchaseByDate();
 
