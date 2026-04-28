@@ -32,6 +32,8 @@ const selectedProducts = ref([]);
 const salesData = ref({
   paymentId: 1,
   paidAmount: 0,
+  orderDiscountAmount: 0,
+  appliedPromotions: [],
 });
 const visible = ref(false);
 const qty = ref("");
@@ -60,7 +62,6 @@ const savedSalesData = ref({});
 const defaultCurrency = ref('Ks');
 const oldCustomerBalance = ref(0);
 const initialLoading = ref(false);
-const orderDiscountAmount = ref(0);
 
 const sortedHoldList = computed(() => {
   return [...(holdList.value || [])].sort((a, b) => {
@@ -102,7 +103,7 @@ const totalAmount = computed(() => {
     const price = item.promotion_id ? Number(item.discount_price || 0) : Number(item.price || 0);
     return sum + (Number(item.qty || 0) * price);
   }, 0);
-  salesData.value.paidAmount = amount;
+  salesData.value.paidAmount = amount - Number(salesData.value.orderDiscountAmount || 0);
   return amount;
 });
 
@@ -204,7 +205,7 @@ async function addProduct(product) {
         discount_amount: 0,
         discount_type: null,
         discount_price: product.price,
-        is_free: false
+        is_foc: false
       });
 
       selectedPId.value = product.id;
@@ -330,20 +331,26 @@ async function holdSale() {
   const payload = {
     customer_id: selectedCustomer.value?.id ?? null,
     paid_amount: 0,
+    total_amount: totalAmount.value,
+    order_discount_amount: salesData.value.orderDiscountAmount,
+    applied_promotions: salesData.value.appliedPromotions,
     warehouse_id: userData.value.branch.warehouse_id,
     products: selectedProducts.value.map(p => ({
       product_id: p.id,
       quantity: p.qty,
-      price: p.price,
-      discount_amount: Number(p.discount_amount) || 0,
-      discount_price: p.discount_price || 0,
+      price: p.is_foc ? 0 : p.price,
+      discount_amount: p.is_foc? 0 : (Number(p.discount_amount) || 0),
+      discount_price: p.is_foc? 0 : (p.discount_price || 0),
       promotion_id: p.promotion_id || null,
+      is_foc: p.is_foc ? true : false,
+      reward_id: p.reward_id || null,
     })),
     payment_id: selectedCustomer.value?.is_default ? 1 : 3,
     sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
     status_id: useStatus.getStatusId('Hold'),
     created_by: userData.value.id,
   };
+  console.log('Hold sale payload:', payload);
   await useSales.addSales(payload);
   if (useSales.error.length) {
     useSales.error.forEach((msg) => {
@@ -391,6 +398,8 @@ async function editHold(hold) {
     selectedHold.value = hold;
     salesData.value.paymentId = hold.payment_method.id;
     salesData.value.paidAmount = hold.paid_amount || 0;
+    salesData.value.orderDiscountAmount = hold.order_discount_amount || 0;
+    salesData.value.appliedPromotions = hold.applied_promotions || [];
 
     if (Array.isArray(hold.details)) {
       selectedProducts.value = hold.details.map(i => {
@@ -404,7 +413,9 @@ async function editHold(hold) {
             discount_amount: i.discount_amount || 0,
             discount_type: i.promotion.discount_type,
             discount_value: i.promotion.discount_value,
-            discount_price: i.discount_price
+            discount_price: i.discount_price,
+            is_foc: Boolean(i.is_foc),
+            reward_id: i.reward_id || null,
           }
         }
       });
@@ -472,6 +483,76 @@ async function updateProductQty(ProductId, qty) {
   }
 }
 
+function mergeSelectedProducts(details = []) {
+  const mergedProducts = new Map();
+
+  details.forEach((item, index) => {
+    const product = item.product || {};
+    const productId = item.product_id ?? product.id;
+    if (!productId) return;
+
+    const quantity = Number(item.quantity || 0);
+    if (quantity <= 0) return;
+
+    const promotionId = item.promotion?.id ?? item.promotion_id ?? null;
+    const discountType = item.promotion?.discount_type ?? item.discount_type ?? null;
+    const discountValue = Number(item.promotion?.discount_value ?? item.discount_value ?? 0);
+    const unitPrice = Number(item.price ?? product.price ?? 0);
+    const unitDiscountAmount = Number(item.discount_amount ?? 0);
+    const unitDiscountPrice = Number(item.discount_price ?? (unitPrice - unitDiscountAmount));
+    const isFree = Boolean(item.is_foc ?? false);
+
+    // Merge by product + pricing/discount context so inventory splits collapse,
+    // but different discount groups remain separate lines.
+    const mergeKey = [
+      productId,
+      promotionId ?? 'no-promo',
+      discountType ?? 'NO_DISCOUNT',
+      discountValue,
+      unitPrice,
+      unitDiscountAmount,
+      unitDiscountPrice,
+      isFree ? 1 : 0,
+    ].join('|');
+
+    const existing = mergedProducts.get(mergeKey);
+    if (existing) {
+      existing.quantity += quantity;
+      return;
+    }
+
+    mergedProducts.set(mergeKey, {
+      id: `merged-${productId}-${promotionId ?? 'none'}-${index}`,
+      product: {
+        ...product,
+        id: productId,
+        name: product.name || item.product_name || 'Unknown Product',
+        price: unitPrice,
+      },
+      quantity,
+      price: unitPrice,
+      discount_amount: unitDiscountAmount,
+      discount_price: unitDiscountPrice,
+      promotion: {
+        ...(item.promotion || {}),
+        id: promotionId,
+        discount_type: discountType,
+        discount_value: discountValue,
+      },
+      is_foc: isFree,
+    });
+  });
+
+  return Array.from(mergedProducts.values());
+}
+
+function buildSlipSalesData(sales = {}) {
+  return {
+    ...sales,
+    details: mergeSelectedProducts(sales.details || []),
+  };
+}
+
 async function onPayClick() {
   await useCustomer.fetchCustomer(selectedCustomer.value.id);
   if (useCustomer.singleCustomer.balance < totalAmount.value && salesData.value.paymentId == 3) {
@@ -491,6 +572,8 @@ async function onPayClick() {
     const payload = {
       paid_amount: salesData.value.paidAmount,
       total_amount: totalAmount.value,
+      order_discount_amount: salesData.value.orderDiscountAmount,
+      applied_promotions: salesData.value.appliedPromotions,
       payment_id: salesData.value.paymentId,
       sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
       status_id: useStatus.getStatusId('Complete'),
@@ -501,12 +584,15 @@ async function onPayClick() {
       payload.products = selectedProducts.value.map(p => ({
         product_id: p.id,
         quantity: p.qty,
-        price: p.price,
-        discount_amount: Number(p.discount_amount) || 0,
-        discount_price: p.discount_price || 0,
+        price: p.is_foc ? 0 : p.price,
+        discount_amount: p.is_foc ? 0 : (Number(p.discount_amount) || 0),
+        discount_price: p.is_foc ? 0 : (p.discount_price || 0),
         promotion_id: p.promotion_id || null,
+        is_foc: p.is_foc ? true : false,
+        reward_id: p.reward_id || null,
       }));
     }
+    console.log('Edit hold sale payload:', payload);
     await useSales.editSales(payload, selectedHold.value.id);
     if (useSales.error.length) {
       useSales.error.forEach((msg) => {
@@ -521,7 +607,7 @@ async function onPayClick() {
     }
     if (useSales.salesList) {
       toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales created successfully.', life: 3000 });
-      savedSalesData.value = useSales.salesList;
+      savedSalesData.value = buildSlipSalesData(useSales.salesList);
 
       if (useSales.salesList.customer) {
         useCustomer.updateCustomerBalance(
@@ -540,6 +626,8 @@ async function onPayClick() {
       selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
       salesData.value.paymentId = 1;
       salesData.value.paidAmount = 0;
+      salesData.value.orderDiscountAmount = 0;
+      salesData.value.appliedPromotions = [];
       selectedHold.value = "";
       // router.push({ path: '/payment/create', query: { id: useSales.salesList.id } });
     }
@@ -548,15 +636,20 @@ async function onPayClick() {
       customer_id: selectedCustomer.value?.id ?? null,
       payment_id: salesData.value.paymentId,
       paid_amount: salesData.value.paidAmount,
+      total_amount: totalAmount.value,
+      order_discount_amount: salesData.value.orderDiscountAmount,
+      applied_promotions: salesData.value.appliedPromotions,
       status_id: useStatus.getStatusId('Complete'),
       warehouse_id: userData.value.branch.warehouse_id,
       products: selectedProducts.value.map(p => ({
         product_id: p.id,
         quantity: p.qty,
-        price: p.price,
-        discount_amount: Number(p.discount_amount) || 0,
-        discount_price: p.discount_price || 0,
+        price: p.is_foc ? 0 : p.price,
+        discount_amount: p.is_foc ? 0 : (Number(p.discount_amount) || 0),
+        discount_price: p.is_foc ? 0 : (p.discount_price || 0),
         promotion_id: p.promotion_id || null,
+        is_foc: p.is_foc ? true : false,
+        reward_id: p.reward_id || null,
       })),
       sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
       created_by: userData.value.id,
@@ -575,7 +668,7 @@ async function onPayClick() {
     }
     if (useSales.salesList) {
       toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales created successfully.', life: 3000 });
-      savedSalesData.value = useSales.salesList;
+      savedSalesData.value = buildSlipSalesData(useSales.salesList);
 
       if (useSales.salesList.customer) {
         useCustomer.updateCustomerBalance(
@@ -599,6 +692,8 @@ async function onPayClick() {
       selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
       salesData.value.paymentId = 1;
       salesData.value.paidAmount = 0;
+      salesData.value.orderDiscountAmount = 0;
+      salesData.value.appliedPromotions = [];
     }
   }
 }
@@ -701,89 +796,151 @@ function removeProduct(product) {
   nextTick(() => barcodeInput.value?.focus());
 }
 
+// async function recalculatePromotions() {
+//   if (!selectedProducts.value.length) return;
+
+//   try {
+//     const payload = {
+//       cart: selectedProducts.value.map(p => ({
+//         product_id: p.id,
+//         qty: p.qty,
+//         price: p.promotion_id ? p.discount_price : p.price,
+//       })),
+//       sale_date: moment().format("YYYY-MM-DD HH:mm:ss")
+//     };
+
+//     const res = await axios.post('/promotions/checkprice', payload);
+
+//     const data = res.data;
+
+//     // Save order discount amount for UI
+//     salesData.value.orderDiscountAmount = data.order_discount_amount || 0;
+
+//     selectedProducts.value = selectedProducts.value.map(p => ({
+//       ...p,
+//       promotion_id: null,
+//       discount_amount: 0,
+//       discount_price: p.price
+//     }));
+
+//     if (data.product_discounts) {
+//       selectedProducts.value = selectedProducts.value.map(p => {
+//         const promo = data.product_discounts.find(d => d.product_id === p.id);
+
+//         if (promo) {
+//           return {
+//             ...p,
+//             promotion_id: promo.promotion_id,
+//             discount_value: promo.discount_value,
+//             discount_type: promo.discount_type,
+//             discount_amount: promo.discount_amount,
+//             discount_price: p.price - promo.discount_amount
+//           };
+//         }
+//         return p;
+//       });
+//     }
+
+//     if (data.order_discount_amount) {
+//       const total = selectedProducts.value.reduce((sum, p) => sum + (p.price * p.qty), 0);
+//     }
+
+//     if (data.free_items?.length) {
+//       data.free_items.forEach(free => {
+//         const exist = selectedProducts.value.find(p => p.id === free.product_id);
+
+//         if (exist) {
+//           exist.qty = free.qty;
+//           exist.is_foc = true;
+//         } else {
+//           const product = productList.value.find(p => p.id === free.product_id);
+
+//           if (product) {
+//             selectedProducts.value.push({
+//               ...product,
+//               qty: free.qty,
+//               price: 0,
+//               discount_price: 0,
+//               is_foc: true
+//             });
+//           }
+//         }
+//       });
+//     }
+
+//   } catch (err) {
+//     console.error('Promotion calculation failed', err);
+//   }
+// }
+
 async function recalculatePromotions() {
   if (!selectedProducts.value.length) return;
 
   try {
     const payload = {
-      cart: selectedProducts.value.map(p => ({
-        product_id: p.id,
-        qty: p.qty,
-        price: p.promotion_id ? p.discount_price : p.price,
-      })),
+      cart: selectedProducts.value
+        .filter(p => !p.is_foc)
+        .map(p => ({
+          product_id: p.id,
+          qty: p.qty,
+          price: p.promotion_id ? p.discount_price : p.price,
+        })),
       sale_date: moment().format("YYYY-MM-DD HH:mm:ss")
     };
 
     const res = await axios.post('/promotions/checkprice', payload);
-
     const data = res.data;
 
-    // Save order discount amount for UI
-    orderDiscountAmount.value = data.order_discount_amount || 0;
+    selectedProducts.value = selectedProducts.value
+      .filter(p => !p.is_foc)
+      .map(p => ({
+        ...p,
+        promotion_id: null,
+        discount_amount: 0,
+        discount_price: p.price
+      }));
 
-    selectedProducts.value = selectedProducts.value.map(p => ({
-      ...p,
-      promotion_id: null,
-      discount_amount: 0,
-      discount_price: p.price
-    }));
-
-    if (data.product_discounts) {
+    if (data.items?.length) {
       selectedProducts.value = selectedProducts.value.map(p => {
-        const promo = data.product_discounts.find(d => d.product_id === p.id);
+        const promo = data.items.find(d => d.product_id === p.id);
 
-        if (promo) {
-          return {
-            ...p,
-            promotion_id: promo.promotion_id,
-            discount_value: promo.discount_value,
-            discount_type: promo.discount_type,
-            discount_amount: promo.discount_amount,
-            discount_price: p.price - promo.discount_amount
-          };
-        }
-        return p;
+        if (!promo) return p;
+
+        const discountAmount = promo.discount_amount;
+
+        return {
+          ...p,
+          promotion_id: promo.promotion_id,
+          discount_value: promo.discount_value,
+          discount_type: promo.discount_type,
+          discount_amount: discountAmount,
+          discount_price: p.price - discountAmount
+        };
       });
     }
 
-    if (data.order_discount_amount) {
-      const total = selectedProducts.value.reduce((sum, p) => sum + (p.price * p.qty), 0);
+    salesData.value.orderDiscountAmount = data.order?.total_discount || 0;
+    salesData.value.appliedPromotions = data.order?.applied_promotions || [];
 
-      // selectedProducts.value = selectedProducts.value.map(p => {
-      //   const ratio = (p.price * p.qty) / total;
-      //   const discountShare = data.order_discount_amount * ratio;
+    if (data.foc_items?.length) {
 
-      //   return {
-      //     ...p,
-      //     promotion_id: p.promotion_id || 'order-level',
-      //     discount_value: ratio || 0,
-      //     discount_amount: (p.discount_amount || 0) + discountShare / p.qty,
-      //     discount_price: p.price - ((p.discount_amount || 0) + discountShare / p.qty)
-      //   };
-      // });
-    }
+      data.foc_items.forEach(free => {
+        const product = productList.value.find(p => p.id === free.product_id);
+        if (!product) return;
 
-    if (data.free_items?.length) {
-      data.free_items.forEach(free => {
-        const exist = selectedProducts.value.find(p => p.id === free.product_id);
-
-        if (exist) {
-          exist.qty = free.qty;
-          exist.is_free = true;
-        } else {
-          const product = productList.value.find(p => p.id === free.product_id);
-
-          if (product) {
-            selectedProducts.value.push({
-              ...product,
-              qty: free.qty,
-              price: 0,
-              discount_price: 0,
-              is_free: true
-            });
-          }
-        }
+        selectedProducts.value.push({
+          ...product,
+          qty: free.qty,
+          price: 0,
+          discount_price: 0,
+          discount_amount: 0,
+          is_foc: true,
+          reward_id: free.reward_id,
+          promotion_id: free.promotion_id
+        });
       });
+
+      console.log('Selected products after adding FOC items:', selectedProducts.value);
     }
 
   } catch (err) {
@@ -962,7 +1119,7 @@ function printSlip(isSale = true) {
                 <td class="border-b p-2 border-gray-200">
                   <div class="flex flex-col">
                     <span class="leading-tight line-clamp-1">{{ item.name }}</span>
-                    <div v-if="!item.is_free" class="text-[13px] flex items-center gap-x-2">
+                    <div v-if="!item.is_foc" class="text-[13px] flex items-center gap-x-2">
                       <i class="fa fa-circle-minus text-xl cursor-pointer text-gray-500" @click="decreaseQty(item)"></i>
                       <span class="font-semibold"> {{ item.qty }} </span>
                       <i class="fa fa-circle-plus text-xl cursor-pointer text-gray-500" @click="increaseQty(item)"></i>
@@ -976,7 +1133,7 @@ function printSlip(isSale = true) {
                       <span class="text-blue-500 bg-blue-100 font-bold px-2 rounded-md"> FREE GIFT </span>
                     </div>
                     <div>
-                      <span v-if="item.promotion_id" class="font-semibold">Discount: [ - {{ item.discount_type ===
+                      <span v-if="item.promotion_id && !item.is_foc" class="font-semibold">Discount: [ - {{ item.discount_type ===
                         'AMOUNT' ?
                         Number(item.discount_value).toLocaleString() + " Ks." : item.discount_value + '%' }} ]</span>
                     </div>
@@ -985,7 +1142,7 @@ function printSlip(isSale = true) {
                 <td class="border-b p-2 border-gray-200 text-end font-semibold">
                   <div class="flex flex-col justify-between">
                     <span class="font-semibold">{{ (item.qty * item.price).toLocaleString('en-us') }}</span>
-                    <span v-if="item.promotion_id" class="font-semibold">- {{ (item.qty *
+                    <span v-if="item.promotion_id && !item.is_foc" class="font-semibold">- {{ (item.qty *
                       item.discount_amount).toLocaleString('en-us') }}</span>
                   </div>
                 </td>
@@ -1002,15 +1159,15 @@ function printSlip(isSale = true) {
         <div class="mt-2 w-full">
           <div class="grid grid-cols-2 gap-y-1 text-sm items-center">
             <!-- Total -->
-            <div class="text-right font-semibold"> {{ orderDiscountAmount > 0 ? 'Product Total' : 'Total' }} :</div>
+            <div class="text-right font-semibold"> {{ salesData.orderDiscountAmount > 0 ? 'Product Total' : 'Total' }} :</div>
             <div class="text-right font-semibold">
               {{ `${defaultCurrency} ${Number(totalAmount).toLocaleString('en-us')}` }}
             </div>
             <!-- Order Discount (if any) -->
-            <div v-if="orderDiscountAmount > 0" class="text-right font-semibold">Order Discount :</div>
-            <div v-if="orderDiscountAmount > 0" class="text-right font-semibold">-{{ `${defaultCurrency} ${Number(orderDiscountAmount).toLocaleString('en-us')}` }}</div>
-            <div v-if="orderDiscountAmount > 0" class="text-right font-semibold">Total :</div>
-            <div v-if="orderDiscountAmount > 0" class="text-right font-semibold">{{ `${defaultCurrency} ${Number(totalAmount - orderDiscountAmount).toLocaleString('en-us')}` }}</div>
+            <div v-if="salesData.orderDiscountAmount > 0" class="text-right font-semibold">Order Discount :</div>
+            <div v-if="salesData.orderDiscountAmount > 0" class="text-right font-semibold">-{{ `${defaultCurrency} ${Number(salesData.orderDiscountAmount).toLocaleString('en-us')}` }}</div>
+            <div v-if="salesData.orderDiscountAmount > 0" class="text-right font-semibold">Total :</div>
+            <div v-if="salesData.orderDiscountAmount > 0" class="text-right font-semibold">{{ `${defaultCurrency} ${Number(totalAmount - salesData.orderDiscountAmount).toLocaleString('en-us')}` }}</div>
             <!-- Pay Amount -->
             <div class="text-right font-semibold" v-if="salesData.paymentId == 1">Pay Amount :</div>
             <div class="flex justify-end items-center font-semibold gap-x-1" v-if="salesData.paymentId == 1">
@@ -1244,10 +1401,14 @@ function printSlip(isSale = true) {
                   ">
                   {{ item.product.name }}
                 </span>
-                <span v-if="item.promotion.id" style="font-size: 12px;">
+                <span v-if="item.promotion.id && !item.is_foc" style="font-size: 12px;">
                   Dis[-{{ item.promotion.discount_type === 'AMOUNT' ?
                     Number(item.promotion.discount_value).toLocaleString() + " Ks." : item.discount_value+'%' }}]
                 </span>
+                <span 
+                  v-if="item.is_foc" 
+                  style="font-weight: bold;"
+                > [FREE GIFT] </span>
               </div>
             </td>
             <td style="padding: 2px 0; text-align: center;">{{ item.quantity }}</td>
@@ -1262,7 +1423,7 @@ function printSlip(isSale = true) {
                   flex-direction: column;
                 ">
                 <span>{{ (item.quantity * item.product.price).toLocaleString() }}</span>
-                <span v-if="item.promotion.id">- {{ (item.quantity * item.discount_amount).toLocaleString() }}</span>
+                <span v-if="item.promotion.id && !item.is_foc">- {{ (item.quantity * item.discount_amount).toLocaleString() }}</span>
               </div>
             </td>
           </tr>
@@ -1277,7 +1438,18 @@ function printSlip(isSale = true) {
               margin-bottom: 4px;
             ">
           <span>SUBTOTAL</span>
-          <span>{{ `${defaultCurrency} ${Number(savedSalesData.total_amount).toLocaleString()}` }}</span>
+          <span>{{ `${defaultCurrency} ${(Number(savedSalesData.total_amount) + Number(savedSalesData.order_discount_amount)).toLocaleString()}` }}</span>
+        </div>
+        <div 
+          v-if="savedSalesData.order_discount_amount > 0" 
+          style="
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+          "
+        >
+          <span>Order Discount</span>
+          <span>-{{ `${defaultCurrency} ${Number(savedSalesData.order_discount_amount).toLocaleString()}` }}</span>
         </div>
         <!-- <div class="flex justify-between">
             <span>TAX ({{ data.taxRate }}%)</span>

@@ -236,7 +236,7 @@ function goBack() {
                 <template v-else>
                     <div v-if="isOrderDiscount">
                         <SubTitle :label="promoMode === 'MULTIPLIER' ? 'Multiplier' : 'Tiers'" class="mt-6 mb-4" />
-                        <div v-for="(tier, idx) in orderDiscountTiers" :key="idx" class="border rounded p-4 mb-4 bg-gray-50">
+                        <div v-for="(tier, idx) in orderDiscountTiers" :key="idx" class="border rounded p-4 mb-4 bg-gray-50 w-fit">
                             <div class="flex gap-x-4 flex-wrap items-end">
                                 <div class="flex flex-col gap-1 w-[200px]">
                                     <BaseLabel label="Condition Type" />
@@ -253,7 +253,7 @@ function goBack() {
                     </div>
                     <div v-if="isFOC">
                         <SubTitle :label="promoMode === 'MULTIPLIER' ? 'Multiplier' : 'Tiers'" class="mt-6 mb-4" />
-                        <div v-for="(tier, idx) in focTiers" :key="idx" class="border rounded p-4 mb-4 bg-gray-50">
+                        <div v-for="(tier, idx) in focTiers" :key="idx" class="border rounded p-4 mb-4 bg-gray-50 w-fit">
                             <div class="flex gap-x-4 flex-wrap items-end">
                                 <div class="flex flex-col gap-1 w-[200px]">
                                     <BaseLabel label="Condition Type" />

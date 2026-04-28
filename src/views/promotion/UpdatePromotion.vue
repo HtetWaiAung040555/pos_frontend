@@ -644,7 +644,7 @@ async function formSubmit() {
                         <BaseSwitch v-model="promoStatus" />
                     </div>
                 </div>
-                <div class="flex gap-x-4 mt-4">
+                <div class="flex gap-x-4 mt-4" v-if="isOrderDiscount || isFOC">
                     <!-- Promo Mode and Max Discount Amount for ORDER_DISCOUNT and FOC -->
                     <template v-if="isOrderDiscount || isFOC">
                         <div class="flex flex-col gap-1 w-[300px]">
@@ -661,6 +661,8 @@ async function formSubmit() {
                             <BaseInput v-model="maxDiscountAmount" type="number" min="0" placeholder="Max Discount Amount" />
                         </div>
                     </template>
+                </div>
+                <div class="flex gap-x-4 mt-4">
                     <!-- Started datetime input -->
                     <BaseInput 
                         size="sm" 
