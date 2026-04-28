@@ -109,7 +109,7 @@ const totalAmount = computed(() => {
 
 const remainingBalance = computed(() => {
   const balance = Number(selectedCustomer.value?.balance || 0);
-  return balance - totalAmount.value;
+  return balance - (totalAmount.value - Number(salesData.value.orderDiscountAmount || 0));
 });
 
 watch(visible, (newVal) => {

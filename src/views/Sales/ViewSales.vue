@@ -23,6 +23,9 @@ const formData = ref({
     customerId: '',
     paymentId: '1',
     remark: '',
+    subTotalAmount: 0,
+    totalAmount: 0,
+    orderDiscountAmount: 0,
     salesDate: moment().format('YYYY-MM-DDTHH:mm'),
     products: [],
 })
@@ -47,15 +50,88 @@ onMounted(async () => {
         customerId: useSales.salesList.customer.id,
         paymentId: useSales.salesList.payment_method.id,
         paymentMethodName: useSales.salesList.payment_method.name,
+        subTotalAmount: Number(useSales.salesList.total_amount) + Number(useSales.salesList.order_discount_amount),
         totalAmount: useSales.salesList.total_amount,
         paidAmount: useSales.salesList.paid_amount,
         changeAmount: useSales.salesList.due_amount,
+        orderDiscountAmount: useSales.salesList.order_discount_amount,
         statusId: useSales.salesList.status.id,
         remark: useSales.salesList.remark,
         salesDate: moment(useSales.salesList.sale_date).format('YYYY-MM-DDTHH:mm'),
     };
-    selectedProducts.value = useSales.salesList.details;
+    selectedProducts.value = mergeSelectedProducts(useSales.salesList.details || []);
 });
+
+function mergeSelectedProducts(details = []) {
+  const mergedProducts = new Map();
+
+  details.forEach((item, index) => {
+    const product = item.product || {};
+    const productId = item.product_id ?? product.id;
+    if (!productId) return;
+
+    const quantity = Number(item.quantity || 0);
+    if (quantity <= 0) return;
+
+    const promotionId = item.promotion?.id ?? item.promotion_id ?? null;
+    const discountType = item.promotion?.discount_type ?? item.discount_type ?? null;
+    const discountValue = Number(item.promotion?.discount_value ?? item.discount_value ?? 0);
+    const unitPrice = Number(item.price ?? product.price ?? 0);
+    const unitDiscountAmount = Number(item.discount_amount ?? 0);
+    const unitDiscountPrice = Number(item.discount_price ?? (unitPrice - unitDiscountAmount));
+    const totalPrice = unitDiscountPrice * quantity;
+    const isFree = item.is_foc;
+
+    const mergeKey = [
+      productId,
+      promotionId ?? 'no-promo',
+      discountType ?? 'NO_DISCOUNT',
+      discountValue,
+      unitPrice,
+      unitDiscountAmount,
+      unitDiscountPrice,
+      isFree ? 1 : 0,
+    ].join('|');
+
+    const existing = mergedProducts.get(mergeKey);
+    if (existing) {
+      existing.quantity += quantity;
+      existing.total += totalPrice;
+      return;
+    }
+
+    mergedProducts.set(mergeKey, {
+      id: `merged-${productId}-${promotionId ?? 'none'}-${index}`,
+      product: {
+        ...product,
+        id: productId,
+        name: product.name || item.product_name || 'Unknown Product',
+        price: unitPrice,
+      },
+      quantity,
+      price: unitPrice,
+      discount_amount: unitDiscountAmount,
+      discount_price: unitDiscountPrice,
+      total: totalPrice,
+      promotion: {
+        ...(item.promotion || {}),
+        id: promotionId,
+        discount_type: discountType,
+        discount_value: discountValue,
+      },
+      is_foc: isFree,
+    });
+  });
+
+  return Array.from(mergedProducts.values());
+}
+
+function buildSlipSalesData(sales = {}) {
+  return {
+    ...sales,
+    details: mergeSelectedProducts(sales.details || []),
+  };
+}
 
 // Print only the slip section between the markers
 function printSlip() {
@@ -191,7 +267,10 @@ function printSlip() {
                         class="hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.id"
                     >
                         <td class="border-b border-gray-200 p-2 text-center w-[50px]">{{ index + 1 }}.</td>
-                        <td class="border-b border-gray-200 p-2 text-center">{{ product.product.name }}</td>
+                        <td class="border-b border-gray-200 p-2 text-center">
+                          {{ product.product.name }}
+                          <span v-if="product.is_foc" class="text-blue-500 bg-blue-100 font-bold px-2 py-1 rounded-md"> FREE GIFT </span>
+                        </td>
                         <td class="border-b border-gray-200 p-2">{{ Number(product.price).toLocaleString('en-us') }}</td>
                         <td class="border-b border-gray-200 p-2">{{ Number(product.discount_amount).toLocaleString('en-us') }}</td>
                         <td class="border-b border-gray-200 p-2">{{ Number(product.discount_price == 0? product.price : product.discount_price).toLocaleString('en-us') }}</td>
@@ -201,25 +280,41 @@ function printSlip() {
                 </tbody>
             </table>
         </div>
-        <!-- Total Amounts -->
-        <div class="mt-3 text-black font-semibold flex justify-end">
-            <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
+        <!-- Sub Total Amount -->
+        <div class="mt-2 text-black font-semibold flex justify-end">
+            <div class="grid grid-cols-[auto_0.5rem_minmax(140px,220px)] items-center gap-x-3" >
+                <span class="whitespace-nowrap">Subtotal Amount</span>
+                <span class="text-right">:</span>
+                <span class="font-bold text-right">{{ Number(formData.subTotalAmount).toLocaleString('en-us') }}</span>
+            </div>
+        </div>
+        <!-- Order Discount Amount -->
+        <div class="mt-2 text-black font-semibold flex justify-end">
+            <div class="grid grid-cols-[auto_0.5rem_minmax(140px,220px)] items-center gap-x-3" >
+                <span class="whitespace-nowrap">Order Discount Amount</span>
+                <span class="text-right">:</span>
+                <span class="font-bold text-right">- {{ Number(formData.orderDiscountAmount).toLocaleString('en-us') }}</span>
+            </div>
+        </div>
+        <!-- Total Amount -->
+        <div class="mt-2 text-black font-semibold flex justify-end">
+            <div class="grid grid-cols-[auto_0.5rem_minmax(140px,220px)] items-center gap-x-3" >
                 <span class="whitespace-nowrap">Total Amount</span>
                 <span class="text-right">:</span>
                 <span class="font-bold text-right">{{ Number(formData.totalAmount).toLocaleString('en-us') }}</span>
             </div>
         </div>
         <!-- Paid Amount -->
-        <div class="mt-3 text-black font-semibold flex justify-end">
-            <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
+        <div class="mt-2 text-black font-semibold flex justify-end">
+            <div class="grid grid-cols-[auto_0.5rem_minmax(140px,220px)] items-center gap-x-3" >
                 <span class="whitespace-nowrap">Paid Amount</span>
                 <span class="text-right">:</span>
                 <span class="font-bold text-right">{{ Number(formData.paidAmount).toLocaleString('en-us') }}</span>
             </div>
         </div>
         <!-- Change Amount -->
-        <div class="mt-3 text-black font-semibold flex justify-end">
-            <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
+        <div class="mt-2 text-black font-semibold flex justify-end">
+            <div class="grid grid-cols-[auto_0.5rem_minmax(140px,220px)] items-center gap-x-3" >
                 <span class="whitespace-nowrap">Change Amount</span>
                 <span class="text-right">:</span>
                 <span class="font-bold text-right">{{ Number(formData.changeAmount).toLocaleString('en-us') }}</span>
@@ -301,9 +396,10 @@ function printSlip() {
                   ">
                     {{ item.product.name }}
                   </span>
-                  <span v-if="item.promotion.id" style="font-size: 12px;">
+                  <span v-if="item.promotion.id && !item.is_foc" style="font-size: 12px;">
                     Dis[-{{ item.promotion.discount_type === 'AMOUNT' ? Number(item.promotion.discount_value).toLocaleString()+" Ks." : item.discount_value+'%' }}]
                   </span>
+                  <span v-if="item.is_foc" style="font-weight: bold;"> [FREE GIFT] </span>
                 </div>
               </td>
               <td style="padding: 2px 0; text-align: center;">{{ item.quantity }}</td>
@@ -318,7 +414,7 @@ function printSlip() {
                   flex-direction: column;
                 ">
                   <span>{{ (item.quantity * item.product.price).toLocaleString() }}</span>
-                  <span v-if="item.promotion.id">- {{ (item.quantity * item.discount_amount).toLocaleString() }}</span>
+                  <span v-if="item.promotion.id && !item.is_foc">- {{ (item.quantity * item.discount_amount).toLocaleString() }}</span>
                 </div>
               </td>
             </tr>
@@ -333,7 +429,17 @@ function printSlip() {
               margin-bottom: 4px;
             ">
             <span>SUBTOTAL</span>
-            <span>Ks. {{Number(formData.totalAmount).toLocaleString() }}</span>
+            <span>Ks. {{formData.subTotalAmount.toLocaleString() }}</span>
+          </div>
+          <div 
+            v-if="formData.orderDiscountAmount > 0" style="
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 4px;
+            "
+          >
+            <span>Order Discount</span>
+            <span>-Ks. {{ Number(formData.orderDiscountAmount).toLocaleString('en-us') }}</span>
           </div>
           <!-- <div class="flex justify-between">
             <span>TAX ({{ data.taxRate }}%)</span>
