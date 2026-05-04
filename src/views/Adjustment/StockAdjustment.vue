@@ -4,12 +4,13 @@ import PageTitle from '@/components/PageTitle.vue';
 import DataTable from '@/components/DataTable.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import { useRouter } from 'vue-router';
-import { onMounted, ref, computed, watch } from 'vue';
-import { DatePicker, useToast } from 'primevue';
+import { onMounted, ref, watch } from 'vue';
+import { DatePicker, Dialog, useToast } from 'primevue';
 import moment from 'moment'
 import { useFilterStore } from '@/stores/filterStore';
 import { usePermissionStore } from '@/stores/usePermissionStore';
 import BaseInput from '@/components/BaseInput.vue';
+import BaseLabel from '@/components/BaseLabel.vue';
 import { useStockTransactionStore } from '@/stores/useStockTransactionStore';
 import { getPresetRange } from '@/utils/datePresets';
 
@@ -19,11 +20,13 @@ const filter = useFilterStore();
 const usePermission = usePermissionStore();
 const useStockTransaction = useStockTransactionStore();
 
-const searchValue = ref('');
-const startDate = ref('');
-const endDate = ref('');
+const searchProductValue = ref('');
+const selectedType = ref('');
+const selectedPerPage = ref(100);
+const pagination = ref({});
 const dataList = ref([]);
 const dateRange = ref(null);
+const stockAdjustmentFilter = ref(false);
 const isDateLoading = ref(false);
 const filteredData = ref({
     startedDate: moment().startOf('week').format('YYYY-MM-DDTHH:mm'),
@@ -36,7 +39,9 @@ onMounted(async () => {
     if (saved) {
         if (saved.startedDate) filteredData.value.startedDate = saved.startedDate;
         if (saved.endedDate) filteredData.value.endedDate = saved.endedDate;
-        if (saved.searchValue) searchValue.value = saved.searchValue;
+        if (saved.searchProductValue) searchProductValue.value = saved.searchProductValue;
+        if (saved.selectedType) selectedType.value = saved.selectedType;
+        if (saved.selectedPerPage) selectedPerPage.value = saved.selectedPerPage;
     }
 
     if (filteredData.value.startedDate && filteredData.value.endedDate) {
@@ -45,8 +50,6 @@ onMounted(async () => {
             moment(filteredData.value.endedDate).toDate()
         ];
     }
-    startDate.value = filteredData.value.startedDate;
-    endDate.value = filteredData.value.endedDate;
     await fetchStockTransactions();
     saveFilters();
 });
@@ -55,20 +58,35 @@ function saveFilters() {
     filter.setPageFilter('stock_adjustment', {
         startedDate: filteredData.value.startedDate,
         endedDate: filteredData.value.endedDate,
-        searchValue: searchValue.value,
+        searchProductValue: searchProductValue.value,
+        selectedType: selectedType.value,
+        selectedPerPage: selectedPerPage.value,
     });
 }
 
-async function fetchStockTransactions() {
+async function fetchStockTransactions(pagePayload = 1) {
     isDateLoading.value = true;
+    const payloadIsObject = pagePayload && typeof pagePayload === 'object';
+    const page = payloadIsObject ? Number(pagePayload.page || 1) : Number(pagePayload || 1);
+    const perPage = payloadIsObject ? Number(pagePayload.perPage || selectedPerPage.value || 100) : Number(selectedPerPage.value || 100);
+    if (payloadIsObject && pagePayload.perPage) {
+        selectedPerPage.value = perPage;
+    }
     try {
-    await useStockTransaction.fetchStockTransactions({
-        start_date: filteredData.value.startedDate ? moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss') : "",
-        end_date: filteredData.value.endedDate ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss') : "",
-        reference_type: filteredData.value.referenceType ? filteredData.value.referenceType : "",
-    });
-    dataList.value = useStockTransaction.list;
-    saveFilters();
+        const start = filteredData.value.startedDate ? moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss') : "";
+        const end = filteredData.value.endedDate ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss') : "";
+        const payload = {
+            start_date: start,
+            end_date: end,
+            referenceType: filteredData.value.referenceType ? filteredData.value.referenceType : "",
+            type: selectedType.value,
+            product: searchProductValue.value,
+        };
+        console.log('Fetching with payload:', payload, 'Page:', page, 'Per Page:', perPage);
+        await useStockTransaction.fetchStockTransactions(payload, page, perPage);
+        dataList.value = useStockTransaction.list;
+        pagination.value = useStockTransaction.pagination;
+        saveFilters();
     } finally {
         isDateLoading.value = false;
     }
@@ -80,13 +98,9 @@ function setFilteredDatesFromRange(range) {
         const end = moment(range[1]).endOf('day');
         filteredData.value.startedDate = start.format('YYYY-MM-DDTHH:mm');
         filteredData.value.endedDate = end.format('YYYY-MM-DDTHH:mm');
-        startDate.value = start.toDate();
-        endDate.value = end.toDate();
     } else {
         filteredData.value.startedDate = "";
         filteredData.value.endedDate = "";
-        startDate.value = '';
-        endDate.value = '';
     }
 }
 
@@ -95,22 +109,24 @@ function applyPresetRange(preset) {
     dateRange.value = range ? range : null;
 }
 
-watch(dateRange, async (val) => {
+watch(dateRange, (val) => {
     setFilteredDatesFromRange(val);
-    const hasFullRange = Array.isArray(val) && val[0] && val[1];
-    const cleared = val === null;
-    if (hasFullRange || cleared) {
-        await fetchStockTransactions();
-    }
 });
 
 watch([
     () => filteredData.value.startedDate,
     () => filteredData.value.endedDate,
-    () => searchValue.value,
+    () => searchProductValue.value,
+    () => selectedType.value,
+    () => selectedPerPage.value,
 ], () => {
     saveFilters();
 });
+
+function applyRangeAndClose() {
+    fetchStockTransactions();
+    stockAdjustmentFilter.value = false;
+}
 
 // Table headers
 const columns = [
@@ -140,17 +156,6 @@ const columns = [
 function changeRoute(pathname) {
     router.push(pathname);
 }
-
-// Filter Function
-const filteredRows = computed(() => {
-    if (!searchValue.value) return dataList.value;
-    return dataList.value.filter(row => {
-        const productName = row.inventory.product.name.toLowerCase();
-        const barcode = row.inventory.product.barcode.toLowerCase();
-        const search = searchValue.value.toLowerCase();
-        return productName.includes(search) || barcode.includes(search);
-    });
-});
 
 //Branch delete function
 async function deleteHandle(id) {
@@ -182,10 +187,13 @@ async function deleteHandle(id) {
         </PageTitle>
         <!-- DataTable -->
         <DataTable 
-            :columns="columns" :rows="filteredRows" :isPaginate="false"
+            :columns="columns" :rows="dataList" :isPaginate="true"
+            :paginationMeta="pagination"
+            :serverPagination="true"
             :isLoading="useStockTransaction.loading" @delete="deleteHandle"
             filename="Stock_Adjustment"
             :isDelete="!usePermission.can('Stock adjustment', 'Delete')"
+            @pageChange="fetchStockTransactions"
         >
             <!-- Filter Section -->
             <template #filters>
@@ -219,10 +227,78 @@ async function deleteHandle(id) {
                             </div>
                         </template>
                     </DatePicker>
-                    <BaseInput size="sm" v-model="searchValue" placeholder="Search" width="200px" height="h-[35px]"
-                        icon="pi pi-search" />
+                    <BaseButton label="Filter" icon="pi pi-filter" severity="primary" @click="stockAdjustmentFilter = true" />
                 </div>
             </template>
         </DataTable>
     </div>
+
+    <Dialog v-model:visible="stockAdjustmentFilter" :style="{ width: '700px' }" :modal="true" :draggable="false">
+        <template #container="{ closeCallback }">
+            <div class="p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-semibold text-black">Stock Adjustment Filter</h3>
+                    <BaseButton size="sm" icon="pi pi-times" severity="danger" variant="text" @click="closeCallback" />
+                </div>
+                <div class="grid grid-cols-2 gap-2 items-center">
+                    <div class="flex flex-col gap-1">
+                        <BaseLabel label="Date Range" />
+                        <DatePicker
+                            v-model="dateRange"
+                            selectionMode="range"
+                            :manualInput="false"
+                            showButtonBar
+                            placeholder="Date range"
+                            inputClass="h-[35px] w-full"
+                            :disabled="isDateLoading"
+                        >
+                            <template #buttonbar="{ clearCallback }">
+                                <div class="flex justify-between w-full p-2 gap-2 flex-wrap items-center">
+                                    <div class="flex gap-2 flex-wrap">
+                                        <BaseButton size="sm" label="Today" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('today')" />
+                                        <BaseButton size="sm" label="Yesterday" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('yesterday')" />
+                                        <BaseButton size="sm" label="This Week" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisWeek')" />
+                                        <BaseButton size="sm" label="This Month" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisMonth')" />
+                                        <BaseButton size="sm" label="This Year" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('thisYear')" />
+                                        <BaseButton size="sm" label="All" variant="outlined" :disabled="isDateLoading" @click="() => applyPresetRange('all')" />
+                                    </div>
+                                    <div class="flex gap-2 items-center">
+                                        <div v-if="isDateLoading" class="flex items-center text-xs text-gray-600 gap-2">
+                                            <i class="pi pi-spin pi-spinner"></i>
+                                            <span>Loading...</span>
+                                        </div>
+                                        <BaseButton size="sm" label="Clear" icon="pi pi-times" severity="danger" variant="outlined" :disabled="isDateLoading" @click="clearCallback" />
+                                    </div>
+                                </div>
+                            </template>
+                        </DatePicker>
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <BaseInput 
+                            label="Product"
+                            size="sm"
+                            v-model="searchProductValue"
+                            placeholder="Search by product name/barcode"
+                            icon="pi pi-search"
+                            height="h-[35px]"
+                        />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                        <BaseLabel label="Type" />
+                        <select
+                            v-model="selectedType"
+                            class="w-full border border-gray-300 rounded-md px-2 py-2 text-sm"
+                        >
+                            <option value="">All</option>
+                            <option value="in">In</option>
+                            <option value="out">Out</option>
+                        </select>
+                    </div>
+                    <div class="col-span-2 flex items-center justify-end">
+                        <BaseButton label="Apply Filter" icon="pi pi-filter" severity="primary" @click="applyRangeAndClose" />
+                    </div>
+                </div>
+            </div>
+        </template>
+    </Dialog>
 </template>
