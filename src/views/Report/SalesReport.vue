@@ -16,6 +16,7 @@ import { useCustomerStore } from '@/stores/useCustomerStore';
 import { useProductStore } from '@/stores/useProductStore';
 import { useWarehouseStore } from '@/stores/useWarehouseStore';
 import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
+import { useStatusStore } from '@/stores/useStatusStore';
 import BaseLabel from '@/components/BaseLabel.vue';
 import { useRouter } from 'vue-router';
 import { useFilterStore } from '@/stores/filterStore';
@@ -43,6 +44,7 @@ const customerStore = useCustomerStore();
 const productStore = useProductStore();
 const warehouseStore = useWarehouseStore();
 const paymentMethodStore = usePaymentMethodStore();
+const statusStore = useStatusStore();
 
 onMounted(async () => {
 	// default range: current month to today
@@ -54,6 +56,7 @@ onMounted(async () => {
 		productStore.fetchAllProduct(),
 		warehouseStore.fetchAllWarehouse?.() ?? Promise.resolve(),
 		paymentMethodStore.fetchAllPaymentMethod(),
+		statusStore.fetchAllStatus(),
 	]);
 
 	const saved = filter.getPageFilter('salesReport');
@@ -67,23 +70,39 @@ onMounted(async () => {
 		if (saved.selectedPaymentMethod) selectedPaymentMethod.value = saved.selectedPaymentMethod;
 		if (saved.selectedStatus) selectedStatus.value = saved.selectedStatus;
 	}
-	dateRange.value = [start, end];
+
+	if (!Array.isArray(dateRange.value) || !dateRange.value[0] || !dateRange.value[1]) {
+		dateRange.value = [start, end];
+	}
+
 	await fetchSales();
+});
+
+const selectedStatusId = computed(() => {
+	return selectedStatus.value ? statusStore.getStatusId(selectedStatus.value) : null;
 });
 
 async function fetchSales() {
 	dataLoading.value = true;
 	try {
 		const [start, end] = dateRange.value || [];
-		
+
 		const startedDate = start ? moment(start).startOf('day').format('YYYY-MM-DD HH:mm:ss') : "";
 		const endedDate = end ? moment(end).endOf('day').format('YYYY-MM-DD HH:mm:ss') : "";
-		await useSales.fetchAllSales({
+		const payload = {
 			start_date: startedDate,
-			end_date: endedDate
-		});
+			end_date: endedDate,
+			customer: selectedCustomer.value?.id || selectedCustomer.value?.name || null,
+			product: selectedProduct.value?.barcode || selectedProduct.value?.name || null,
+			warehouseId: selectedWarehouse.value?.id || null,
+			paymentId: selectedPaymentMethod.value || null,
+			statusId: selectedStatusId.value || null,
+		};
+
+		console.log('Fetching sales with payload:', payload);
+
+		await useSales.fetchAllSales(payload);
 		salesList.value = useSales.salesList || [];
-		// persist current filters after fetch
 		saveFilters();
 	} catch (error) {
 		console.error('Error fetching sales:', error);
@@ -94,6 +113,7 @@ async function fetchSales() {
 
 function applyFilters() {
 	showFilter.value = false;
+	fetchSales();
 }
 
 function resetFilters() {
@@ -107,6 +127,8 @@ function resetFilters() {
 	const start = moment().startOf('month').toDate();
 	const end = moment().endOf('day').toDate();
 	dateRange.value = [start, end];
+	showFilter.value = false;
+	fetchSales();
 }
 
 function saveFilters() {
@@ -144,11 +166,13 @@ function applyPresetRange(preset) {
 	dateRange.value = range ? range : null;
 }
 
-// Filtering logic (client-side)
+// Filtering logic is now handled by the backend; the frontend keeps presentation-specific aggregation and detail display.
 const isProductReport = computed(() => reportType.value === 'product');
 const isCustomerReport = computed(() => reportType.value === 'customer');
 const isPaymentReport = computed(() => reportType.value === 'payment');
 const isDiscountReport = computed(() => reportType.value === 'discount');
+
+const filteredSales = computed(() => salesList.value || []);
 
 const currentReportLabel = computed(() => {
     switch (reportType.value) {
@@ -167,24 +191,6 @@ const currentReportLabel = computed(() => {
         default:
             return 'By Amount';
     }
-});
-
-const filteredSales = computed(() => {
-	const rows = Array.isArray(salesList.value) ? salesList.value : [];
-
-	return rows.filter(sale => {
-
-		if (selectedCustomer.value && sale.customer?.id !== selectedCustomer.value.id) return false;
-		if (selectedWarehouse.value && sale.warehouse?.id !== selectedWarehouse.value.id) return false;
-		if (selectedPaymentMethod.value && String(sale.payment_method?.id) !== String(selectedPaymentMethod.value)) return false;
-		if (selectedStatus.value && sale.status?.name && sale.status.name.toLowerCase() !== selectedStatus.value.toLowerCase()) return false;
-
-		if (selectedProduct.value) {
-			const hasProduct = (sale.details || []).some(d => d.product?.id === selectedProduct.value.id);
-			if (!hasProduct) return false;
-		}
-		return true;
-	});
 });
 
 const matchesSelectedProduct = (detail) => {
@@ -776,12 +782,13 @@ function exportDetailsToExcel() {
 	});
 }
 
-const statusOptions = [
+const statusOptions = computed(() => [
 	{ label: 'All', value: '' },
-	{ label: 'Hold', value: 'Hold' },
-	{ label: 'Complete', value: 'Complete' },
-	{ label: 'Void', value: 'Void' },
-];
+	...statusStore.statusList.map(status => ({
+		label: status.name,
+		value: status.name,
+	})),
+]);
 
 const paymentOptions = computed(() => {
 	const list = paymentMethodStore.paymentMethodList || [];
