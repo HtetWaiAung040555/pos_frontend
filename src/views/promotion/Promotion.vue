@@ -11,7 +11,7 @@
     import BaseInput from '@/components/BaseInput.vue';
     import { usePermissionStore } from '@/stores/usePermissionStore';
     import { usePromotionStore } from '@/stores/usePromotionStore';
-import { statusBadgeHtml } from '@/utils/const';
+import { getPromotionLifecycleStatusName, statusBadgeHtml } from '@/utils/const';
 
     const router = useRouter();
     const usePromo = usePromotionStore();
@@ -28,6 +28,10 @@ import { statusBadgeHtml } from '@/utils/const';
       promoList.value = usePromo.promoList;
     });
 
+    function promotionStatusName(row) {
+        return getPromotionLifecycleStatusName(row.start_at, row.end_at);
+    }
+
     const columns = [
         { key: 'id', label: 'ID', formatter: (row) => row.id, onClick: (row) => {
             router.push({name: 'View Promotion', query: { id: row.id }});
@@ -38,7 +42,7 @@ import { statusBadgeHtml } from '@/utils/const';
         // { key: 'discount_value', label: 'Discount Value', formatter: (row) => `${Number(row.discount_value).toLocaleString('en-us')}${row.discount_type === 'Percentage' ? '%' : ''}` },
         { key: 'start_at', label: 'Start', formatter: (row) => moment(row.start_at).format('DD-MM-YY hh:mm') },
         { key: 'end_at', label: 'End', formatter: (row) => moment(row.end_at).format('DD-MM-YY hh:mm') },
-        { key: 'status', label: 'Status', formatter: (row) => statusBadgeHtml(row.status?.name) },
+        { key: 'status', label: 'Status', formatter: (row) => statusBadgeHtml(promotionStatusName(row)) },
         { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by?.name },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
         // { key: 'updated_by.name', label: 'Updated By', formatter: (row) => row.updated_by?.name },
@@ -102,7 +106,7 @@ import { statusBadgeHtml } from '@/utils/const';
             :isLoading="usePromo.loading" 
             @delete="deleteHandle"
             :defaultSort="{key: 'start_at', order: 'desc'}"
-            :isEdit="!usePermission.can('Promotion', 'Update')"
+            :isEdit="(row) => !usePermission.can('Promotion', 'Update') || promotionStatusName(row) === 'Inactive'"
             :isDelete="!usePermission.can('Promotion', 'Delete')"
             filename="Promotion"
         >

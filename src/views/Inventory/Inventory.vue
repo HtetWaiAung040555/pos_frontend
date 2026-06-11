@@ -75,6 +75,7 @@ watch([
         { key: 'product.name', label: 'Product', formatter: (row) => row.product.name },
         { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.warehouse.name },
         { key: 'qty', label: 'Qty' },
+        { key: 'foc_qty', label: 'FOC Qty' },
         { key: 'expired_date', label: 'Expire', formatter: (row) => row.expired_date? moment(row.expired_date).format('DD-MM-YY') : "N/A" },
         { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
@@ -142,9 +143,17 @@ watch([
         }
     }
 
-    const totalQty = computed(() => {
+    const totalInvStock = computed(() => {
         return filteredRows.value.reduce((sum, item) => sum + Number(item.qty), 0);
     }); 
+
+    const totalFOCQty = computed(() => {
+        return filteredRows.value.reduce((sum, item) => sum + Number(item.foc_qty), 0);
+    });
+
+    const totalQty = computed(() => {
+        return filteredRows.value.reduce((sum, item) => sum + Number(item.qty) + Number(item.foc_qty), 0);
+    });
 
 </script>
 
@@ -165,7 +174,9 @@ watch([
             </template>
         </PageTitle>
         <div class="grid grid-cols-5 my-3 gap-x-4">
-            <DashboardCard title="Total Qty" :value="totalQty" icon="fa fa-receipt" color="green" />
+            <DashboardCard title="Total Qty" :value="totalQty" icon="fa fa-boxes" color="green" />
+            <DashboardCard title="Total Qty" :value="totalInvStock" icon="fa fa-receipt" color="purple" />
+            <DashboardCard title="Total FOC Qty" :value="totalFOCQty" icon="fa fa-gift" color="blue" />
         </div>
         <!-- DataTable -->
         <DataTable

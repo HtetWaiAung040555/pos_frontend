@@ -36,6 +36,33 @@ export function statusBadgeHtml(name) {
     return `<span class="px-2 py-1 rounded ${cls}">${name ?? ''}</span>`;
 }
 
+export const promotionStatusFallbackIds = {
+    Active: 1,
+    Inactive: 2,
+    Applied: 9,
+};
+
+export function getPromotionLifecycleStatusName(startAt, endAt, now = new Date()) {
+    const parseDate = (value) => {
+        if (!value) return null;
+        const normalized = String(value).replace(' ', 'T');
+        const date = new Date(normalized);
+        return Number.isNaN(date.getTime()) ? null : date;
+    };
+
+    const startDate = parseDate(startAt);
+    const endDate = parseDate(endAt);
+    const currentDate = now instanceof Date ? now : parseDate(now);
+
+    if (endDate && currentDate && currentDate > endDate) return 'Inactive';
+    if (startDate && currentDate && currentDate >= startDate) return 'Applied';
+    return 'Active';
+}
+
+export function getPromotionStatusId(statusStore, statusName) {
+    return statusStore?.getStatusId?.(statusName) || promotionStatusFallbackIds[statusName] || null;
+}
+
 export function formatPrice(value) {
     return Number(value).toLocaleString();
 }

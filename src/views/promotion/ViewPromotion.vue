@@ -11,7 +11,7 @@ import BaseSwitch from '@/components/BaseSwitch.vue';
 import { usePromotionStore } from '@/stores/usePromotionStore';
 import { useProductStore } from '@/stores/useProductStore';
 import BaseButton from '@/components/BaseButton.vue';
-import { formatPrice, statusBadgeHtml } from '@/utils/const';
+import { formatPrice, getPromotionLifecycleStatusName, statusBadgeHtml } from '@/utils/const';
 import DetailRow from '@/components/DetailRow.vue';
 
 const route = useRoute();
@@ -29,6 +29,9 @@ const formData = ref({
     discountType: 'AMOUNT',
     discountValue: 0,
     maxDiscountAmount: 0,
+    overridePrice: 0,
+    branchScopeType: 'ALL',
+    warehouseScopeType: 'ALL',
     conditionType: 'ORDER_AMOUNT',
     conditionProductId: '',
     targetValue: 0,
@@ -43,7 +46,11 @@ const formData = ref({
 });
 const selectedProducts = ref([]);
 const focTiers = ref([]);
+const focAllocations = ref([]);
 const orderDiscountTiers = ref([]);
+const priceOverrideTiers = ref([]);
+const selectedBranches = ref([]);
+const selectedWarehouses = ref([]);
 const promoMode = ref('TIER');
 const maxDiscountAmount = ref(0);
 const promoStatus = ref(true);
@@ -51,7 +58,10 @@ const productList = ref([]);
 
 const isProductDiscount = computed(() => formData.value.promoType === 'PRODUCT_DISCOUNT');
 const isOrderDiscount = computed(() => formData.value.promoType === 'ORDER_DISCOUNT');
+const isPriceOverride = computed(() => formData.value.promoType === 'PRICE_OVERRIDE');
 const isFOC = computed(() => formData.value.promoType === 'FOC');
+const hasScopedBranches = computed(() => formData.value.branchScopeType === 'SELECTED');
+const hasScopedWarehouses = computed(() => formData.value.warehouseScopeType === 'SELECTED');
 
 onMounted(async () => {
     await useProduct.fetchAllProduct();
@@ -64,20 +74,27 @@ onMounted(async () => {
         formData.value.promoType = promo.promo_type || 'PRODUCT_DISCOUNT';
         formData.value.discountType = promo.discount_type || 'AMOUNT';
         formData.value.discountValue = Number(promo.discount_value) || 0;
+        formData.value.overridePrice = Number(promo.override_price) || 0;
+        formData.value.branchScopeType = promo.branch_scope_type || 'ALL';
+        formData.value.warehouseScopeType = promo.warehouse_scope_type || 'ALL';
         formData.value.startDate = promo.start_at || formData.value.startDate;
         formData.value.endDate = promo.end_at || formData.value.endDate;
-        formData.value.status = promo.status?.id === 1 || promo.active === true ? 'Active' : 'Inactive';
+        formData.value.status = getPromotionLifecycleStatusName(promo.start_at, promo.end_at);
         formData.value.promoMode = promo.promo_mode || 'TIER';
         formData.value.maxDiscountAmount = Number(promo.max_reward_value) || 0;
         formData.value.createdBy = promo.created_by?.name || '';
         formData.value.createdAt = promo.created_at || null;
         formData.value.updatedBy = promo.updated_by?.name || '';
         formData.value.updatedAt = promo.updated_at || null;
-        promoStatus.value = promo.status?.id === 1 || promo.active === true;
+        promoStatus.value = formData.value.status !== 'Inactive';
         promoMode.value = promo.promo_mode || 'TIER';
         maxDiscountAmount.value = Number(promo.max_reward_value) || 0;
-        // PRODUCT_DISCOUNT
-        if (promo.promo_type === 'PRODUCT_DISCOUNT') {
+
+        selectedBranches.value = Array.isArray(promo.branches) ? promo.branches.slice() : [];
+        selectedWarehouses.value = Array.isArray(promo.warehouses) ? promo.warehouses.slice() : [];
+
+        // PRODUCT_DISCOUNT / PRICE_OVERRIDE
+        if (['PRODUCT_DISCOUNT', 'PRICE_OVERRIDE'].includes(promo.promo_type)) {
             if (Array.isArray(promo.products) && promo.products.length > 0) {
                 if (typeof promo.products[0] === 'object') {
                     selectedProducts.value = promo.products.slice();
@@ -86,6 +103,16 @@ onMounted(async () => {
                 }
             }
         }
+
+        // PRICE_OVERRIDE
+        if (promo.promo_type === 'PRICE_OVERRIDE' && Array.isArray(promo.conditions)) {
+            const firstCondition = promo.conditions[0] || {};
+            priceOverrideTiers.value = [{
+                condition_type: 'ORDER_QTY',
+                target_value: Number(firstCondition.target_value) || 0,
+            }];
+        }
+
         // ORDER_DISCOUNT
         if (promo.promo_type === 'ORDER_DISCOUNT' && Array.isArray(promo.conditions)) {
             orderDiscountTiers.value = promo.conditions.map((cond, idx) => {
@@ -113,6 +140,19 @@ onMounted(async () => {
                 };
             });
         }
+
+        if (promo.promo_type === 'FOC' && Array.isArray(promo.foc_allocations)) {
+            focAllocations.value = promo.foc_allocations.map((allocation) => ({
+                id: allocation.id,
+                productId: allocation.product?.id ?? allocation.product_id,
+                name: allocation.product?.name ?? '',
+                image_url: allocation.product?.image_url ?? '',
+                allocatedQty: Number(allocation.allocated_qty) || 0,
+                usedQty: Number(allocation.used_qty) || 0,
+                remainingQty: Number(allocation.remaining_qty) || 0,
+                warehouseId: allocation.allocated_warehouse_id ?? null,
+            }));
+        }
     }
 });
 
@@ -124,6 +164,20 @@ function getFinalPrice(product) {
     }
     // percentage
     return Math.max(0, price * (1 - val / 100));
+}
+
+function getOverridePrice() {
+    return Math.max(0, Number(formData.value.overridePrice) || 0);
+}
+
+function listNames(items) {
+    if (!items || items.length === 0) return '-';
+    return items.map(item => item.name || `#${item.id}`).join(', ');
+}
+
+function warehouseName(warehouseId) {
+    const warehouse = selectedWarehouses.value.find(item => item.id == warehouseId);
+    return warehouse?.name || (warehouseId ? `Warehouse #${warehouseId}` : '-');
 }
 
 function goBack() {
@@ -152,7 +206,12 @@ function goBack() {
                         <DetailRow label="Name" :value="formData.name" />
                         <DetailRow label="Promo Type" :value="formData.promoType" />
                         <DetailRow v-if="!isProductDiscount" label="Promo Mode" :value="formData.promoMode" />
-                        <DetailRow v-if="!isProductDiscount" label="Max Discount" :value="formData.maxDiscountAmount" />
+                        <DetailRow v-if="isOrderDiscount || isFOC" label="Max Reward" :value="formData.maxDiscountAmount || '-'" />
+                        <DetailRow v-if="isPriceOverride" label="Override Price" :value="formData.overridePrice" :formatter="v => formatPrice(v)" />
+                        <DetailRow label="Branch Scope" :value="formData.branchScopeType" />
+                        <DetailRow v-if="hasScopedBranches" label="Branches" :value="listNames(selectedBranches)" />
+                        <DetailRow label="Warehouse Scope" :value="formData.warehouseScopeType" />
+                        <DetailRow v-if="hasScopedWarehouses" label="Warehouses" :value="listNames(selectedWarehouses)" />
                         <DetailRow label="Start Date" :value="formData.startDate" :formatter="v => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
                         <DetailRow label="End Date" :value="formData.endDate" :formatter="v => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
                         <DetailRow v-if="isProductDiscount" label="Discount Type" :value="formData.discountType" />
@@ -199,9 +258,9 @@ function goBack() {
                 <div class="flex gap-x-4 mt-4">
                     <BaseInput v-model="formData.description" label="Description" :readonly="true" />
                 </div> -->
-                <template v-if="isProductDiscount">
+                <template v-if="isProductDiscount || isPriceOverride">
                     <div class="flex flex-col">
-                        <SubTitle label="Selected Products" />
+                        <SubTitle label="Selected Products" class="mt-6"  />
                         <div class="mt-4">
                             <div class="max-h-[350px] overflow-y-auto rounded">
                                 <table class="w-full text-sm border-collapse">
@@ -210,7 +269,7 @@ function goBack() {
                                             <th class="py-2 sticky top-0 bg-white z-10 border-b">Image</th>
                                             <th class="py-2 sticky top-0 bg-white z-10 border-b">Product Name</th>
                                             <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Price</th>
-                                            <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Final Price</th>
+                                            <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">{{ isPriceOverride ? 'Override Price' : 'Final Price' }}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -222,13 +281,25 @@ function goBack() {
                                             </td>
                                             <td class="py-2">{{ product.name }}</td>
                                             <td class="py-2 text-right">{{ formatPrice(product.price) }}</td>
-                                            <td class="py-2 text-right">{{ formatPrice(getFinalPrice(product)) }}</td>
+                                            <td class="py-2 text-right">{{ formatPrice(isPriceOverride ? getOverridePrice() : getFinalPrice(product)) }}</td>
                                         </tr>
                                         <tr v-if="selectedProducts.length === 0">
                                             <td colspan="4" class="py-4 text-center text-gray-500">No products selected</td>
                                         </tr>
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div v-if="isPriceOverride">
+                        <SubTitle label="Price Override Conditions" class="mt-6 mb-4" />
+                        <div v-for="(tier, idx) in priceOverrideTiers" :key="idx" class="border rounded p-4 mb-4 bg-gray-50 w-fit">
+                            <div class="flex gap-x-4 flex-wrap items-end">
+                                <div class="flex flex-col gap-1 w-[200px]">
+                                    <BaseLabel label="Condition Type" />
+                                    <input class="border p-2 rounded bg-gray-100 w-full" value="ORDER_QTY" readonly />
+                                </div>
+                                <BaseInput size="sm" v-model="tier.target_value" label="Target Qty" width="200px" height="h-[35px]" type="number" :readonly="true" />
                             </div>
                         </div>
                     </div>
@@ -292,6 +363,38 @@ function goBack() {
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+                        </div>
+                        <div>
+                            <SubTitle label="FOC Stock" class="mt-6 mb-4" />
+                            <div class="max-h-[240px] overflow-y-auto rounded border border-gray-200 mt-2">
+                                <table class="w-full text-sm border-collapse">
+                                    <thead>
+                                        <tr class="text-left text-gray-600">
+                                            <th class="py-2 px-2 border-b">Image</th>
+                                            <th class="py-2 px-2 border-b">Product Name</th>
+                                            <th class="py-2 px-2 border-b">Warehouse</th>
+                                            <th class="py-2 px-2 border-b text-right">Allocated Qty</th>
+                                            <th class="py-2 px-2 border-b text-right">Used Qty</th>
+                                            <th class="py-2 px-2 border-b text-right">Remaining Qty</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="alloc in focAllocations" :key="alloc.id" class="border-b hover:bg-gray-50">
+                                            <td class="py-2 px-2">
+                                                <img class="object-cover w-10 h-10 rounded" :src="alloc.image_url" />
+                                            </td>
+                                            <td class="py-2 px-2">{{ alloc.name }}</td>
+                                            <td class="py-2 px-2">{{ warehouseName(alloc.warehouseId) }}</td>
+                                            <td class="py-2 px-2 text-right">{{ alloc.allocatedQty }}</td>
+                                            <td class="py-2 px-2 text-right">{{ alloc.usedQty }}</td>
+                                            <td class="py-2 px-2 text-right">{{ alloc.remainingQty }}</td>
+                                        </tr>
+                                        <tr v-if="focAllocations.length === 0">
+                                            <td colspan="6" class="py-4 text-center text-gray-500">No allocated products</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>

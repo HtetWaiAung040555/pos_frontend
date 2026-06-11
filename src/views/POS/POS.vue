@@ -193,7 +193,7 @@ async function addProduct(product) {
   try {
     const exist = selectedProducts.value.find(p => p.id === product.id);
 
-    if (exist) {
+    if (exist && !exist.is_foc) {
       exist.qty += 1;
       selectedPId.value = product.id;
     } else {
@@ -334,6 +334,7 @@ async function holdSale() {
     total_amount: totalAmount.value,
     order_discount_amount: salesData.value.orderDiscountAmount,
     applied_promotions: salesData.value.appliedPromotions,
+    branch_id: userData.value.branch.id,
     warehouse_id: userData.value.branch.warehouse_id,
     products: selectedProducts.value.map(p => ({
       product_id: p.id,
@@ -576,6 +577,8 @@ async function onPayClick() {
       applied_promotions: salesData.value.appliedPromotions,
       payment_id: salesData.value.paymentId,
       sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
+      warehouse_id: userData.value.branch.warehouse_id,
+      branch_id: userData.value.branch.id,
       status_id: useStatus.getStatusId('Complete'),
       updated_by: userData.value.id,
     }
@@ -669,6 +672,7 @@ async function onPayClick() {
     if (useSales.salesList) {
       toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales created successfully.', life: 3000 });
       savedSalesData.value = buildSlipSalesData(useSales.salesList);
+      console.log('Saved sales data for slip:', savedSalesData.value);
 
       if (useSales.salesList.customer) {
         useCustomer.updateCustomerBalance(
@@ -878,11 +882,14 @@ async function recalculatePromotions() {
 
   try {
     const payload = {
+      branch_id: userData.value.branch.id,
+      warehouse_id: userData.value.branch.warehouse_id,
       cart: selectedProducts.value
         .filter(p => !p.is_foc)
         .map(p => ({
           product_id: p.id,
           qty: p.qty,
+          original_price: p.price,
           price: p.promotion_id ? p.discount_price : p.price,
         })),
       sale_date: moment().format("YYYY-MM-DD HH:mm:ss")
@@ -890,6 +897,8 @@ async function recalculatePromotions() {
 
     const res = await axios.post('/promotions/checkprice', payload);
     const data = res.data;
+
+    console.log('Promotion recalculation response:', data);
 
     selectedProducts.value = selectedProducts.value
       .filter(p => !p.is_foc)
@@ -1135,7 +1144,7 @@ function printSlip(isSale = true) {
                     <div>
                       <span v-if="item.promotion_id && !item.is_foc" class="font-semibold">Discount: [ - {{ item.discount_type ===
                         'AMOUNT' ?
-                        Number(item.discount_value).toLocaleString() + " Ks." : item.discount_value + '%' }} ]</span>
+                        Number(item.discount_value > 0 ? item.discount_value : item.discount_amount).toLocaleString() + " Ks." : item.discount_value + '%' }} ]</span>
                     </div>
                   </div>
                 </td>
@@ -1403,7 +1412,7 @@ function printSlip(isSale = true) {
                 </span>
                 <span v-if="item.promotion.id && !item.is_foc" style="font-size: 12px;">
                   Dis[-{{ item.promotion.discount_type === 'AMOUNT' ?
-                    Number(item.promotion.discount_value).toLocaleString() + " Ks." : item.discount_value+'%' }}]
+                    Number(item.discount_amount).toLocaleString() + " Ks." : item.discount_value+'%' }}]
                 </span>
                 <span 
                   v-if="item.is_foc" 

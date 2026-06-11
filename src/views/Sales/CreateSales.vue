@@ -41,12 +41,15 @@ const isCheckingAll = ref(false);
 const isSelectAllLoading = ref(false);
 const selectedCustomer = ref([]);
 const selectedWarehouse = ref([]);
+const orderDiscountAmount = ref(0);
+const appliedPromotions = ref([]);
 const formData = ref({
     salesId: '',
     warehouseId: '',
     customerId: '',
     paymentId: '1',
     remark: '',
+    paidAmount: 0,
     salesDate: moment().format('YYYY-MM-DDTHH:mm'),
     statusId: 5, // default to 'Hold' status
     products: [],
@@ -75,6 +78,26 @@ onMounted(async () => {
     await useStatus.fetchAllStatus();
 });
 
+const productTotalAmount = computed(() => {
+    return selectedProducts.value.reduce((sum, p) => {
+        if (p.is_foc) return sum;
+        const price = p.promotion_id ? Number(p.discount_price || 0) : Number(p.price || 0);
+        return sum + (price * Number(p.quantity || 0));
+    }, 0);
+});
+
+const grandTotalAmount = computed(() => {
+    return Math.max(0, productTotalAmount.value - Number(orderDiscountAmount.value || 0));
+});
+
+const changeAmount = computed(() => {
+    return Number(formData.value.paidAmount || 0) - grandTotalAmount.value;
+});
+
+watch(grandTotalAmount, (amount) => {
+    formData.value.paidAmount = amount;
+});
+
 const filteredProducts = computed(() => {
     const q = (searchTerm.value || '').toString().trim().toLowerCase();
     if (!q) return productList.value || [];
@@ -87,7 +110,7 @@ const filteredProducts = computed(() => {
 
 function openProductDialog() {
     // create a shallow copy buffer to allow canceling
-    selectionBuffer.value = selectedProducts.value.slice();
+    selectionBuffer.value = selectedProducts.value.filter(p => !p.is_foc).slice();
     searchTerm.value = '';
     isProductDialogVisible.value = true;
 }
@@ -156,45 +179,30 @@ watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.va
 });
 
 async function confirmProductSelection() {
-    selectedProducts.value = [];
-    selectionBuffer.value.forEach(async (p) => {
-        const checkPromo = await axios.post(`/promotions/checkprice`,{product_id: p.id, sale_date: formData.value.salesDate});
-        if (checkPromo.data.promotion_id) {
-            selectedProducts.value = [
-                ...selectedProducts.value,
-                {
-                    id: p.id,
-                    name: p.name,
-                    barcode: p.barcode,
-                    quantity: p.quantity || 1,
-                    image_url: p.image_url,
-                    price: Number(p.price),
-                    promotion_id: checkPromo.data.promotion_id,
-                    discount_amount: checkPromo.data.discount_amount,
-                    discount_price: p.price - checkPromo.data.discount_amount,
-                    discount_value: checkPromo.data.discount_value,
-                    discount_type: checkPromo.data.discount_type,
-                }
-            ]
-        } else {
-            selectedProducts.value = [
-                ...selectedProducts.value,
-                {
-                    id: p.id,
-                    name: p.name,
-                    barcode: p.barcode,
-                    quantity: p.quantity || 1,
-                    image_url: p.image_url,
-                    price: Number(p.price),
-                    promotion_id: null,
-                    discount_amount: 0,
-                    discount_price: 0,
-                    discount_value: 0,
-                    discount_type: '',
-                }
-            ]
-        }
+    const existingMap = new Map(selectedProducts.value.filter(p => !p.is_foc).map(p => [p.id, p]));
+    const selected = selectionBuffer.value.map((p) => {
+        const existing = existingMap.get(p.id);
+        const basePrice = Number(existing?.price ?? p.price ?? 0);
+
+        return {
+            id: p.id,
+            name: p.name,
+            barcode: p.barcode,
+            quantity: Number(existing?.quantity ?? p.quantity) || 1,
+            image_url: p.image_url,
+            price: basePrice,
+            promotion_id: existing?.promotion_id || null,
+            discount_amount: Number(existing?.discount_amount) || 0,
+            discount_price: Number(existing?.discount_price ?? basePrice),
+            discount_value: Number(existing?.discount_value) || 0,
+            discount_type: existing?.discount_type || '',
+            is_foc: false,
+            reward_id: null,
+        };
     });
+
+    selectedProducts.value = selected;
+    await recalculatePromotions();
     isProductDialogVisible.value = false;
 }
 
@@ -203,17 +211,139 @@ function cancelProductSelection() {
 }
 
 function onChangeQty(product) {
+    if (product.is_foc) return;
     product.quantity = Number(product.quantity) || 0;
     if (product.quantity < 0) product.quantity = 0;
+    recalculatePromotions();
 }
 
 function onChangePrice(product) {
+    if (product.is_foc) return;
     product.price = Number(product.price) || 0;
     if (product.price < 0) product.price = 0;
+    recalculatePromotions();
 }
+
+function removeSelectedProduct(product) {
+    selectedProducts.value = selectedProducts.value.filter(p => p.id !== product.id);
+    recalculatePromotions();
+}
+
+async function recalculatePromotions() {
+    const normalProducts = selectedProducts.value.filter(p => !p.is_foc && Number(p.quantity || 0) > 0);
+
+    if (normalProducts.length === 0) {
+        selectedProducts.value = [];
+        orderDiscountAmount.value = 0;
+        appliedPromotions.value = [];
+        return true;
+    }
+
+    try {
+        const payload = {
+            warehouse_id: selectedWarehouse.value?.id ?? userData.value.branch?.warehouse_id ?? null,
+            cart: normalProducts.map(p => ({
+                product_id: p.id,
+                qty: Number(p.quantity || 0),
+                original_price: Number(p.price || 0),
+                price: p.promotion_id ? Number(p.discount_price || 0) : Number(p.price || 0),
+            })),
+            sale_date: moment(formData.value.salesDate).format('YYYY-MM-DD HH:mm:ss'),
+        };
+
+        const res = await axios.post('/promotions/checkprice', payload);
+        const data = res.data || {};
+
+        selectedProducts.value = normalProducts.map(p => ({
+            ...p,
+            promotion_id: null,
+            discount_amount: 0,
+            discount_price: Number(p.price || 0),
+            discount_value: 0,
+            discount_type: '',
+            is_foc: false,
+            reward_id: null,
+        }));
+
+        if (Array.isArray(data.items) && data.items.length > 0) {
+            selectedProducts.value = selectedProducts.value.map(p => {
+                const promo = data.items.find(item => Number(item.product_id) === Number(p.id));
+                if (!promo) return p;
+
+                const discountAmount = Number(promo.discount_amount) || 0;
+
+                return {
+                    ...p,
+                    promotion_id: promo.promotion_id || null,
+                    discount_value: Number(promo.discount_value) || 0,
+                    discount_type: promo.discount_type || '',
+                    discount_amount: discountAmount,
+                    discount_price: Math.max(0, Number(p.price || 0) - discountAmount),
+                };
+            });
+        }
+
+        orderDiscountAmount.value = Number(data.order?.total_discount) || 0;
+        appliedPromotions.value = data.order?.applied_promotions || [];
+
+        if (Array.isArray(data.foc_items) && data.foc_items.length > 0) {
+            data.foc_items.forEach((free) => {
+                const product = productList.value.find(p => Number(p.id) === Number(free.product_id));
+                if (!product) return;
+
+                selectedProducts.value.push({
+                    id: product.id,
+                    name: product.name,
+                    barcode: product.barcode,
+                    quantity: Number(free.qty) || 1,
+                    image_url: product.image_url,
+                    price: 0,
+                    promotion_id: free.promotion_id || null,
+                    discount_amount: 0,
+                    discount_price: 0,
+                    discount_value: 0,
+                    discount_type: '',
+                    is_foc: true,
+                    reward_id: free.reward_id || null,
+                });
+            });
+        }
+
+        return true;
+    } catch (err) {
+        selectedProducts.value = normalProducts.map(p => ({
+            ...p,
+            promotion_id: null,
+            discount_amount: 0,
+            discount_price: Number(p.price || 0),
+            discount_value: 0,
+            discount_type: '',
+            is_foc: false,
+            reward_id: null,
+        }));
+        orderDiscountAmount.value = 0;
+        appliedPromotions.value = [];
+        toast.add({
+            severity: 'error',
+            summary: 'Promotion Check Failed',
+            detail: 'Unable to calculate promotions for selected products.',
+            life: 3000
+        });
+        return false;
+    }
+}
+
+watch([selectedWarehouse, () => formData.value.salesDate], () => {
+    if (selectedProducts.value.length > 0) {
+        recalculatePromotions();
+    }
+});
 
 // Form Submit function
 async function formSubmit(isPrint = false) {
+    const promotionsOk = await recalculatePromotions();
+    if (!promotionsOk) return;
+
     let payload = {
         customer_id: selectedCustomer.value.id,
         payment_id: formData.value.paymentId,
@@ -222,14 +352,19 @@ async function formSubmit(isPrint = false) {
         sale_date: formData.value.salesDate,
         warehouse_id: selectedWarehouse.value.id,
         created_by: userData.value.id,
-        paid_amount: 0,
+        paid_amount: formData.value.paidAmount,
+        order_discount_amount: orderDiscountAmount.value,
+        applied_promotions: appliedPromotions.value,
         products: selectedProducts.value.map(p => ({
             product_id: p.id,
             quantity: p.quantity,
-            price: p.price,
+            price: p.is_foc ? 0 : p.price,
+            original_price: p.is_foc ? 0 : p.price,
             promotion_id: p.promotion_id || null,
-            discount_amount: p.discount_amount || 0,
-            discount_price: p.discount_price || 0,
+            discount_amount: p.is_foc ? 0 : (p.discount_amount || 0),
+            discount_price: p.is_foc ? 0 : (p.discount_price || 0),
+            is_foc: p.is_foc ? true : false,
+            reward_id: p.reward_id || null,
         }))
     }
     await useSales.addSales(payload);
@@ -439,7 +574,7 @@ function printSlip() {
                     <!-- Selected Products Table (scrollable with fixed header) -->
                     <div class="mt-4">
                         <div class="max-h-[350px] overflow-y-auto rounded">
-                            <table class="w-full text-sm border-collapse border border-gray-200">
+                            <table class="w-full text-sm border-separate border-spacing-0 border border-gray-200">
                                 <thead class="sticky top-0">
                                     <tr class="text-left text-black bg-gray-100">
                                         <th class="p-2">Image</th>
@@ -454,7 +589,7 @@ function printSlip() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="product in selectedProducts" :key="product.id"
+                                    <tr v-for="product in selectedProducts" :key="`${product.id}-${product.is_foc ? 'foc' : 'sale'}-${product.reward_id || 'none'}`"
                                         class="border-b border-gray-200 hover:bg-blue-50">
                                         <td class="p-2">
                                             <div class="w-12 h-12 overflow-hidden rounded">
@@ -465,48 +600,59 @@ function printSlip() {
                                         <td class="p-2">{{ product.name }}</td>
                                         <td class="p-2">{{ product.barcode }}</td>
                                         <td class="p-2 text-right">
-                                            <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" v-model.number="product.price" @input="onChangePrice(product)" />
+                                            <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" :class="{ 'bg-gray-100': product.is_foc }" v-model.number="product.price" @input="onChangePrice(product)" :readonly="product.is_foc" />
                                             <!-- {{ Number(product.price).toLocaleString() }} -->
                                         </td>
                                         <td class="p-2 text-right">
-                                            {{ product.promotion_id ? product.discount_value + (product.discount_type === 'percent' ? '%' : '') : 0 }}
+                                            <span v-if="product.is_foc">FOC</span>
+                                            <span v-else-if="product.promotion_id">
+                                                {{ product.discount_type === 'AMOUNT' ? Number(product.discount_amount || 0).toLocaleString() : product.discount_value + '%' }}
+                                            </span>
+                                            <span v-else>0</span>
                                         </td>
                                         <td class="p-2 text-right">
                                             {{ product.promotion_id ? Number(product.discount_price).toLocaleString() : Number(product.price).toLocaleString() }}
                                         </td>
                                         <td class="p-2 text-right">
-                                            <input type="number" min="0" class="w-20 text-right px-1 py-1 border rounded" v-model.number="product.quantity" @input="onChangeQty(product)" />
+                                            <input type="number" min="0" class="w-20 text-right px-1 py-1 border rounded" :class="{ 'bg-gray-100': product.is_foc }" v-model.number="product.quantity" @input="onChangeQty(product)" :readonly="product.is_foc" />
                                         </td>
                                         <td class="p-2 text-right">{{ product.promotion_id ? Number(product.discount_price) * product.quantity : Number(product.price) * product.quantity }}</td>
                                         <td class="p-2 text-right">
-                                            <button class="text-red-600 hover:text-red-800 px-2 py-1"
-                                                @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)"><i
+                                            <button v-if="!product.is_foc" class="text-red-600 hover:text-red-800 px-2 py-1"
+                                                @click="removeSelectedProduct(product)"><i
                                                     class="pi pi-trash"></i></button>
                                         </td>
                                     </tr>
                                     <tr v-if="selectedProducts.length === 0">
-                                        <td colspan="5" class="py-4 text-center text-gray-500">No products selected</td>
+                                        <td colspan="9" class="py-4 text-center text-gray-500">No products selected</td>
                                     </tr>
-                                    <tr class="border-b border-gray-200 font-bold bg-gray-100 sticky bottom-0">
-                                        <td colspan="6" class="p-2 text-right">Grand Total</td>
-                                        <td class="p-2 text-right">
+                                </tbody>
+                                <tfoot class="sticky bottom-0 z-20 bg-gray-100">
+                                    <tr class="font-bold">
+                                        <td colspan="6" class="p-2 text-right bg-gray-100 border-t border-gray-300">Product Total</td>
+                                        <td class="p-2 text-right bg-gray-100 border-t border-gray-300">
                                             {{
                                                 selectedProducts.reduce((sum, p) => {
                                                     return sum + Number(p.quantity);
                                                 }, 0).toLocaleString()
                                             }}
                                         </td>
-                                        <td class="p-2 text-right">
-                                            {{
-                                                selectedProducts.reduce((sum, p) => {
-                                                    const price = p.promotion_id ? p.discount_price : p.price;
-                                                    return sum + (Number(price) * p.quantity);
-                                                }, 0).toLocaleString()
-                                            }}
-                                        </td>
-                                        <td>&nbsp;</td>
+                                        <td class="p-2 text-right bg-gray-100 border-t border-gray-300">{{ productTotalAmount.toLocaleString() }}</td>
+                                        <td class="bg-gray-100 border-t border-gray-300">&nbsp;</td>
                                     </tr>
-                                </tbody>
+                                    <tr v-if="orderDiscountAmount > 0" class="font-bold">
+                                        <td colspan="6" class="p-2 text-right bg-gray-100 border-t border-gray-200">Order Discount Amount</td>
+                                        <td class="bg-gray-100 border-t border-gray-200">&nbsp;</td>
+                                        <td class="p-2 text-right bg-gray-100 border-t border-gray-200">-{{ Number(orderDiscountAmount).toLocaleString() }}</td>
+                                        <td class="bg-gray-100 border-t border-gray-200">&nbsp;</td>
+                                    </tr>
+                                    <tr class="font-bold">
+                                        <td colspan="6" class="p-2 text-right bg-gray-100 border-t border-gray-300">Grand Total</td>
+                                        <td class="bg-gray-100 border-t border-gray-300">&nbsp;</td>
+                                        <td class="p-2 text-right bg-gray-100 border-t border-gray-300">{{ grandTotalAmount.toLocaleString() }}</td>
+                                        <td class="bg-gray-100 border-t border-gray-300">&nbsp;</td>
+                                    </tr>
+                                </tfoot>
                             </table>
                         </div>
                     </div>
@@ -566,6 +712,20 @@ function printSlip() {
                             <BaseButton label="Add Product" class="px-4 py-2 bg-blue-600 text-white rounded"
                                 @click="confirmProductSelection" />
                         </div>
+                    </div>
+                </div>
+                <div class="mt-4 text-black font-semibold flex justify-end">
+                    <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
+                        <span class="whitespace-nowrap">Paid Amount</span>
+                        <span class="text-right">:</span>
+                        <BaseInput size="sm" v-model="formData.paidAmount" height="h-[35px]" type="number" />
+                    </div>
+                </div>
+                <div class="mt-1 text-black font-semibold flex justify-end">
+                    <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
+                        <span class="whitespace-nowrap">Change Amount</span>
+                        <span class="text-right">:</span>
+                        <span class="font-bold text-right">{{ Number(changeAmount).toLocaleString('en-us') }}</span>
                     </div>
                 </div>
                 <div class="flex justify-end mt-4">
