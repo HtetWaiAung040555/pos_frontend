@@ -85,14 +85,90 @@ onMounted(async () => {
   initialLoading.value = false;
 });
 
+function productLineKey(product) {
+  return `${product?.id || ''}:${product?.product_unit_id || 'base'}`;
+}
+
+function unitAvailableQty(baseQty, conversionToBase) {
+  const conversion = Number(conversionToBase || 1);
+  if (conversion <= 0) return 0;
+  return Math.floor(Number(baseQty || 0) / conversion);
+}
+
+function resolveRangePrice(product, quantity) {
+  const regularPrice = Number(product.regular_price ?? product.price ?? 0);
+  const numericQty = Number(quantity || 0);
+  const ranges = [...(product.price_ranges || [])]
+    .sort((left, right) => Number(right.min_qty || 0) - Number(left.min_qty || 0));
+
+  const matchedRange = ranges.find((range) => {
+    const minQty = Number(range.min_qty || 0);
+    const hasMax = range.max_qty !== null && range.max_qty !== '' && range.max_qty !== undefined;
+    const maxQty = hasMax ? Number(range.max_qty) : null;
+    return numericQty >= minQty && (!hasMax || numericQty < maxQty);
+  });
+
+  return {
+    price: matchedRange ? Number(matchedRange.price) : regularPrice,
+    priceRangeId: matchedRange?.id || null,
+  };
+}
+
+function applyRangePrice(product) {
+  const rangePrice = resolveRangePrice(product, product.qty);
+  product.price = rangePrice.price;
+  product.price_range_id = rangePrice.priceRangeId;
+}
+
+const catalogProducts = computed(() => {
+  return (productList.value || []).flatMap((product) => {
+    const units = Array.isArray(product.product_units) ? product.product_units : [];
+
+    if (!product.uom_enabled || units.length === 0) {
+      return [{
+        ...product,
+        catalog_key: `${product.id}:base`,
+        product_unit_id: null,
+        unit_id: null,
+        unit_name: null,
+        conversion_to_base: 1,
+        base_qty: Number(product.qty || 0),
+        regular_price: Number(product.price || 0),
+        price_ranges: [],
+      }];
+    }
+
+    return units.map((unit) => ({
+      ...product,
+      catalog_key: `${product.id}:${unit.id}`,
+      base_name: product.name,
+      name: `${product.name} (${unit.unit_name || 'Unit'})`,
+      product_unit_id: unit.id,
+      unit_id: unit.unit_id,
+      unit_name: unit.unit_name,
+      barcode: unit.barcode || null,
+      conversion_to_base: Number(unit.conversion_to_base || 1),
+      price: Number(unit.price || 0),
+      regular_price: Number(unit.price || 0),
+      purchase_price: Number(unit.purchase_price || 0),
+      price_ranges: unit.price_ranges || [],
+      base_qty: Number(product.qty || 0),
+      qty: unitAvailableQty(product.qty, unit.conversion_to_base),
+      is_base_unit: !!unit.is_base_unit,
+      is_default_sale_unit: !!unit.is_default_sale_unit,
+    }));
+  });
+});
+
 const filteredProducts = computed(() => {
-  if (!searchQuery.value) return productList.value;
+  if (!searchQuery.value) return catalogProducts.value;
   const query = searchQuery.value.toLocaleLowerCase().trim();
-  return productList.value.filter(item => {
+  return catalogProducts.value.filter(item => {
     return (
       item.name.toLocaleLowerCase().includes(query) ||
       String(item.id).includes(query) ||
-      item.barcode?.toLocaleLowerCase().includes(query)
+      item.barcode?.toLocaleLowerCase().includes(query) ||
+      item.unit_name?.toLocaleLowerCase().includes(query)
     );
   })
 });
@@ -177,9 +253,10 @@ watch(visible, (newVal) => {
 async function addProduct(product) {
   const productId = product?.id;
   if (!productId) return;
+  const lineKey = productLineKey(product);
 
-  if (pendingAddIds.value.has(productId)) return;
-  pendingAddIds.value.add(productId);
+  if (pendingAddIds.value.has(lineKey)) return;
+  pendingAddIds.value.add(lineKey);
 
   if (product.qty <= 0) {
     toast.add({
@@ -191,11 +268,11 @@ async function addProduct(product) {
   }
 
   try {
-    const exist = selectedProducts.value.find(p => p.id === product.id);
+    const exist = selectedProducts.value.find(p => productLineKey(p) === lineKey && !p.is_foc);
 
-    if (exist && !exist.is_foc) {
+    if (exist) {
       exist.qty += 1;
-      selectedPId.value = product.id;
+      selectedPId.value = lineKey;
     } else {
       selectedProducts.value.push({
         ...product,
@@ -208,7 +285,7 @@ async function addProduct(product) {
         is_foc: false
       });
 
-      selectedPId.value = product.id;
+      selectedPId.value = lineKey;
     }
 
     await nextTick();
@@ -217,14 +294,15 @@ async function addProduct(product) {
   } catch (err) {
     console.error('Add product error:', err);
   } finally {
-    pendingAddIds.value.delete(productId);
+    pendingAddIds.value.delete(lineKey);
   }
 }
 
 function openDialog(product) {
-  let exist = selectedProducts.value.find(p => p.id === product.id);
+  const lineKey = productLineKey(product);
+  let exist = selectedProducts.value.find(p => productLineKey(p) === lineKey);
   if (exist) {
-    selectedPId.value = product.id;
+    selectedPId.value = lineKey;
     visible.value = true;
     return;
   }
@@ -235,7 +313,7 @@ function openDialog(product) {
       qty: 0
     }
   ];
-  selectedPId.value = product.id;
+  selectedPId.value = lineKey;
 }
 
 // Add quantity to the selected product
@@ -243,12 +321,13 @@ function addQty() {
   if (!selectedProducts.value || !qty.value) return;
 
   const product = selectedProducts.value.find(
-    (p) => p.id === selectedPId.value
+    (p) => productLineKey(p) === selectedPId.value
   );
 
   if (product) {
     // If product already has qty, add new qty
     product.qty = Number(product.qty) + Number(qty.value);
+    recalculatePromotions();
   }
 
   visible.value = false;
@@ -277,7 +356,7 @@ function handleBarcodeInput(e) {
   if (e.key === "Enter" && e.target.value.trim() !== "") {
     const query = e.target.value.toLowerCase().trim();
     // Try to find matching product by barcode or ID 
-    const matchedProduct = productList.value.find(item => {
+    const matchedProduct = catalogProducts.value.find(item => {
       return (item.barcode?.toLowerCase() === query);
     });
     if (matchedProduct) {
@@ -795,7 +874,8 @@ function clickCustomerSelect() {
 }
 
 function removeProduct(product) {
-  selectedProducts.value = selectedProducts.value.filter(p => p.id !== product.id);
+  const lineKey = productLineKey(product);
+  selectedProducts.value = selectedProducts.value.filter(p => productLineKey(p) !== lineKey || p.is_foc !== product.is_foc);
   recalculatePromotions();
   nextTick(() => barcodeInput.value?.focus());
 }
@@ -881,6 +961,10 @@ async function recalculatePromotions() {
   if (!selectedProducts.value.length) return;
 
   try {
+    selectedProducts.value
+      .filter(product => !product.is_foc)
+      .forEach(applyRangePrice);
+
     const payload = {
       branch_id: userData.value.branch.id,
       warehouse_id: userData.value.branch.warehouse_id,
@@ -888,11 +972,12 @@ async function recalculatePromotions() {
         .filter(p => !p.is_foc)
         .map(p => ({
           product_id: p.id,
-          qty: p.qty,
-          original_price: p.price,
-          price: p.promotion_id ? p.discount_price : p.price,
-        })),
-      sale_date: moment().format("YYYY-MM-DD HH:mm:ss")
+          product_unit_id: p.product_unit_id || null,
+          unit_id: p.unit_id || null,
+          qty: Number(p.qty),
+          base_qty: Number(p.qty) * Number(p.conversion_to_base || 1),
+          price: Number(p.price),
+        }))
     };
 
     const res = await axios.post('/promotions/checkprice', payload);
@@ -911,11 +996,16 @@ async function recalculatePromotions() {
 
     if (data.items?.length) {
       selectedProducts.value = selectedProducts.value.map(p => {
-        const promo = data.items.find(d => d.product_id === p.id);
+        const matchingPromotions = data.items.filter(d => (
+          Number(d.product_id) === Number(p.id)
+          && Number(d.product_unit_id || 0) === Number(p.product_unit_id || 0)
+        ));
+        const promo = matchingPromotions[matchingPromotions.length - 1];
 
         if (!promo) return p;
 
-        const discountAmount = promo.discount_amount;
+        const discountPrice = Number(promo.discount_price ?? p.price);
+        const discountAmount = Math.max(0, Number(p.price) - discountPrice);
 
         return {
           ...p,
@@ -923,7 +1013,7 @@ async function recalculatePromotions() {
           discount_value: promo.discount_value,
           discount_type: promo.discount_type,
           discount_amount: discountAmount,
-          discount_price: p.price - discountAmount
+          discount_price: discountPrice
         };
       });
     }
@@ -934,7 +1024,10 @@ async function recalculatePromotions() {
     if (data.foc_items?.length) {
 
       data.foc_items.forEach(free => {
-        const product = productList.value.find(p => p.id === free.product_id);
+        const product = catalogProducts.value.find(p => (
+          p.id === free.product_id
+          && Number(p.product_unit_id || 0) === Number(free.product_unit_id || 0)
+        )) || catalogProducts.value.find(p => p.id === free.product_id);
         if (!product) return;
 
         selectedProducts.value.push({
@@ -1059,7 +1152,7 @@ function printSlip(isSale = true) {
                 </div>
               </div>
             </div>
-            <ProductCard v-else v-for="product in filteredProducts" :key="product.id" :name="product.name"
+            <ProductCard v-else v-for="product in filteredProducts" :key="product.catalog_key" :name="product.name"
               :price="product.price" :imageUrl="product.image_url" :qty="product.qty" @click="addProduct(product)" />
           </div>
         </div>
@@ -1123,7 +1216,7 @@ function printSlip(isSale = true) {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(item, index) in selectedProducts" :key="item.id">
+              <tr v-for="(item, index) in selectedProducts" :key="`${productLineKey(item)}:${item.is_foc ? 'foc' : 'sale'}`">
                 <td class="border-b p-2 border-gray-200 text-[12px]">{{ index + 1 }}.</td>
                 <td class="border-b p-2 border-gray-200">
                   <div class="flex flex-col">

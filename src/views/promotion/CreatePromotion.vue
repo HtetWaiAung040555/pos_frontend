@@ -15,6 +15,13 @@ import SubTitle from '@/components/SubTitle.vue';
 import { useProductStore } from '@/stores/useProductStore';
 import { useBranchStore } from '@/stores/useBranchStore';
 import { useStatusStore } from '@/stores/useStatusStore';
+import {
+    productUnitOptions,
+    promotionProductPayload,
+    promotionUomPayload,
+    selectedUnitPrice,
+    withPromotionUnit,
+} from '@/utils/promotionUom';
 
 const router = useRouter();
 const toast = useToast();
@@ -62,6 +69,7 @@ const focTiers = ref([
         condition_type: 'ORDER_AMOUNT',
         target_value: 0,
         conditionProductId: '',
+        conditionProductUnitId: '',
         rewards: [], // [{ id, name, rewardQty, focStockQty, image_url }]
     }
 ]);
@@ -370,7 +378,7 @@ watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.va
 const focTierEditIndex = ref(null);
 function confirmProductSelection() {
     if (productDialogMode.value === 'PRODUCT_DISCOUNT') {
-        selectedProducts.value = selectionBuffer.value.slice();
+        selectedProducts.value = selectionBuffer.value.map(product => withPromotionUnit(product));
     }
 
     // FOC tier condition product selection
@@ -378,6 +386,7 @@ function confirmProductSelection() {
         if (focTierEditIndex.value !== null) {
             const prod = selectionBuffer.value[0] || null;
             focTiers.value[focTierEditIndex.value].conditionProductId = prod ? prod.id : '';
+            focTiers.value[focTierEditIndex.value].conditionProductUnitId = prod ? defaultSelectedUnitId(prod) : '';
         }
         focTierEditIndex.value = null;
     }
@@ -386,15 +395,19 @@ function confirmProductSelection() {
     if (productDialogMode.value === 'FOC_REWARD') {
         if (focTierEditIndex.value !== null) {
             const oldRewards = focTiers.value[focTierEditIndex.value].rewards || [];
-            const qtyMap = new Map(oldRewards.map(p => [p.id, Number(p.rewardQty) || 1]));
-            focTiers.value[focTierEditIndex.value].rewards = selectionBuffer.value.map(product => ({
-                ...product,
-                rewardQty: qtyMap.get(product.id) ?? 1,
-            }));
+            const rewardMap = new Map(oldRewards.map(product => [product.id, product]));
+            focTiers.value[focTierEditIndex.value].rewards = selectionBuffer.value.map((product) => {
+                const existing = rewardMap.get(product.id);
+                return {
+                    ...withPromotionUnit(product, existing?.productUnitId),
+                    rewardQty: Number(existing?.rewardQty) || 1,
+                };
+            });
 
-            const existingAllocationIds = new Set((focAllocations.value || []).map(p => p.id));
-            const newAllocations = selectionBuffer.value
-                .filter(product => !existingAllocationIds.has(product.id))
+            const selectedRewards = focTiers.value[focTierEditIndex.value].rewards;
+            const existingAllocationKeys = new Set((focAllocations.value || []).map(product => `${product.id}:${product.productUnitId || ''}`));
+            const newAllocations = selectedRewards
+                .filter(product => !existingAllocationKeys.has(`${product.id}:${product.productUnitId || ''}`))
                 .map(product => ({
                     ...product,
                     allocatedQty: 1,
@@ -434,7 +447,7 @@ function cancelProductSelection() {
 }
 
 function getFinalPrice(product) {
-    const price = Number(product.price) || 0;
+    const price = selectedUnitPrice(product);
     const val = Number(formData.value.discountValue) || 0;
     if (formData.value.discountType === 'AMOUNT') {
         return Math.max(0, price - val);
@@ -445,6 +458,24 @@ function getFinalPrice(product) {
 
 function formatPrice(value) {
     return Number(value).toLocaleString();
+}
+
+function defaultSelectedUnitId(product) {
+    return withPromotionUnit(product)?.productUnitId || '';
+}
+
+function productForTier(tier) {
+    const product = productList.value.find(item => item.id == tier.conditionProductId);
+    return withPromotionUnit(product, tier.conditionProductUnitId);
+}
+
+function onConditionUnitChange(tier) {
+    tier.conditionProductUnitId = productForTier(tier)?.productUnitId || '';
+}
+
+function onRewardUnitChange(reward) {
+    const allocation = focAllocations.value.find(item => item.id === reward.id);
+    if (allocation) allocation.productUnitId = reward.productUnitId;
 }
 
 function clearErrors() {
@@ -469,7 +500,9 @@ function selectFocTierConditionProduct(idx) {
     focTierEditIndex.value = idx;
     // Preselect current product if any
     const prodId = focTiers.value[idx].conditionProductId;
-    selectionBuffer.value = prodId ? [productList.value.find(p => p.id === prodId)] : [];
+    selectionBuffer.value = prodId
+        ? [withPromotionUnit(productList.value.find(p => p.id === prodId), focTiers.value[idx].conditionProductUnitId)]
+        : [];
     searchTerm.value = '';
     isProductDialogVisible.value = true;
 }
@@ -478,8 +511,10 @@ function selectFocTierRewardProducts(idx) {
     focTierEditIndex.value = idx;
     // Preselect current rewards if any
     const rewards = focTiers.value[idx].rewards || [];
-    const rewardIds = new Set(rewards.map(r => r.id));
-    selectionBuffer.value = (productList.value || []).filter(p => rewardIds.has(p.id));
+    selectionBuffer.value = rewards.map(reward => withPromotionUnit(
+        productList.value.find(product => product.id === reward.id) || reward,
+        reward.productUnitId
+    ));
     searchTerm.value = '';
     isProductDialogVisible.value = true;
 }
@@ -603,7 +638,7 @@ async function formSubmit() {
             ...commonPayload,
             discount_type: formData.value.discountType,
             discount_value: Number(formData.value.discountValue),
-            products: selectedProducts.value.map(product => product.id),
+            promotion_products: selectedProducts.value.map(promotionProductPayload),
         };
     }
 
@@ -684,16 +719,22 @@ async function formSubmit() {
                 condition: {
                     condition_type: tier.condition_type,
                     target_value: Number(tier.target_value),
-                    ...(tier.conditionProductId ? { product_id: Number(tier.conditionProductId) } : {})
+                    ...(tier.conditionProductId ? {
+                        product_id: Number(tier.conditionProductId),
+                        ...promotionUomPayload(productForTier(tier)),
+                    } : {})
                 },
                 rewards: tier.rewards.map(reward => ({
                     product_id: Number(reward.id),
                     reward_qty: Number(reward.rewardQty),
+                    ...promotionUomPayload(reward),
                 }))
             })),
             foc_allocations: focAllocations.value.map(allocation => ({
                 product_id: Number(allocation.id),
                 allocated_qty: Number(allocation.allocatedQty),
+                unit_quantity: Number(allocation.allocatedQty),
+                ...promotionUomPayload(allocation),
             }))
         };
     }
@@ -718,6 +759,7 @@ async function formSubmit() {
             });
             return;
         }
+
 
         syncPriceOverrideMode();
 
@@ -751,7 +793,7 @@ async function formSubmit() {
             promo_mode: 'MIX_MATCH',
             override_price: Number(formData.value.overridePrice),
 
-            products: selectedProducts.value.map(product => product.id),
+            promotion_products: selectedProducts.value.map(promotionProductPayload),
 
             tiers: priceOverrideTiers.value.map(tier => ({
                 condition: {
@@ -1000,6 +1042,7 @@ async function formSubmit() {
                                         <tr class="text-left text-gray-600">
                                             <th class="py-2 sticky top-0 bg-white z-10 border-b">Image</th>
                                             <th class="py-2 sticky top-0 bg-white z-10 border-b">Product Name</th>
+                                            <th class="py-2 sticky top-0 bg-white z-10 border-b">Unit</th>
                                             <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Price</th>
                                             <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">{{ isPriceOverride ? 'Override Price' : 'Final Price' }}</th>
                                             <th class="py-2 sticky top-0 bg-white z-10 border-b">&nbsp;</th>
@@ -1013,14 +1056,22 @@ async function formSubmit() {
                                                 </div>
                                             </td>
                                             <td class="py-2">{{ product.name }}</td>
-                                            <td class="py-2 text-right">{{ formatPrice(product.price || 0) }}</td>
+                                            <td class="py-2 pr-2">
+                                                <select v-model="product.productUnitId" class="border border-gray-300 rounded px-2 py-1 w-full min-w-[130px]">
+                                                    <option value="">All Units</option>
+                                                    <option v-for="unit in productUnitOptions(product)" :key="unit.id" :value="unit.id">
+                                                        {{ unit.unit_id?.name }}
+                                                    </option>
+                                                </select>
+                                            </td>
+                                            <td class="py-2 text-right">{{ formatPrice(selectedUnitPrice(product)) }}</td>
                                             <td class="py-2 text-right">{{ formatPrice(isPriceOverride ? formData.overridePrice : getFinalPrice(product)) }}</td>
                                             <td class="py-2 text-right">
                                                 <button class="text-red-600 hover:text-red-800 px-2 py-1" @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)"><i class="pi pi-trash"></i></button>
                                             </td>
                                         </tr>
                                         <tr v-if="selectedProducts.length === 0">
-                                            <td colspan="5" class="py-4 text-center text-gray-500">No products selected</td>
+                                            <td colspan="6" class="py-4 text-center text-gray-500">No products selected</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -1076,6 +1127,15 @@ async function formSubmit() {
                                     <BaseLabel label="Condition Product" />
                                     <BaseButton :label="tier.conditionProductId ? (productList.find(p => p.id == tier.conditionProductId)?.name || 'Select Product') : 'Select Product'" class="w-full" @click="() => selectFocTierConditionProduct(idx)" />
                                 </div>
+                                <div v-if="['ITEM_QTY','ITEM_AMOUNT'].includes(tier.condition_type) && tier.conditionProductId" class="flex flex-col gap-1 w-[180px]">
+                                    <BaseLabel label="Condition Unit" />
+                                    <select v-model="tier.conditionProductUnitId" class="border p-2 rounded h-[35px]" @change="onConditionUnitChange(tier)">
+                                        <option value="">All Units</option>
+                                        <option v-for="unit in productUnitOptions(productForTier(tier))" :key="unit.id" :value="unit.id">
+                                            {{ unit.unit_id?.name }}
+                                        </option>
+                                    </select>
+                                </div>
                                 <BaseInput size="sm" v-model="tier.target_value" label="Target Value" width="200px" height="h-[35px]" type="number" />
                                 <BaseButton v-if="focTiers.length > 1 && promoMode !== 'MULTIPLIER'" label="Remove" severity="danger" class="ml-2" @click="focTiers.splice(idx, 1)" />
                             </div>
@@ -1088,6 +1148,7 @@ async function formSubmit() {
                                             <tr class="text-left text-gray-600">
                                                 <th class="py-2 px-2 border-b">Image</th>
                                                 <th class="py-2 px-2 border-b">Product Name</th>
+                                                <th class="py-2 px-2 border-b">Unit</th>
                                                 <th class="py-2 px-2 border-b text-right">Reward Qty</th>
                                                 <th class="py-2 px-2 border-b text-right">&nbsp;</th>
                                             </tr>
@@ -1098,6 +1159,12 @@ async function formSubmit() {
                                                     <img class="object-cover w-10 h-10 rounded" :src="reward.image_url" />
                                                 </td>
                                                 <td class="py-2 px-2">{{ reward.name }}</td>
+                                                <td class="py-2 px-2">
+                                                    <select v-model="reward.productUnitId" class="border border-gray-300 rounded px-2 py-1 min-w-[120px]" @change="onRewardUnitChange(reward)">
+                                                        <option value="">All Units</option>
+                                                        <option v-for="unit in productUnitOptions(reward)" :key="unit.id" :value="unit.id">{{ unit.unit_id?.name }}</option>
+                                                    </select>
+                                                </td>
                                                 <td class="py-2 px-2 text-right">
                                                     <input v-model.number="reward.rewardQty" type="number" min="1" class="text-md border border-gray-500 rounded-sm p-2 text-black w-[100px] h-[35px] text-right" />
                                                 </td>
@@ -1106,14 +1173,14 @@ async function formSubmit() {
                                                 </td>
                                             </tr>
                                             <tr v-if="tier.rewards.length === 0">
-                                                <td colspan="4" class="py-4 text-center text-gray-500">No reward products selected</td>
+                                                <td colspan="5" class="py-4 text-center text-gray-500">No reward products selected</td>
                                             </tr>
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
                         </div>
-                        <BaseButton v-if="promoMode !== 'MULTIPLIER'" label="Add Tier" class="mb-4" @click="focTiers.push({ condition_type: 'ORDER_AMOUNT', target_value: 0, conditionProductId: '', rewards: [] })" />
+                        <BaseButton v-if="promoMode !== 'MULTIPLIER'" label="Add Tier" class="mb-4" @click="focTiers.push({ condition_type: 'ORDER_AMOUNT', target_value: 0, conditionProductId: '', conditionProductUnitId: '', rewards: [] })" />
                         <div class="border rounded p-4 mb-4 bg-gray-50">
                             <SubTitle label="FOC Stock" class="mt-6 mb-4" />
                             <div class="max-h-[200px] overflow-y-auto rounded border border-gray-200 mt-2">
@@ -1122,15 +1189,22 @@ async function formSubmit() {
                                         <tr class="text-left text-gray-600">
                                             <th class="py-2 px-2 border-b">Image</th>
                                             <th class="py-2 px-2 border-b">Product Name</th>
+                                            <th class="py-2 px-2 border-b">Unit</th>
                                             <th class="py-2 px-2 border-b text-right">Allocated Qty</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="alloc in focAllocations" :key="alloc.id" class="border-b hover:bg-gray-50">
+                                        <tr v-for="alloc in focAllocations" :key="`${alloc.id}-${alloc.productUnitId || 'default'}`" class="border-b hover:bg-gray-50">
                                             <td class="py-2 px-2">
                                                 <img class="object-cover w-10 h-10 rounded" :src="alloc.image_url" />
                                             </td>
                                             <td class="py-2 px-2">{{ alloc.name }}</td>
+                                            <td class="py-2 px-2">
+                                                <select v-model="alloc.productUnitId" class="border border-gray-300 rounded px-2 py-1 min-w-[120px]">
+                                                    <option value="">All Units</option>
+                                                    <option v-for="unit in productUnitOptions(alloc)" :key="unit.id" :value="unit.id">{{ unit.unit_id?.name }}</option>
+                                                </select>
+                                            </td>
                                             <td class="py-2 px-2 text-right">
                                                 <input v-model.number="alloc.allocatedQty" type="number" min="1" class="text-md border border-gray-500 rounded-sm p-2 text-black w-[100px] h-[35px] text-right" />
                                             </td>

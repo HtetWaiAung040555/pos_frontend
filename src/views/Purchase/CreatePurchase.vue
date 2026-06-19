@@ -18,6 +18,7 @@ import { useWarehouseStore } from '@/stores/useWarehouseStore';
 import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
 import { Select } from 'primevue';
 import { useProductStore } from '@/stores/useProductStore';
+import { buildPurchaseOptions, findPurchaseOption } from '@/utils/purchaseUom';
 
 const router = useRouter();
 const route = useRoute();
@@ -68,12 +69,12 @@ function mergeSelectedProducts(details = []) {
         const productId = d.product?.id;
         if (!productId) return;
 
-        const quantity = Number(d.quantity) || 0;
+        const productUnitId = d.uom?.product_unit_id || null;
+        const quantity = Number(d.uom?.unit_quantity ?? d.quantity) || 0;
         const purchasePrice = Number(d.price) || 0;
-        const expiredDate = d.expired_date || '';
+        const expiredDate = d.inventory?.expired_date || d.expired_date || '';
 
-        // Merge by product + price + expired date so inventory-split rows collapse safely.
-        const mergeKey = `${productId}`;
+        const mergeKey = `${productId}:${productUnitId || 'base'}:${purchasePrice}:${expiredDate}`;
         const existing = mergedProducts.get(mergeKey);
 
         if (existing) {
@@ -81,15 +82,21 @@ function mergeSelectedProducts(details = []) {
             return;
         }
 
-        const prod = useProduct.productList.find(p => p.id === productId);
+        const option = findPurchaseOption(purchaseOptions.value, productId, productUnitId);
+        const sourceProduct = productList.value.find(product => product.id === productId);
         mergedProducts.set(mergeKey, {
             id: productId,
             name: d.product?.name,
-            barcode: d.product?.barcode,
+            product_unit_id: productUnitId,
+            unit_id: d.uom?.unit_id || option?.unit_id || null,
+            unit_name: d.uom?.unit_name || option?.unit_name || '-',
+            product_units: sourceProduct?.product_units || [],
+            conversion_to_base: Number(d.uom?.conversion_to_base ?? option?.conversion_to_base ?? 1),
+            barcode: d.uom?.unit_barcode || option?.barcode || '',
             purchase_price: purchasePrice,
             quantity,
             expiredDate,
-            image_url: prod?.image_url || '',
+            image_url: option?.image_url || '',
         });
     });
 
@@ -124,13 +131,19 @@ onMounted(async () => {
     isInitLoading.value = false;
 });
 
+const purchaseOptions = computed(() => buildPurchaseOptions(productList.value));
+
 const filteredProducts = computed(() => {
     const q = (searchTerm.value || '').toString().trim().toLowerCase();
     if (!q) return productList.value || [];
     return (productList.value || []).filter(p => {
         const name = (p.name || '').toString().toLowerCase();
         const barcode = (p.barcode || '').toString().toLowerCase();
-        return name.includes(q) || barcode.includes(q);
+        const unitMatch = (p.product_units || []).some(unit => (
+            (unit.unit_id?.name || '').toLowerCase().includes(q)
+            || (unit.barcode || '').toLowerCase().includes(q)
+        ));
+        return name.includes(q) || barcode.includes(q) || unitMatch;
     });
 });
 
@@ -205,16 +218,45 @@ watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.va
 });
 
 function confirmProductSelection() {
-    selectedProducts.value = selectionBuffer.value.map(p=> ({
-        id: p.id,
-        name: p.name,
-        barcode: p.barcode,
-        purchase_price: p.purchase_price,
-        quantity: p.quantity || 0,
-        expiredDate: p.expiredDate || '',
-        image_url: p.image_url
-    }));
+    const existingMap = new Map(selectedProducts.value.map(product => [product.id, product]));
+    selectedProducts.value = selectionBuffer.value.map(p => {
+        const existing = existingMap.get(p.id);
+        const defaultUnit = existing?.product_unit_id
+            ? (p.product_units || []).find(unit => unit.id === existing.product_unit_id)
+            : getDefaultPurchaseUnit(p);
+        return {
+            id: p.id,
+            name: p.name,
+            product_units: p.product_units || [],
+            product_unit_id: defaultUnit?.id || null,
+            unit_id: defaultUnit?.unit_id?.id || p.unit_id?.id || null,
+            unit_name: defaultUnit?.unit_id?.name || p.unit_id?.name || '-',
+            conversion_to_base: Number(defaultUnit?.conversion_to_base || 1),
+            barcode: defaultUnit?.barcode || p.barcode,
+            purchase_price: existing?.purchase_price ?? defaultUnit?.purchase_price ?? p.purchase_price,
+            quantity: existing?.quantity ?? 0,
+            expiredDate: existing?.expiredDate || '',
+            image_url: p.image_url
+        };
+    });
     isProductDialogVisible.value = false;
+}
+
+function getDefaultPurchaseUnit(product) {
+    const units = product?.product_units || [];
+    return units.find(unit => unit.is_base_unit)
+        || units.find(unit => unit.is_default_sale_unit)
+        || units[0]
+        || null;
+}
+
+function onProductUnitChange(product) {
+    const unit = (product.product_units || []).find(item => item.id === product.product_unit_id);
+    product.unit_id = unit?.unit_id?.id || null;
+    product.unit_name = unit?.unit_id?.name || '-';
+    product.conversion_to_base = Number(unit?.conversion_to_base || 1);
+    product.barcode = unit?.barcode || '';
+    product.purchase_price = Number(unit?.purchase_price || 0);
 }
 
 function cancelProductSelection() {
@@ -251,6 +293,7 @@ async function formSubmit() {
         created_by: userData.value.id,
         products: selectedProducts.value.map(p => ({
             product_id: p.id,
+            product_unit_id: p.product_unit_id || null,
             quantity: p.quantity,
             expired_date: p.expiredDate,
             purchase_price: p.purchase_price
@@ -340,6 +383,7 @@ async function formSubmit() {
                                     <tr class="text-left text-black bg-gray-100">
                                         <th class="p-2">Image</th>
                                         <th class="p-2">Product Name</th>
+                                        <th class="p-2">Unit</th>
                                         <th class="p-2">Barcode</th>
                                         <th class="p-2">Expired Date</th>
                                         <th class="p-2 text-right">Qty</th>
@@ -358,6 +402,16 @@ async function formSubmit() {
                                             </div>
                                         </td>
                                         <td class="p-2">{{ product.name }}</td>
+                                        <td class="p-2">
+                                            <select
+                                                v-model="product.product_unit_id"
+                                                class="border border-gray-300 rounded px-2 py-1 min-w-[120px]"
+                                                @change="onProductUnitChange(product)"
+                                            >
+                                                <option v-if="product.product_units.length === 0" :value="null">{{ product.unit_name }}</option>
+                                                <option v-for="unit in product.product_units" :key="unit.id" :value="unit.id">{{ unit.unit_id?.name }}</option>
+                                            </select>
+                                        </td>
                                         <td class="p-2">{{ product.barcode }}</td>
                                         <td class="p-2">
                                             <input type="date" min="0" class="w-44 text-right px-1 py-1 border rounded" v-model="product.expiredDate" @input="onChangeExpiredDate(product)" />
@@ -376,10 +430,10 @@ async function formSubmit() {
                                         </td>
                                     </tr>
                                     <tr v-if="selectedProducts.length === 0">
-                                        <td colspan="5" class="py-4 text-center text-gray-500">No products selected</td>
+                                        <td colspan="9" class="py-4 text-center text-gray-500">No products selected</td>
                                     </tr>
                                     <tr class="border-b border-gray-200 font-bold bg-gray-100">
-                                        <td colspan="4" class="p-2 text-right">Grand Total</td>
+                                        <td colspan="5" class="p-2 text-right">Grand Total</td>
                                         <td class="p-2 text-right">
                                             {{
                                                 selectedProducts.reduce((sum, p) => {
@@ -443,7 +497,7 @@ async function formSubmit() {
                                         <td class="py-2 text-end">{{ Number(product.purchase_price).toLocaleString() || 0 }}</td>
                                     </tr>
                                     <tr v-if="(filteredProducts || []).length === 0">
-                                        <td colspan="4" class="py-4 text-center text-gray-500">No products found</td>
+                                        <td colspan="5" class="py-4 text-center text-gray-500">No products found</td>
                                     </tr>
                                 </tbody>
                             </table>

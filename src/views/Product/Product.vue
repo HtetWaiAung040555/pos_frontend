@@ -51,26 +51,76 @@
         saveFilters();
     });
 
+    function safeName(value) {
+        return value?.name || '-';
+    }
+
+    function productUnitName(productUnit) {
+        return productUnit?.unit_id?.name || productUnit?.unit_name || '-';
+    }
+
+    function defaultProductUnit(row) {
+        if (row.default_product_unit?.id) return row.default_product_unit;
+        return row.product_units?.find((unit) => unit.is_default_sale_unit)
+            || row.product_units?.find((unit) => unit.is_base_unit)
+            || row.product_units?.[0]
+            || null;
+    }
+
+    function formatDefaultUnit(row) {
+        const productUnit = defaultProductUnit(row);
+        if (productUnit) {
+            return `${productUnitName(productUnit)}`;
+        }
+        return safeName(row.unit_id);
+    }
+
+    function formatProductUnits(row) {
+        if (!row.uom_enabled || !row.product_units?.length) {
+            return safeName(row.unit_id);
+        }
+
+        return row.product_units.map((unit) => {
+            const label = `${productUnitName(unit)}`;
+            return `<div class="text-xs leading-5">${label}</div>`;
+        }).join('');
+    }
+
+    function formatPriceRanges(row) {
+        const productUnit = defaultProductUnit(row);
+        if (!productUnit?.price_ranges?.length) return '-';
+
+        return productUnit.price_ranges.map((range) => {
+            const maxQty = range.max_qty === null || range.max_qty === undefined ? '+' : Number(range.max_qty).toLocaleString('en-us');
+            return `<div class="text-xs leading-5">${Number(range.min_qty).toLocaleString('en-us')} - ${maxQty}: ${Number(range.price || 0).toLocaleString('en-us')}</div>`;
+        }).join('');
+    }
+
     // Table headers
     const columns = [
-        { key: 'id', label: 'ID' },
+        { key: 'id', label: 'ID', formatter: (row) => row.id, onClick: (row) => {
+            router.push({ name: 'View Product', query: { id: row.id } });
+        } },
         { key: 'image_url', label: 'Image', formatter: (row) => {
             return `<img class="object-cover w-10 h-10 rounded" src="${row.image_url}" alt="${row.name}" />`;
         } },
         { key: 'name', label: 'Name' },
         { key: 'barcode', label: 'Barcode' },
-        { key: 'unit_id.name', label: 'Unit', formatter: (row) => row.unit_id.name },
-        { key: 'category_id.name', label: 'Category', formatter: (row) => row.category_id.name },
+        { key: 'uom_enabled', label: 'UOM', formatter: (row) => row.uom_enabled ? 'Multi' : 'Single' },
+        { key: 'default_product_unit', label: 'Base Unit', formatter: formatDefaultUnit },
+        { key: 'product_units', label: 'Product Units', formatter: formatProductUnits },
+        { key: 'price_ranges', label: 'Default Ranges', formatter: formatPriceRanges },
+        { key: 'category_id.name', label: 'Category', formatter: (row) => safeName(row.category_id) },
         { key: 'sec_prop', label: 'Property' },
         { key: 'price', label: 'Sales Price', formatter: (row) => Number(row.price).toLocaleString('en-us') },
         //{ key: 'purchase_price', label: 'Purchase Price' },
         { key: 'status', label: 'Status', formatter: (row) => {
-            const color = row.status.name === 'Active' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';
-            return `<span class="text-white px-2 py-1 rounded ${color}">${row.status.name}</span>`;
+            const color = row.status?.name === 'Active' ? 'bg-green-500 text-white rounded-md py-1 px-2' : 'bg-red-500 text-white rounded-md py-1 px-2';
+            return `<span class="text-white px-2 py-1 rounded ${color}">${row.status?.name || '-'}</span>`;
         } },
-        { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by.name },
+        { key: 'created_by.name', label: 'Created By', formatter: (row) => safeName(row.created_by) },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },
-        { key: 'updated_by.name', label: 'Updated By', formatter: (row) => row.updated_by.name },
+        { key: 'updated_by.name', label: 'Updated By', formatter: (row) => safeName(row.updated_by) },
         { key: 'updated_at', label: 'Updated At', formatter: (row) => moment(row.updated_at).format('DD-MM-YY hh:mm') },
     ];
 

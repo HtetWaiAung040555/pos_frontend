@@ -13,6 +13,7 @@ import moment from 'moment';
 import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
 import { usePurchaseStore } from '@/stores/usePurchaseStore';
 import { useProductStore } from '@/stores/useProductStore';
+import { buildPurchaseOptions, findPurchaseOption, purchaseLineKey } from '@/utils/purchaseUom';
 
 const router = useRouter();
 const route = useRoute();
@@ -52,23 +53,35 @@ function mergeSelectedProducts(details = []) {
 
     details.forEach((p) => {
         const productId = p.product.id;
-        const expiredDate = p.inventory.expired_date === null ? '' : moment(p.inventory.expired_date).format('YYYY-MM-DD');
-        const existing = mergedProducts.get(productId);
+        const productUnitId = p.uom?.product_unit_id || null;
+        const expiredDate = p.inventory?.expired_date ? moment(p.inventory.expired_date).format('YYYY-MM-DD') : '';
+        const purchasePrice = Number(p.price) || 0;
+        const mergeKey = `${productId}:${productUnitId || 'base'}:${purchasePrice}:${expiredDate}`;
+        const existing = mergedProducts.get(mergeKey);
 
         if (existing) {
-            existing.quantity += Number(p.quantity) || 0;
+            existing.quantity += Number(p.uom?.unit_quantity ?? p.quantity) || 0;
             if (!existing.expiredDate && expiredDate) {
                 existing.expiredDate = expiredDate;
             }
             return;
         }
 
-        mergedProducts.set(productId, {
+        const option = findPurchaseOption(purchaseOptions.value, productId, productUnitId);
+        const sourceProduct = productList.value.find(product => product.id === productId);
+        mergedProducts.set(mergeKey, {
             productId,
             productName: p.product.name,
-            quantity: Number(p.quantity) || 0,
+            productUnitId,
+            unitId: p.uom?.unit_id || option?.unit_id || null,
+            unitName: p.uom?.unit_name || option?.unit_name || '-',
+            productUnits: sourceProduct?.product_units || [],
+            conversionToBase: Number(p.uom?.conversion_to_base ?? option?.conversion_to_base ?? 1),
+            barcode: p.uom?.unit_barcode || option?.barcode || '',
+            imageUrl: option?.image_url || '',
+            quantity: Number(p.uom?.unit_quantity ?? p.quantity) || 0,
             expiredDate,
-            purchasePrice: p.price,
+            purchasePrice,
             total: p.total,
         });
     });
@@ -81,7 +94,12 @@ function mergeSelectedProducts(details = []) {
 
 onMounted(async () => {
     userData.value = JSON.parse(localStorage.getItem('user'));
-    await usePurchase.fetchPurchase(route.query.id);
+    await Promise.all([
+        usePurchase.fetchPurchase(route.query.id),
+        usePaymentMethod.fetchAllPaymentMethod(),
+        useProduct.fetchAllProduct(),
+    ]);
+    productList.value = useProduct.productList || [];
     formData.value = {
         purchaseId: usePurchase.purchaseList.id,
         warehouseId: usePurchase.purchaseList.warehouse.id,
@@ -97,10 +115,9 @@ onMounted(async () => {
     };
     selectedProducts.value = mergeSelectedProducts(usePurchase.purchaseList.details);
     oldSelectedProducts.value = JSON.parse(JSON.stringify(selectedProducts.value));
-    await usePaymentMethod.fetchAllPaymentMethod();
-    await useProduct.fetchAllProduct();
-    productList.value = useProduct.productList || [];
 });
+
+const purchaseOptions = computed(() => buildPurchaseOptions(productList.value));
 
 const filteredProducts = computed(() => {
     const q = (searchTerm.value || '').toString().trim().toLowerCase();
@@ -108,13 +125,17 @@ const filteredProducts = computed(() => {
     return (productList.value || []).filter(p => {
         const name = (p.name || '').toString().toLowerCase();
         const barcode = (p.barcode || '').toString().toLowerCase();
-        return name.includes(q) || barcode.includes(q);
+        const unitMatch = (p.product_units || []).some(unit => (
+            (unit.unit_id?.name || '').toLowerCase().includes(q)
+            || (unit.barcode || '').toLowerCase().includes(q)
+        ));
+        return name.includes(q) || barcode.includes(q) || unitMatch;
     });
 });
 
 function openProductDialog() {
-    const selectedIds = new Set(selectedProducts.value.map(p => p.productId));
-    selectionBuffer.value = (productList.value || []).filter(p => selectedIds.has(p.id));
+    const selectedIds = new Set(selectedProducts.value.map(product => product.productId));
+    selectionBuffer.value = (productList.value || []).filter(product => selectedIds.has(product.id));
     searchTerm.value = '';
     isProductDialogVisible.value = true;
 }
@@ -181,16 +202,43 @@ function confirmProductSelection() {
     const existingMap = new Map(selectedProducts.value.map(p => [p.productId, p]));
     selectedProducts.value = selectionBuffer.value.map(p => {
         const existing = existingMap.get(p.id);
+        const defaultUnit = existing?.productUnitId
+            ? (p.product_units || []).find(unit => unit.id === existing.productUnitId)
+            : getDefaultPurchaseUnit(p);
         return {
             productId: p.id,
             productName: p.name,
+            productUnits: p.product_units || [],
+            productUnitId: defaultUnit?.id || null,
+            unitId: defaultUnit?.unit_id?.id || p.unit_id?.id || null,
+            unitName: defaultUnit?.unit_id?.name || p.unit_id?.name || '-',
+            conversionToBase: Number(defaultUnit?.conversion_to_base || 1),
+            barcode: defaultUnit?.barcode || p.barcode || '',
+            imageUrl: p.image_url || '',
             quantity: existing ? existing.quantity : 0,
             expiredDate: existing ? existing.expiredDate : '',
-            purchasePrice: existing ? existing.purchasePrice : (Number(p.purchase_price) || 0),
+            purchasePrice: existing ? existing.purchasePrice : Number(defaultUnit?.purchase_price ?? p.purchase_price ?? 0),
             total: existing ? existing.total : 0,
         };
     });
     isProductDialogVisible.value = false;
+}
+
+function getDefaultPurchaseUnit(product) {
+    const units = product?.product_units || [];
+    return units.find(unit => unit.is_base_unit)
+        || units.find(unit => unit.is_default_sale_unit)
+        || units[0]
+        || null;
+}
+
+function onProductUnitChange(product) {
+    const unit = (product.productUnits || []).find(item => item.id === product.productUnitId);
+    product.unitId = unit?.unit_id?.id || null;
+    product.unitName = unit?.unit_id?.name || '-';
+    product.conversionToBase = Number(unit?.conversion_to_base || 1);
+    product.barcode = unit?.barcode || '';
+    product.purchasePrice = Number(unit?.purchase_price || 0);
 }
 
 function cancelProductSelection() {
@@ -219,10 +267,10 @@ function areSelectedProdsChange() {
   if (!oldSelectedProducts.value || !Array.isArray(oldSelectedProducts.value)) return false;
 
   const prodMap = new Map();
-  oldSelectedProducts.value.forEach((d) => {
-    const id = d.productId;
-    if (!id) return;
-        prodMap.set(id, {
+    oldSelectedProducts.value.forEach((d) => {
+        const lineKey = purchaseLineKey(d);
+        if (!d.productId) return;
+        prodMap.set(lineKey, {
             quantity: Number(d.quantity),
             purchasePrice: Number(d.purchasePrice),
             expiredDate: (d.expiredDate || '').toString(),
@@ -232,7 +280,7 @@ function areSelectedProdsChange() {
   if (prodMap.size !== selectedProducts.value.length) return false;
 
   for (const p of selectedProducts.value) {
-        const oldProd = prodMap.get(p.productId);
+        const oldProd = prodMap.get(purchaseLineKey(p));
         if (oldProd === undefined) return false;
 
         const oldQty = Number(oldProd.quantity);
@@ -265,6 +313,7 @@ async function formSubmit() {
     if (!isProdsChange) {
         payload.products = selectedProducts.value.map(p => ({
             product_id: p.productId,
+            product_unit_id: p.productUnitId || null,
             quantity: p.quantity,
             purchase_price: p.purchasePrice,
             expired_date: p.expiredDate || null,
@@ -355,6 +404,7 @@ async function formSubmit() {
                 <thead class="sticky top-0">
                     <tr class="bg-gray-100 text-right">
                         <th class="px-2 py-2 text-center">Product Name</th>
+                        <th class="px-2 py-2 text-center">Unit</th>
                         <th class="px-2 py-2 text-center">Expired Date</th>
                         <th class="px-2 py-2">Purchase Qty</th>
                         <th class="px-2 py-2">Purchase Price</th>
@@ -364,9 +414,19 @@ async function formSubmit() {
                 </thead>
                 <tbody>
                     <tr 
-                        class="hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.productId"
+                        class="hover:bg-blue-50 text-right" v-for="product in selectedProducts" :key="product.productId"
                     >
                         <td class="border-b border-gray-200 p-2 text-center">{{ product.productName }}</td>
+                        <td class="border-b border-gray-200 p-2 text-center">
+                            <select
+                                v-model="product.productUnitId"
+                                class="border border-gray-300 rounded px-2 py-1 min-w-[120px]"
+                                @change="onProductUnitChange(product)"
+                            >
+                                <option v-if="product.productUnits.length === 0" :value="null">{{ product.unitName }}</option>
+                                <option v-for="unit in product.productUnits" :key="unit.id" :value="unit.id">{{ unit.unit_id?.name }}</option>
+                            </select>
+                        </td>
                         <td class="border-b border-gray-200 p-2 text-center">
                             <input type="date" min="0" class="w-44 text-right px-1 -1 border rounded" v-model="product.expiredDate" @input="onChangeExpiredDate(product)" />
                         </td>
@@ -386,7 +446,7 @@ async function formSubmit() {
                     <tr 
                         class="text-right"
                     >
-                        <td colspan="2" class="border-b border-gray-200 px-2 py-2">
+                        <td colspan="3" class="border-b border-gray-200 px-2 py-2">
                             <strong>Total:</strong>
                         </td>
                         <td class="border-b border-gray-200 px-2 py-2">
@@ -449,7 +509,7 @@ async function formSubmit() {
                                 <td class="py-2 text-end">{{ Number(product.purchase_price).toLocaleString() || 0 }}</td>
                             </tr>
                             <tr v-if="(filteredProducts || []).length === 0">
-                                <td colspan="4" class="py-4 text-center text-gray-500">No products found</td>
+                                <td colspan="5" class="py-4 text-center text-gray-500">No products found</td>
                             </tr>
                         </tbody>
                     </table>

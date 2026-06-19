@@ -32,12 +32,23 @@ import { getPromotionLifecycleStatusName, statusBadgeHtml } from '@/utils/const'
         return getPromotionLifecycleStatusName(row.start_at, row.end_at);
     }
 
+    function promotionUnitScope(row) {
+        const products = Array.isArray(row.products) ? row.products : [];
+        if (products.length === 0) return '-';
+
+        const unitScoped = products.filter(product => product.promotion_product_unit_id).length;
+        if (unitScoped === 0) return 'All product units';
+        if (unitScoped === products.length) return `${unitScoped} unit-specific`;
+        return `${unitScoped} unit-specific / ${products.length - unitScoped} all-units`;
+    }
+
     const columns = [
         { key: 'id', label: 'ID', formatter: (row) => row.id, onClick: (row) => {
             router.push({name: 'View Promotion', query: { id: row.id }});
         }},
         { key: 'name', label: 'Name' },
         { key: 'promo_type', label: 'Promo Type', formatter: (row) => statusBadgeHtml(row.promo_type)},
+        { key: 'unit_scope', label: 'Unit Scope', formatter: promotionUnitScope },
         // { key: 'discount_type', label: 'Type' },
         // { key: 'discount_value', label: 'Discount Value', formatter: (row) => `${Number(row.discount_value).toLocaleString('en-us')}${row.discount_type === 'Percentage' ? '%' : ''}` },
         { key: 'start_at', label: 'Start', formatter: (row) => moment(row.start_at).format('DD-MM-YY hh:mm') },

@@ -181,6 +181,14 @@ const columns = [
     } },
     { key: 'purchase_date', label: 'Date', formatter: (row) => moment(row.purchase_date).format('DD-MM-YY hh:mm') },
     { key: 'supplier.name', label: 'Supplier Name', formatter: (row) => row.supplier.name },
+    { key: 'details', label: 'Purchased Units', formatter: (row) => {
+        const labels = (row.details || []).map(detail => {
+            const productName = detail.product?.name || '-';
+            const unitName = detail.uom?.unit_name;
+            return unitName ? `${productName} (${unitName})` : productName;
+        });
+        return [...new Set(labels)].join('<br>') || '-';
+    } },
     { key: 'total_amount', label: 'Total', formatter: (row) => Number(row.total_amount).toLocaleString('en-us') },
     { key: 'warehouse.name', label: 'Warehouse', formatter: (row) => row.warehouse.name },
     { key: 'payment.name', label: 'Payment', formatter: (row) => row.payment.name },
@@ -374,6 +382,24 @@ function resolveProduct(row) {
     return null;
 }
 
+function resolveProductUnit(row, product) {
+    const units = Array.isArray(product?.product_units) ? product.product_units : [];
+    const productUnitId = normalizeCell(row.product_unit_id);
+    const unitBarcode = normalizeCell(row.unit_barcode || row.product_unit_barcode).toLowerCase();
+    const unitName = normalizeCell(row.unit_name || row.uom).toLowerCase();
+
+    if (productUnitId) {
+        return units.find(unit => String(unit.id) === productUnitId) || null;
+    }
+    if (unitBarcode) {
+        return units.find(unit => normalizeCell(unit.barcode).toLowerCase() === unitBarcode) || null;
+    }
+    if (unitName) {
+        return units.find(unit => normalizeCell(unit.unit_id?.name).toLowerCase() === unitName) || null;
+    }
+    return null;
+}
+
 function openImportPicker() {
     importInputRef.value?.click();
 }
@@ -477,10 +503,12 @@ async function onImportExcel(event) {
                 const product = resolveProduct(detail);
                 return {
                     raw: detail,
-                    product
+                    product,
+                    productUnit: product ? resolveProductUnit(detail, product) : null,
                 };
             }).filter((entry) => entry.product).map((entry) => ({
                 product_id: entry.product.id,
+                product_unit_id: entry.productUnit?.id || null,
                 quantity: toNumber(entry.raw.quantity, 0),
                 expired_date: moment(fixExcelDate(entry.raw.expired_date)).format('YYYY-MM-DD'),
                 purchase_price: toNumber(entry.raw.purchase_price || entry.raw.price, 0)
@@ -569,9 +597,9 @@ async function exportToExcel() {
         columns: columns,
         rows: usePurchase.exportData,
         filename: 'Purchase',
-        detailHeaders: ['Product ID', 'Product Name', 'Price', 'Discount Amount', 'Discount Price', 'Qty', 'Total'],
+        detailHeaders: ['Product ID', 'Product Name', 'Product Unit ID', 'Unit', 'Unit Qty', 'Base Qty', 'Conversion', 'Price', 'Total'],
         detailField: 'details',
-        detailKeys: ['product.id', 'product.name', 'price', 'discount_amount', 'discount_price', 'quantity', 'total'],
+        detailKeys: ['product.id', 'product.name', 'uom.product_unit_id', 'uom.unit_name', 'uom.unit_quantity', 'uom.base_quantity', 'uom.conversion_to_base', 'price', 'total'],
     });
 }
 

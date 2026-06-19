@@ -32,6 +32,7 @@ import Receipt from './views/POS/Receipt.vue';
 import Product from './views/Product/Product.vue';
 import CreateProduct from './views/Product/CreateProduct.vue';
 import UpdateProduct from './views/Product/UpdateProduct.vue';
+import ViewProduct from './views/Product/ViewProduct.vue';
 import Inventory from './views/Inventory/Inventory.vue';
 import CreateInventory from './views/Inventory/CreateInventory.vue';
 import UpdateInventory from './views/Inventory/UpdateInventory.vue';
@@ -118,6 +119,7 @@ const router = createRouter({
         {path: '/product', name: 'Product', component: Product, meta: { requiresAuth: true, permission: { resource: 'Product', action: 'View' } }},
         {path: '/product/create', name: 'Create Product', component: CreateProduct, meta: { requiresAuth: true, permission: { resource: 'Product', action: 'Create' } }},
         {path: '/product/update', name: 'Update Product', component: UpdateProduct, meta: { requiresAuth: true, permission: { resource: 'Product', action: 'Update' } }},
+        {path: '/product/view', name: 'View Product', component: ViewProduct, meta: { requiresAuth: true, permission: { resource: 'Product', action: 'View' } }},
         {path: '/inventory', name: 'Inventory', component: Inventory, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'View' } }},
         {path: '/inventory/create', name: 'Create Inventory', component: CreateInventory, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'Create' } }},
         {path: '/inventory/update', name: 'Update Inventory', component: UpdateInventory, meta: { requiresAuth: true, permission: { resource: 'Inventory', action: 'Update' } }},

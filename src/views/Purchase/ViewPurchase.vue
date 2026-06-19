@@ -10,6 +10,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { onMounted, ref } from 'vue';
 import { usePurchaseStore } from '@/stores/usePurchaseStore';
 import moment from 'moment';
+import { purchaseDetailQuantity, purchaseDetailUnitName } from '@/utils/purchaseUom';
 
 const router = useRouter();
 const route = useRoute();
@@ -167,9 +168,12 @@ function printSlip() {
                     <tr class="bg-gray-100 text-right">
                         <th class="p-2 w-[50px]"></th>
                         <th class="p-2 text-center">Product Name</th>
+                        <th class="p-2 text-center">Unit</th>
                         <th class="p-2">Expired Date</th>
                         <th class="p-2">Purchase Price</th>
-                        <th class="p-2">Purchase Qty</th>
+                        <th class="p-2">Unit Qty</th>
+                        <th class="p-2">Conversion</th>
+                        <th class="p-2">Base Qty</th>
                         <th class="p-2">Subtotal</th>
                     </tr>
                 </thead>
@@ -179,9 +183,12 @@ function printSlip() {
                     >
                         <td class="border-b border-gray-200 p-2 text-center w-[50px]">{{ index + 1 }}.</td>
                         <td class="border-b border-gray-200 p-2 text-center">{{ product.product?.name }}</td>
+                        <td class="border-b border-gray-200 p-2 text-center">{{ purchaseDetailUnitName(product) }}</td>
                         <td class="border-b border-gray-200 p-2">{{ product.inventory?.expired_date ? moment(product.inventory?.expired_date).format('DD-MM-YYYY') : '-' }}</td>
                         <td class="border-b border-gray-200 p-2">{{ Number(product.price || 0).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 p-2">{{ product.quantity }}</td>
+                        <td class="border-b border-gray-200 p-2">{{ purchaseDetailQuantity(product).toLocaleString('en-us') }}</td>
+                        <td class="border-b border-gray-200 p-2">{{ Number(product.uom?.conversion_to_base || 1).toLocaleString('en-us') }}</td>
+                        <td class="border-b border-gray-200 p-2">{{ Number(product.uom?.base_quantity ?? product.quantity ?? 0).toLocaleString('en-us') }}</td>
                         <td class="border-b border-gray-200 p-2">{{ Number(product.total || 0).toLocaleString('en-us') }}</td>
                     </tr>
                 </tbody>
@@ -272,10 +279,10 @@ function printSlip() {
                   -webkit-box-orient: vertical;
                   -webkit-line-clamp: 2;
                 ">
-                  {{ item.product?.name }}
+                  {{ item.product?.name }} ({{ purchaseDetailUnitName(item) }})
                 </span>
               </td>
-              <td style="padding: 2px 0; text-align: center;">{{ item.quantity }}</td>
+              <td style="padding: 2px 0; text-align: center;">{{ purchaseDetailQuantity(item) }}</td>
               <td style="padding: 2px 0; text-align: right;">
                 <span>{{ Number(item.price || 0).toLocaleString() }}</span>
               </td>
