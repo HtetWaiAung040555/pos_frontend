@@ -40,6 +40,10 @@ const importInputRef = ref(null);
 const isImporting = ref(false);
 const selectedPaymentMethod = ref('');
 const selectedType = ref('');
+const transactionTypes = [
+    { value: 'deposit', label: 'Deposit' },
+    { value: 'withdraw', label: 'Withdraw' },
+];
 const filteredData = ref({
     startedDate: moment().startOf('week').format('YYYY-MM-DD HH:mm:ss'),
     endedDate: moment().format('YYYY-MM-DD HH:mm:ss'),
@@ -104,6 +108,7 @@ async function fetchTransaction() {
             end_date: end,
             customer_id: "",
             status_id: 7, // completed status only
+            type: selectedType.value,
         });
         walletList.value = useWallet.walletList || [];
         // persist current filters after fetch
@@ -151,14 +156,38 @@ watch([
     saveFilters();
 });
 
+watch(selectedType, async () => {
+    await fetchTransaction();
+});
+
+function getWalletType(row) {
+    return String(row?.type || 'deposit').toLowerCase();
+}
+
+function getWalletTypeLabel(row) {
+    return getWalletType(row) === 'withdraw' ? 'Withdraw' : 'Deposit';
+}
+
+function getSignedWalletAmount(wallet) {
+    const amount = Number(wallet?.amount) || 0;
+    return getWalletType(wallet) === 'withdraw' && amount > 0 ? -amount : amount;
+}
+
 // Table headers
 const columns = [
     { key: 'id', label: 'ID' },
     { key: 'customer.id', label: 'Customer ID', formatter: (row) => row.customer?.id },
     { key: 'customer.name', label: 'Name', formatter: (row) => row.customer?.name },
+    { key: 'type', label: 'Type', formatter: (row) => {
+        const isWithdraw = getWalletType(row) === 'withdraw';
+        return `<span class="px-2 py-1 rounded text-xs font-semibold ${isWithdraw ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}">
+            ${getWalletTypeLabel(row)}
+        </span>`
+    } },
     { key: 'amount', label: 'Amount', formatter: (row) => {
-        return `<span class="${Number(row.amount) < 0 ? 'text-red-700' : 'text-blue-700'}">
-            ${Number(row.amount).toLocaleString('en-us')}
+        const amount = getSignedWalletAmount(row);
+        return `<span class="${amount < 0 ? 'text-red-700' : 'text-blue-700'}">
+            ${amount.toLocaleString('en-us')}
         </span>`
     } },
     { key: 'payment_method.name', label: 'Payment Method', formatter: (row) => row.payment_method?.name },
@@ -190,9 +219,9 @@ const filteredRows = computed(() => {
     if (selectedPaymentMethod.value) {
         list = list.filter(w => String(w.payment_method.name) === String(selectedPaymentMethod.value));
     }
-    // filter by transaction type
+    // filter by transaction type. Kept for imported/current rows; backend also filters when selectedType changes.
     if (selectedType.value) {
-        list = list.filter(w => String(w.type) === String(selectedType.value));
+        list = list.filter(w => getWalletType(w) === String(selectedType.value));
     }
     if (searchValue.value && searchValue.value.trim() !== '') {
         const q = searchValue.value.toLowerCase().trim();
@@ -207,13 +236,31 @@ const filteredRows = computed(() => {
 });
 
 const totalAmount = computed(() => {
-        return filteredRows.value.reduce((sum, wallet) => sum + (Number(wallet.amount) || 0), 0);
+        return filteredRows.value.reduce((sum, wallet) => sum + getSignedWalletAmount(wallet), 0);
+    });
+
+    const totalDepositAmount = computed(() => {
+        return filteredRows.value.reduce((sum, wallet) => {
+            if (getWalletType(wallet) === 'deposit') {
+                return sum + Math.abs(Number(wallet.amount) || 0);
+            }
+            return sum;
+        }, 0);
+    });
+
+    const totalWithdrawAmount = computed(() => {
+        return filteredRows.value.reduce((sum, wallet) => {
+            if (getWalletType(wallet) === 'withdraw') {
+                return sum + Math.abs(Number(wallet.amount) || 0);
+            }
+            return sum;
+        }, 0);
     });
 
     const totalCashAmount = computed(() => {
         return filteredRows.value.reduce((sum, wallet) => {
             if (wallet.payment_method && wallet.payment_method.name === 'Cash') {
-                return sum + (Number(wallet.amount) || 0);
+                return sum + getSignedWalletAmount(wallet);
             }
             return sum;
         }, 0);
@@ -222,7 +269,7 @@ const totalAmount = computed(() => {
     const totalKpayAmount = computed(() => {
         return filteredRows.value.reduce((sum, wallet) => {
             if (wallet.payment_method && wallet.payment_method.name === 'Kpay') {
-                return sum + (Number(wallet.amount) || 0);
+                return sum + getSignedWalletAmount(wallet);
             }
             return sum;
         }, 0);
@@ -297,14 +344,16 @@ async function onImportExcel(event) {
             const amount = toNumber(row.amount, 0);
             const payDate = parseExcelDateTime(row.pay_date || row.date || row.transaction_date, 'YYYY-MM-DD HH:mm:ss');
             const remark = normalizeCell(row.remark);
+            const type = String(normalizeCell(row.type) || 'deposit').toLowerCase();
 
-            if (!customerId || !paymentId || amount <= 0 || !payDate) {
+            if (!customerId || !paymentId || amount <= 0 || !payDate || !['deposit', 'withdraw'].includes(type)) {
                 failedRows.push(i + 2);
                 continue;
             }
 
             const payload = {
                 customer_id: customerId,
+                type,
                 amount,
                 remark,
                 pay_date: payDate,
@@ -326,7 +375,7 @@ async function onImportExcel(event) {
             toast.add({
                 severity: 'success',
                 summary: 'Import Completed',
-                detail: `${successCount} wallet top-up row(s) imported.`,
+                detail: `${successCount} wallet transaction row(s) imported.`,
                 life: 3500
             });
         }
@@ -351,7 +400,7 @@ async function onImportExcel(event) {
 <template>
     <div class="p-4">
         <!-- Page Title -->
-        <PageTitle title="Wallet Top-up">
+        <PageTitle title="Wallet">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <input
@@ -371,9 +420,11 @@ async function onImportExcel(event) {
                 </div>
             </template>
         </PageTitle>
-        <div class="grid grid-cols-5 my-3 gap-x-4">
+        <div class="grid grid-cols-6 my-3 gap-x-4">
             <DashboardCard title="Total" :value="filteredRows.length" icon="fa fa-receipt" color="green" />
-            <DashboardCard title="Total Amount" :value="totalAmount.toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
+            <DashboardCard title="Net Amount" :value="totalAmount.toLocaleString('en-us')" icon="fa fa-money-bill" color="blue" />
+            <DashboardCard title="Deposit" :value="totalDepositAmount.toLocaleString('en-us')" icon="fa fa-circle-plus" color="green" />
+            <DashboardCard title="Withdraw" :value="totalWithdrawAmount.toLocaleString('en-us')" icon="fa fa-circle-minus" color="red" />
             <DashboardCard title="Total Cash" :value="totalCashAmount.toLocaleString('en-us')" icon="fa fa-hand-holding-dollar" color="gray" />
             <DashboardCard title="Total Kpay" :value="totalKpayAmount.toLocaleString('en-us')" icon="fa fa-credit-card" color="blue" />
         </div>
@@ -421,8 +472,7 @@ async function onImportExcel(event) {
 
                     <select v-model="selectedType" class="border border-gray-300 p-2 rounded text-sm h-[35px]">
                         <option value="">All Type</option>
-                        <option value="sale">Sales</option>
-                        <option value="top-up">Top-up</option>
+                        <option v-for="type in transactionTypes" :key="type.value" :value="type.value">{{ type.label }}</option>
                     </select>
                 </div>
             </template>

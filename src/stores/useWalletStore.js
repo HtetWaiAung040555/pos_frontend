@@ -30,6 +30,9 @@ export const useWalletStore = defineStore('wallet', {
                     if (filteredData.status_id !== undefined && filteredData.status_id !== null && filteredData.status_id !== '') {
                         params.append('status_id', filteredData.status_id);
                     }
+                    if (filteredData.type !== undefined && filteredData.type !== null && filteredData.type !== '') {
+                        params.append('type', filteredData.type);
+                    }
 
                     const query = params.toString();
                     response = await axios.get(query ? `/wallets?${query}` : `/wallets`);

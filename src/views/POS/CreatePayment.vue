@@ -146,6 +146,7 @@ async function addWallet() {
   }
   let payload = {
     customer_id: salesData.value.customer.id,
+    type: 'deposit',
     amount: parseFloat(data.value.walletAmt),
     payment_id: data.value.walletPaymentId,
     remark: data.value.walletAmt,

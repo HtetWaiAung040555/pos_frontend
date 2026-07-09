@@ -730,6 +730,7 @@ async function createWallet() {
   }
   let payload = {
     customer_id: selectedCustomer.value.id,
+    type: 'deposit',
     amount: parseFloat(walletData.value.amount),
     payment_id: walletData.value.paymentId,
     remark: walletData.value.remark,
