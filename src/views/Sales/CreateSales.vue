@@ -6,7 +6,7 @@ import BaseCard from '@/components/BaseCard.vue';
 import SubTitle from '@/components/SubTitle.vue';
 import { useRouter } from 'vue-router';
 import BaseInput from '@/components/BaseInput.vue';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import BaseLabel from '@/components/BaseLabel.vue';
 import moment from 'moment';
@@ -19,6 +19,7 @@ import { useCustomerStore } from '@/stores/useCustomerStore';
 import { useSaleStore } from '@/stores/useSalesStore';
 import axios from 'axios';
 import { useStatusStore } from '@/stores/useStatusStore';
+import { useBranchStore } from '@/stores/useBranchStore';
 
 const router = useRouter();
 const toast = useToast();
@@ -28,6 +29,7 @@ const useCustomer = useCustomerStore();
 const useWarehouse = useWarehouseStore();
 const useProduct = useProductStore();
 const useStatus = useStatusStore();
+const useBranch = useBranchStore();
 
 const userData = ref({});
 const customerSelect = ref(null)
@@ -40,7 +42,8 @@ const headerCheckboxRef = ref(null);
 const isCheckingAll = ref(false);
 const isSelectAllLoading = ref(false);
 const selectedCustomer = ref([]);
-const selectedWarehouse = ref([]);
+const selectedBranch = ref(null);
+const selectedWarehouse = ref(null);
 const orderDiscountAmount = ref(0);
 const appliedPromotions = ref([]);
 const formData = ref({
@@ -56,6 +59,7 @@ const formData = ref({
 })
 const errorMsg = ref({
     customer: "",
+    branch: "",
     warehouse: "",
 });
 
@@ -69,14 +73,50 @@ onMounted(async () => {
     await Promise.all([
         useCustomer.fetchAllCustomer(),
         useWarehouse.fetchAllWarehouse(),
+        useBranch.fetchAllBranch(),
         usePaymentMethod.fetchAllPaymentMethod(),
-        useProduct.fetchAllProduct(),
     ]);
-    productList.value = useProduct.productList || [];
     selectedCustomer.value = useCustomer.customerList.filter(c => c.is_default)[0];
-    selectedWarehouse.value = useWarehouse.warehouseList.filter(w => w.id === userData.value.branch.warehouse_id)[0];
+    selectedBranch.value = null;
+    syncWarehouseFromBranch(null);
     await useStatus.fetchAllStatus();
 });
+
+function branchWarehouse(branch) {
+    return branch?.warehouse
+        || (useWarehouse.warehouseList || []).find(warehouse => Number(warehouse.id) === Number(branch?.warehouse_id))
+        || null;
+}
+
+function syncWarehouseFromBranch(branch) {
+    const warehouse = branchWarehouse(branch);
+    selectedWarehouse.value = warehouse;
+    formData.value.warehouseId = warehouse?.id || branch?.warehouse_id || '';
+}
+
+async function loadProductsForBranch(branchId) {
+    if (!branchId) {
+        productList.value = [];
+        return;
+    }
+
+    await useProduct.fetchSalesProduct({ branch_id: branchId });
+    productList.value = useProduct.productList || [];
+}
+
+function hydrateSelectedProductsFromCatalog() {
+    selectedProducts.value = selectedProducts.value.map((product) => {
+        const catalogProduct = (productList.value || []).find(item => Number(item.id) === Number(product.id));
+        if (!catalogProduct) return product;
+
+        return {
+            ...product,
+            image_url: product.image_url || catalogProduct.image_url,
+            base_barcode: product.base_barcode || catalogProduct.barcode,
+            product_units: catalogProduct.product_units || product.product_units || [],
+        };
+    });
+}
 
 const productTotalAmount = computed(() => {
     return selectedProducts.value.reduce((sum, p) => {
@@ -94,6 +134,75 @@ const changeAmount = computed(() => {
     return Number(formData.value.paidAmount || 0) - grandTotalAmount.value;
 });
 
+function recordId(value) {
+    return value?.id || value || null;
+}
+
+function defaultProductUnit(product) {
+    if (product?.default_product_unit?.id) return product.default_product_unit;
+    return product?.product_units?.find((unit) => unit.is_default_sale_unit)
+        || product?.product_units?.find((unit) => unit.is_base_unit)
+        || product?.product_units?.[0]
+        || null;
+}
+
+function productUnitId(product) {
+    return product?.product_unit_id || defaultProductUnit(product)?.id || null;
+}
+
+function productUnitUnitId(product) {
+    return recordId(product?.unit_id) || recordId(defaultProductUnit(product)?.unit_id);
+}
+
+function selectedProductUnit(product) {
+    const units = Array.isArray(product?.product_units) ? product.product_units : [];
+    const selectedUnitId = product?.product_unit_id;
+    return units.find((unit) => Number(unit.id) === Number(selectedUnitId))
+        || defaultProductUnit(product);
+}
+
+function productUnitName(product) {
+    const unit = selectedProductUnit(product);
+    return product?.unit_name || unit?.unit_name || unit?.unit_id?.name || null;
+}
+
+function productUnitBarcode(product) {
+    const unit = selectedProductUnit(product);
+    return product?.unit_barcode || unit?.barcode || (product?.product_unit_id ? product?.barcode : null) || null;
+}
+
+function productConversionToBase(product) {
+    const unit = selectedProductUnit(product);
+    const conversion = Number(product?.conversion_to_base || unit?.conversion_to_base || 1);
+    return conversion > 0 ? conversion : 1;
+}
+
+function productLineUomSnapshot(product, quantity) {
+    const unitQuantity = Number(quantity || 0);
+    const conversionToBase = productConversionToBase(product);
+
+    return {
+        product_unit_id: product?.product_unit_id || productUnitId(product),
+        unit_id: productUnitUnitId(product),
+        unit_name: productUnitName(product),
+        unit_quantity: unitQuantity,
+        base_quantity: unitQuantity * conversionToBase,
+        conversion_to_base: conversionToBase,
+        unit_barcode: productUnitBarcode(product),
+        price_range_id: product?.price_range_id || null,
+    };
+}
+
+function sameProductUnit(left, right) {
+    return Number(left.product_id || left.id) === Number(right.product_id || right.id)
+        && Number(left.product_unit_id || 0) === Number(right.product_unit_id || 0);
+}
+
+function pricedItemFor(product, pricedItems = []) {
+    return pricedItems.find(item => sameProductUnit(item, product))
+        || pricedItems.find(item => Number(item.product_id || item.id) === Number(product.id));
+}
+
 watch(grandTotalAmount, (amount) => {
     formData.value.paidAmount = amount;
 });
@@ -109,6 +218,17 @@ const filteredProducts = computed(() => {
 });
 
 function openProductDialog() {
+    if (!selectedBranch.value) {
+        errorMsg.value.branch = "Please select a branch first.";
+        toast.add({
+            severity: 'warn',
+            summary: 'Branch Required',
+            detail: 'Please select a branch before selecting products.',
+            life: 3000
+        });
+        return;
+    }
+
     // create a shallow copy buffer to allow canceling
     selectionBuffer.value = selectedProducts.value.filter(p => !p.is_foc).slice();
     searchTerm.value = '';
@@ -188,8 +308,15 @@ async function confirmProductSelection() {
             id: p.id,
             name: p.name,
             barcode: p.barcode,
+            base_barcode: p.base_barcode || p.barcode,
             quantity: Number(existing?.quantity ?? p.quantity) || 1,
             image_url: p.image_url,
+            product_units: p.product_units || [],
+            product_unit_id: existing?.product_unit_id || productUnitId(p),
+            unit_id: existing?.unit_id || productUnitUnitId(p),
+            unit_name: existing?.unit_name || productUnitName(p),
+            unit_barcode: existing?.unit_barcode || productUnitBarcode(p),
+            conversion_to_base: existing?.conversion_to_base || productConversionToBase(p),
             price: basePrice,
             promotion_id: existing?.promotion_id || null,
             discount_amount: Number(existing?.discount_amount) || 0,
@@ -224,6 +351,24 @@ function onChangePrice(product) {
     recalculatePromotions();
 }
 
+function onProductUnitChange(product) {
+    if (product.is_foc) return;
+
+    const unit = (product.product_units || []).find(item => Number(item.id) === Number(product.product_unit_id));
+    product.unit_id = recordId(unit?.unit_id) || null;
+    product.unit_name = unit?.unit_id?.name || unit?.unit_name || '-';
+    product.unit_barcode = unit?.barcode || null;
+    product.conversion_to_base = Number(unit?.conversion_to_base || 1);
+    product.barcode = unit?.barcode || product.base_barcode || product.barcode || '';
+    product.price = 0;
+    product.discount_amount = 0;
+    product.discount_price = 0;
+    product.promotion_id = null;
+    product.price_source = null;
+    product.price_range_id = null;
+    recalculatePromotions();
+}
+
 function removeSelectedProduct(product) {
     selectedProducts.value = selectedProducts.value.filter(p => p.id !== product.id);
     recalculatePromotions();
@@ -241,12 +386,13 @@ async function recalculatePromotions() {
 
     try {
         const payload = {
-            warehouse_id: selectedWarehouse.value?.id ?? userData.value.branch?.warehouse_id ?? null,
+            branch_id: selectedBranch.value?.id ?? null,
+            warehouse_id: selectedWarehouse.value?.id ?? selectedBranch.value?.warehouse_id ?? null,
             cart: normalProducts.map(p => ({
                 product_id: p.id,
+                product_unit_id: p.product_unit_id || null,
+                unit_id: recordId(p.unit_id),
                 qty: Number(p.quantity || 0),
-                original_price: Number(p.price || 0),
-                price: p.promotion_id ? Number(p.discount_price || 0) : Number(p.price || 0),
             })),
             sale_date: moment(formData.value.salesDate).format('YYYY-MM-DD HH:mm:ss'),
         };
@@ -254,23 +400,33 @@ async function recalculatePromotions() {
         const res = await axios.post('/promotions/checkprice', payload);
         const data = res.data || {};
 
-        selectedProducts.value = normalProducts.map(p => ({
-            ...p,
-            promotion_id: null,
-            discount_amount: 0,
-            discount_price: Number(p.price || 0),
-            discount_value: 0,
-            discount_type: '',
-            is_foc: false,
-            reward_id: null,
-        }));
+        selectedProducts.value = normalProducts.map(p => {
+            const pricedItem = pricedItemFor(p, data.priced_items || []);
+            const price = Number(pricedItem?.price ?? 0);
+
+            return {
+                ...p,
+                price,
+                price_source: pricedItem?.price_source || null,
+                price_range_id: pricedItem?.price_range_id || null,
+                promotion_id: null,
+                discount_amount: 0,
+                discount_price: price,
+                discount_value: 0,
+                discount_type: '',
+                is_foc: false,
+                reward_id: null,
+            };
+        });
 
         if (Array.isArray(data.items) && data.items.length > 0) {
             selectedProducts.value = selectedProducts.value.map(p => {
-                const promo = data.items.find(item => Number(item.product_id) === Number(p.id));
+                const promo = data.items.find(item => sameProductUnit(item, p))
+                    || data.items.find(item => Number(item.product_id) === Number(p.id));
                 if (!promo) return p;
 
-                const discountAmount = Number(promo.discount_amount) || 0;
+                const discountPrice = Number(promo.discount_price ?? Math.max(0, Number(p.price || 0) - Number(promo.discount_amount || 0)));
+                const discountAmount = Math.max(0, Number(p.price || 0) - discountPrice);
 
                 return {
                     ...p,
@@ -278,7 +434,7 @@ async function recalculatePromotions() {
                     discount_value: Number(promo.discount_value) || 0,
                     discount_type: promo.discount_type || '',
                     discount_amount: discountAmount,
-                    discount_price: Math.max(0, Number(p.price || 0) - discountAmount),
+                    discount_price: discountPrice,
                 };
             });
         }
@@ -295,8 +451,15 @@ async function recalculatePromotions() {
                     id: product.id,
                     name: product.name,
                     barcode: product.barcode,
+                    base_barcode: product.base_barcode || product.barcode,
                     quantity: Number(free.qty) || 1,
                     image_url: product.image_url,
+                    product_units: product.product_units || [],
+                    product_unit_id: free.product_unit_id || productUnitId(product),
+                    unit_id: free.unit_id || productUnitUnitId(product),
+                    unit_name: free.unit_name || productUnitName(product),
+                    unit_barcode: free.unit_barcode || productUnitBarcode(product),
+                    conversion_to_base: free.conversion_to_base || productConversionToBase(product),
                     price: 0,
                     promotion_id: free.promotion_id || null,
                     discount_amount: 0,
@@ -333,6 +496,24 @@ async function recalculatePromotions() {
     }
 }
 
+watch(selectedBranch, async (branch) => {
+    errorMsg.value.branch = "";
+    syncWarehouseFromBranch(branch);
+    await loadProductsForBranch(branch?.id);
+    hydrateSelectedProductsFromCatalog();
+
+    if (!branch) {
+        selectedProducts.value = [];
+        orderDiscountAmount.value = 0;
+        appliedPromotions.value = [];
+        return;
+    }
+
+    if (selectedProducts.value.length > 0) {
+        await recalculatePromotions();
+    }
+});
+
 watch([selectedWarehouse, () => formData.value.salesDate], () => {
     if (selectedProducts.value.length > 0) {
         recalculatePromotions();
@@ -341,6 +522,27 @@ watch([selectedWarehouse, () => formData.value.salesDate], () => {
 
 // Form Submit function
 async function formSubmit(isPrint = false) {
+    errorMsg.value = {
+        customer: "",
+        branch: "",
+        warehouse: "",
+    };
+
+    if (!selectedCustomer.value?.id) {
+        errorMsg.value.customer = "Please select a customer.";
+        return;
+    }
+
+    if (!selectedBranch.value?.id) {
+        errorMsg.value.branch = "Please select a branch.";
+        return;
+    }
+
+    if (!selectedWarehouse.value?.id && !selectedBranch.value?.warehouse_id) {
+        errorMsg.value.warehouse = "Selected branch does not have a warehouse.";
+        return;
+    }
+
     const promotionsOk = await recalculatePromotions();
     if (!promotionsOk) return;
 
@@ -350,13 +552,15 @@ async function formSubmit(isPrint = false) {
         status_id: useStatus.getStatusId('Complete'),
         remark: formData.value.remark,
         sale_date: formData.value.salesDate,
-        warehouse_id: selectedWarehouse.value.id,
+        branch_id: selectedBranch.value.id,
+        warehouse_id: selectedWarehouse.value?.id || selectedBranch.value.warehouse_id,
         created_by: userData.value.id,
         paid_amount: formData.value.paidAmount,
         order_discount_amount: orderDiscountAmount.value,
         applied_promotions: appliedPromotions.value,
         products: selectedProducts.value.map(p => ({
             product_id: p.id,
+            ...productLineUomSnapshot(p, p.quantity),
             quantity: p.quantity,
             price: p.is_foc ? 0 : p.price,
             original_price: p.is_foc ? 0 : p.price,
@@ -367,6 +571,7 @@ async function formSubmit(isPrint = false) {
             reward_id: p.reward_id || null,
         }))
     }
+    console.log('Final sales create payload:', payload);
     await useSales.addSales(payload);
     if (useSales.error.length) {
         useSales.error.forEach((msg) => {
@@ -544,12 +749,19 @@ function printSlip() {
                         </Select>
                         <BaseErrorLabel v-if="errorMsg.customer" :label="errorMsg.customer" />
                     </div>
+                    <!-- Branch -->
+                    <div class="flex flex-col gap-y-1">
+                        <BaseLabel label="Branch" :isRequire="true" />
+                        <Select v-model="selectedBranch" :options="useBranch.branchList" showClear filter
+                            optionLabel="name" placeholder="Select a branch"
+                            class="h-[35px] items-center" />
+                        <BaseErrorLabel v-if="errorMsg.branch" :label="errorMsg.branch" />
+                    </div>
                     <!-- Warehouse -->
                     <div class="flex flex-col gap-y-1">
                         <BaseLabel label="Warehouse" :isRequire="true" />
-                        <Select v-model="selectedWarehouse" :options="useWarehouse.warehouseList" showClear filter
-                            optionLabel="name" placeholder="Select a warehouse"
-                            class="h-[35px] items-center" />
+                        <BaseInput size="sm" :modelValue="selectedWarehouse?.name || ''" placeholder="Warehouse"
+                            height="h-[35px]" disabled />
                         <BaseErrorLabel v-if="errorMsg.warehouse" :label="errorMsg.warehouse" />
                     </div>
                     <!-- Sales date input -->
@@ -570,7 +782,11 @@ function printSlip() {
                 <!-- Selected Product Section -->
                 <div class="flex flex-col">
                     <!-- Select Product Button -->
-                    <BaseButton label="Select Products" class="w-fit mt-4 mb-4" @click="openProductDialog()" />
+                    <BaseButton label="Select Products" class="w-fit mt-4 mb-4"
+                        :icon="useProduct.loading ? 'fa fa-spinner' : ''"
+                        :isLoading="useProduct.loading"
+                        :disabled="!selectedBranch || useProduct.loading"
+                        @click="openProductDialog()" />
                     <!-- Selected Products Table (scrollable with fixed header) -->
                     <div class="mt-4">
                         <div class="max-h-[350px] overflow-y-auto rounded">
@@ -579,6 +795,7 @@ function printSlip() {
                                     <tr class="text-left text-black bg-gray-100">
                                         <th class="p-2">Image</th>
                                         <th class="p-2">Product Name</th>
+                                        <th class="p-2">Unit</th>
                                         <th class="p-2">Barcode</th>
                                         <th class="p-2 text-right">Unit Price</th>
                                         <th class="p-2 text-right">Discount</th>
@@ -598,6 +815,17 @@ function printSlip() {
                                             </div>
                                         </td>
                                         <td class="p-2">{{ product.name }}</td>
+                                        <td class="p-2">
+                                            <select
+                                                v-model="product.product_unit_id"
+                                                class="border border-gray-300 rounded px-2 py-1 min-w-[120px]"
+                                                :disabled="product.is_foc"
+                                                @change="onProductUnitChange(product)"
+                                            >
+                                                <option v-if="(product.product_units || []).length === 0" :value="null">{{ product.unit_name || '-' }}</option>
+                                                <option v-for="unit in product.product_units" :key="unit.id" :value="unit.id">{{ unit.unit_id?.name || unit.unit_name }}</option>
+                                            </select>
+                                        </td>
                                         <td class="p-2">{{ product.barcode }}</td>
                                         <td class="p-2 text-right">
                                             <input type="number" min="0" class="w-32 text-right px-1 py-1 border rounded" :class="{ 'bg-gray-100': product.is_foc }" v-model.number="product.price" @input="onChangePrice(product)" :readonly="product.is_foc" />
@@ -624,12 +852,12 @@ function printSlip() {
                                         </td>
                                     </tr>
                                     <tr v-if="selectedProducts.length === 0">
-                                        <td colspan="9" class="py-4 text-center text-gray-500">No products selected</td>
+                                        <td colspan="10" class="py-4 text-center text-gray-500">No products selected</td>
                                     </tr>
                                 </tbody>
                                 <tfoot class="sticky bottom-0 z-20 bg-gray-100">
                                     <tr class="font-bold">
-                                        <td colspan="6" class="p-2 text-right bg-gray-100 border-t border-gray-300">Product Total</td>
+                                        <td colspan="7" class="p-2 text-right bg-gray-100 border-t border-gray-300">Product Total</td>
                                         <td class="p-2 text-right bg-gray-100 border-t border-gray-300">
                                             {{
                                                 selectedProducts.reduce((sum, p) => {
@@ -641,13 +869,13 @@ function printSlip() {
                                         <td class="bg-gray-100 border-t border-gray-300">&nbsp;</td>
                                     </tr>
                                     <tr v-if="orderDiscountAmount > 0" class="font-bold">
-                                        <td colspan="6" class="p-2 text-right bg-gray-100 border-t border-gray-200">Order Discount Amount</td>
+                                        <td colspan="7" class="p-2 text-right bg-gray-100 border-t border-gray-200">Order Discount Amount</td>
                                         <td class="bg-gray-100 border-t border-gray-200">&nbsp;</td>
                                         <td class="p-2 text-right bg-gray-100 border-t border-gray-200">-{{ Number(orderDiscountAmount).toLocaleString() }}</td>
                                         <td class="bg-gray-100 border-t border-gray-200">&nbsp;</td>
                                     </tr>
                                     <tr class="font-bold">
-                                        <td colspan="6" class="p-2 text-right bg-gray-100 border-t border-gray-300">Grand Total</td>
+                                        <td colspan="7" class="p-2 text-right bg-gray-100 border-t border-gray-300">Grand Total</td>
                                         <td class="bg-gray-100 border-t border-gray-300">&nbsp;</td>
                                         <td class="p-2 text-right bg-gray-100 border-t border-gray-300">{{ grandTotalAmount.toLocaleString() }}</td>
                                         <td class="bg-gray-100 border-t border-gray-300">&nbsp;</td>

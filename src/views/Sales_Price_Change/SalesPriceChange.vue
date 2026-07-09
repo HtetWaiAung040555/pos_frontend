@@ -11,6 +11,7 @@
     import BaseInput from '@/components/BaseInput.vue';
     import { usePermissionStore } from '@/stores/usePermissionStore';
     import { usePriceChangeStore } from '@/stores/usePriceChangeStore';
+    import { detectTargetType, targetLabel } from '@/utils/priceChangeTargets';
 
     const router = useRouter();
     const usePriceChange = usePriceChangeStore();
@@ -27,17 +28,27 @@
       priceChangeList.value = usePriceChange.priceChangeList;
     });
 
+    function uniqueNames(values) {
+        const names = [...new Set(values.filter(Boolean))];
+        if (!names.length) return '-';
+        return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
+    }
+
     const columns = [
         { key: 'id', label: 'ID', formatter: (row) => row.id, onClick: (row) => {
             router.push({name: 'View Sales Price Change', query: { id: row.id }});
         }},
         { key: 'description', label: 'Description' },
         { key: 'type', label: 'Type'},
+        { key: 'targets', label: 'Targets', formatter: (row) => uniqueNames((row.products || []).map((item) => targetLabel(detectTargetType(item)))) },
+        { key: 'branches', label: 'Branches', formatter: (row) => uniqueNames((row.products || []).map((item) => item.branch?.name)) },
+        { key: 'products', label: 'Price Rows', formatter: (row) => (row.products || []).length },
         { key: 'start_at', label: 'Start', formatter: (row) => moment(row.start_at).format('DD-MM-YY hh:mm') },
         // { key: 'end_at', label: 'End', formatter: (row) => moment(row.end_at).format('DD-MM-YY hh:mm') },
         { key: 'status.name', label: 'Status', formatter: (row) => {
-            const color = row.status.name === 'Active' ? 'bg-green-500' : row.status.name === 'Applied' ? 'bg-blue-500' : 'bg-red-500';
-            return `<span class="text-white px-2 py-1 rounded-md ${color}">${row.status.name}</span>`;
+            const statusName = row.status?.name || '-';
+            const color = statusName === 'Active' ? 'bg-green-500' : statusName === 'Applied' ? 'bg-blue-500' : 'bg-red-500';
+            return `<span class="text-white px-2 py-1 rounded-md ${color}">${statusName}</span>`;
         } },
         { key: 'created_by.name', label: 'Created By', formatter: (row) => row.created_by?.name },
         { key: 'created_at', label: 'Created At', formatter: (row) => moment(row.created_at).format('DD-MM-YY hh:mm') },

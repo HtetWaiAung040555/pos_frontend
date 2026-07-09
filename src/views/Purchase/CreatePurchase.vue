@@ -321,8 +321,7 @@ async function formSubmit() {
     <div class="p-4">
         <div v-if="isInitLoading" class="fixed inset-0 z-50 flex items-center justify-center bg-opacity-30">
             <div class="bg-white rounded-lg shadow-lg p-8 flex flex-col items-center">
-                <Loading loadingWidth="w-[40px]" />
-                <div class="mt-4 text-lg text-gray-700">Loading...</div>
+                <Loading variant="page" loadingWidth="w-[56px]" />
             </div>
         </div>
         <!-- Page Title -->

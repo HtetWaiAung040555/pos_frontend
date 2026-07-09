@@ -9,6 +9,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { onMounted, ref } from 'vue';
 import { usePriceChangeStore } from '@/stores/usePriceChangeStore';
 import moment from 'moment';
+import { formatRange, rowFromPriceChangeItem, targetLabel } from '@/utils/priceChangeTargets';
 
 const router = useRouter();
 const route = useRoute();
@@ -20,6 +21,7 @@ const formData = ref({
 	description: '',
 	type: '',
 	startDate: '',
+	endDate: '',
 	status: '',
 	createdBy: '',
 	createdAt: '',
@@ -55,6 +57,7 @@ onMounted(async () => {
 		description: priceChange.description || '',
 		type: priceChange.type || '',
 		startDate: priceChange.start_at || '',
+		endDate: priceChange.end_at || '',
 		status: priceChange.status?.name || '',
 		createdBy: priceChange.created_by?.name || '-',
 		createdAt: priceChange.created_at || '',
@@ -62,13 +65,7 @@ onMounted(async () => {
 		updatedAt: priceChange.updated_at || ''
 	};
 
-	selectedProducts.value = (priceChange.products || []).map((p) => ({
-		id: p.product.id,
-		name: p.product.name,
-		image_url: p.product.image_url,
-		old_price: Number(p.old_price) || 0,
-		new_price: Number(p.price ?? p.new_price) || 0
-	}));
+	selectedProducts.value = (priceChange.products || []).map(rowFromPriceChangeItem);
 });
 </script>
 
@@ -91,6 +88,7 @@ onMounted(async () => {
 						<DetailRow label="Price Change ID:" :value="formData.id" />
 						<DetailRow label="Type:" :value="formData.type" :formatter="(v) => String(v || '').toUpperCase()" />
 						<DetailRow label="Start Date" :value="formData.startDate" :formatter="(v) => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
+						<DetailRow label="End Date" :value="formData.endDate" :formatter="(v) => v ? moment(v).format('DD-MM-YYYY hh:mm:ss A') : '-'" />
 						<DetailRow label="Description" :value="formData.description" />
 					</div>
 
@@ -107,13 +105,16 @@ onMounted(async () => {
 			</template>
 		</BaseCard>
 
-		<div class="mt-3 max-h-[350px] overflow-y-auto rounded">
-			<table class="text-black w-full border-collapse border border-gray-200">
+		<div class="mt-3 max-h-[350px] overflow-auto rounded">
+			<table class="text-black w-full min-w-[1050px] border-collapse border border-gray-200">
 				<thead class="sticky top-0">
 					<tr class="bg-gray-100 text-right">
 						<th class="p-2 w-[50px]"></th>
-						<th class="p-2 text-left">Image</th>
+						<th class="p-2 text-left">Target</th>
+						<th class="p-2 text-left">Branch</th>
 						<th class="p-2 text-left">Product Name</th>
+						<th class="p-2 text-left">Unit</th>
+						<th class="p-2 text-left">Range</th>
 						<th class="p-2">Sales Old Price</th>
 						<th class="p-2">Sales New Price</th>
 					</tr>
@@ -122,18 +123,19 @@ onMounted(async () => {
 					<tr
 						class="hover:bg-blue-50 text-right"
 						v-for="(product, index) in selectedProducts"
-						:key="product.id"
+						:key="product.rowKey"
 					>
 						<td class="border-b border-gray-200 p-2 text-center w-[50px]">{{ index + 1 }}.</td>
-						<td class="border-b border-gray-200 p-2 text-left">
-							<img :src="product.image_url" :alt="product.name" class="w-10 h-10 object-cover rounded" />
-						</td>
-						<td class="border-b border-gray-200 p-2 text-left">{{ product.name }}</td>
+						<td class="border-b border-gray-200 p-2 text-left">{{ targetLabel(product.target_type) }}</td>
+						<td class="border-b border-gray-200 p-2 text-left">{{ product.branch_name }}</td>
+						<td class="border-b border-gray-200 p-2 text-left">{{ product.product_name }}</td>
+						<td class="border-b border-gray-200 p-2 text-left">{{ product.unit_name }}</td>
+						<td class="border-b border-gray-200 p-2 text-left">{{ formatRange(product) }}</td>
 						<td class="border-b border-gray-200 p-2">{{ formatPrice(product.old_price) }}</td>
 						<td class="border-b border-gray-200 p-2">{{ formatPrice(product.new_price) }}</td>
 					</tr>
 					<tr v-if="selectedProducts.length === 0">
-						<td colspan="5" class="border-b border-gray-200 p-3 text-center text-gray-500">No products available</td>
+						<td colspan="8" class="border-b border-gray-200 p-3 text-center text-gray-500">No products available</td>
 					</tr>
 				</tbody>
 			</table>

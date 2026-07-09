@@ -1,373 +1,165 @@
 <script setup>
-import { useRoute, useRouter } from 'vue-router';
-import { watch, ref, computed, onMounted } from 'vue';
-import axios from 'axios';
+import { useRouter } from 'vue-router';
+import { computed, onMounted, ref, watch } from 'vue';
 import moment from 'moment';
 import BaseInput from '@/components/BaseInput.vue';
 import BaseLabel from '@/components/BaseLabel.vue';
 import BaseButton from '@/components/BaseButton.vue';
-import { errMsgList } from '@/utils/const';
-import { useToast } from 'primevue';
+import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
 import PageTitle from '@/components/PageTitle.vue';
 import BaseCard from '@/components/BaseCard.vue';
-import BaseSwitch from '@/components/BaseSwitch.vue';
 import SubTitle from '@/components/SubTitle.vue';
-
+import { errMsgList } from '@/utils/const';
+import { useToast } from 'primevue';
+import { useBranchStore } from '@/stores/useBranchStore';
 import { useProductStore } from '@/stores/useProductStore';
 import { usePriceChangeStore } from '@/stores/usePriceChangeStore';
-import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
-import { normalizeCell, readWorkbookFromFile, readNormalizedSheetRows } from '@/utils/excelImport';
+import {
+    buildAllTargetRows,
+    formatRange,
+    isRangeTarget,
+    payloadForTargetRow,
+    targetLabel,
+    toNumber,
+} from '@/utils/priceChangeTargets';
 
 const router = useRouter();
 const toast = useToast();
 const usePriceChange = usePriceChangeStore();
 const useProduct = useProductStore();
+const useBranch = useBranchStore();
 
 const userData = ref({});
 const formData = ref({
     description: '',
     type: 'sale',
-    startDate: moment().format('YYYY-MM-DD HH:mm:ss'),
-    endDate: moment().add(1, 'years').format('YYYY-MM-DD HH:mm:ss'),
+    startDate: moment().format('YYYY-MM-DDTHH:mm'),
+    endDate: '',
     priceValueType: 'INCREASE',
-    priceChangeValue: 0,
+    priceChangeValue: '',
 });
-const selectedProducts = ref([]);
-const priceChangeStatus = ref(true);
-const isProductDialogVisible = ref(false);
+const selectedRows = ref([]);
 const productList = ref([]);
 const searchTerm = ref('');
 const selectionBuffer = ref([]);
-const headerCheckboxRef = ref(null);
-const isCheckingAll = ref(false);
-const isSelectAllLoading = ref(false);
-const importInputRef = ref(null);
-const isImporting = ref(false);
-const importFailList = ref([]);
+const isProductDialogVisible = ref(false);
+const changedOnly = ref(false);
+const expandedProductIds = ref([]);
+const rangeModal = ref({
+    visible: false,
+    title: '',
+    rows: [],
+});
 const errorMsg = ref({
-    type: "",
-    priceChangeValue: "",
-    products: "",
+    products: '',
+    priceChangeValue: '',
 });
 
-// function syncPriceChangeStatusByStartDate() {
-//     const start = (formData.value.startDate || '').toString().trim();
-//     if (!start) {
-//         priceChangeStatus.value = false;
-//         return;
-//     }
-
-//     const parsedStart = moment(start, [
-//         'YYYY-MM-DD HH:mm:ss',
-//         'YYYY-MM-DDTHH:mm:ss',
-//         'YYYY-MM-DDTHH:mm',
-//         'YYYY-MM-DD HH:mm'
-//     ], true);
-
-//     priceChangeStatus.value = parsedStart.isValid() ? parsedStart.isBefore(moment()) : false;
-// }
-
-// Change route function
 function changeRoute(pathname) {
     router.push(pathname);
 }
 
 onMounted(async () => {
     userData.value = JSON.parse(localStorage.getItem('user'));
-    await useProduct.fetchAllProduct();
-    productList.value = useProduct.productList;
+    await Promise.all([
+        useBranch.fetchAllBranch(),
+        useProduct.fetchAllProduct(),
+    ]);
+    productList.value = useProduct.productList || [];
+});
+
+const branchOptions = computed(() => useBranch.branchList || []);
+
+const changedRows = computed(() => selectedRows.value.filter((row) => Number(row.new_price) !== Number(row.old_price)));
+
+const selectedProductCount = computed(() => new Set(selectedRows.value.map((row) => Number(row.product_id))).size);
+
+const productGroups = computed(() => {
+    const groupMap = new Map();
+    selectedRows.value.forEach((row) => {
+        if (!groupMap.has(row.product_id)) {
+            groupMap.set(row.product_id, {
+                product_id: row.product_id,
+                product_name: row.product_name,
+                product_barcode: row.product_barcode,
+                image_url: row.image_url,
+                rows: [],
+            });
+        }
+        groupMap.get(row.product_id).rows.push(row);
+    });
+
+    return [...groupMap.values()].map((group) => {
+        const visibleRows = changedOnly.value ? group.rows.filter(isChangedRow) : group.rows;
+        const nonRangeRows = visibleRows.filter((row) => !isRangeTarget(row.target_type));
+        const rangeRows = visibleRows.filter((row) => isRangeTarget(row.target_type));
+        const branchMap = new Map();
+
+        nonRangeRows.filter((row) => row.branch_id).forEach((row) => {
+            if (!branchMap.has(row.branch_id)) {
+                branchMap.set(row.branch_id, {
+                    branch_id: row.branch_id,
+                    branch_name: row.branch_name,
+                    rows: [],
+                });
+            }
+            branchMap.get(row.branch_id).rows.push(row);
+        });
+
+        return {
+            ...group,
+            visibleRows,
+            globalRows: nonRangeRows.filter((row) => !row.branch_id),
+            branchGroups: [...branchMap.values()],
+            rangeGroups: groupRangeRows(rangeRows),
+            changedCount: group.rows.filter(isChangedRow).length,
+            totalCount: group.rows.length,
+        };
+    }).filter((group) => group.visibleRows.length);
 });
 
 const filteredProducts = computed(() => {
     const q = (searchTerm.value || '').toString().trim().toLowerCase();
     if (!q) return productList.value || [];
-    return (productList.value || []).filter(p => {
-        const name = (p.name || '').toString().toLowerCase();
-        const barcode = (p.barcode || '').toString().toLowerCase();
-        return name.includes(q) || barcode.includes(q);
-    });
+    return (productList.value || []).filter((product) => (
+        (product.name || '').toString().toLowerCase().includes(q)
+        || (product.barcode || '').toString().toLowerCase().includes(q)
+    ));
 });
 
 function openProductDialog() {
-    // create a shallow copy buffer to allow canceling
-    selectionBuffer.value = selectedProducts.value.slice();
+    const selectedIds = new Set(selectedRows.value.map((row) => Number(row.product_id)));
+    selectionBuffer.value = productList.value.filter((product) => selectedIds.has(Number(product.id)));
     searchTerm.value = '';
     isProductDialogVisible.value = true;
 }
 
-async function toggleProductInBuffer(event, product) {
-    const idx = selectionBuffer.value.findIndex(p => p.id === product.id);
-    // If already selected -> unselect immediately
-    if (idx !== -1) {
+function toggleProductInBuffer(product) {
+    const idx = selectionBuffer.value.findIndex((item) => Number(item.id) === Number(product.id));
+    if (idx >= 0) {
         selectionBuffer.value.splice(idx, 1);
         return;
     }
-
-    // Check remote API whether product is already in a promotion
-    try {
-        const response = await axios.post(`/promotions/checkprice`, { product_id: product.id });
-        const data = response.data;
-        // If promotion_id is present and not null -> product already in promotion
-        if (data && data.promotion_id) {
-            // force-uncheck the checkbox visually
-            try { if (event && event.target) event.target.checked = false; } catch(e) {}
-            toast.add({ severity: 'warn', summary: 'Product In Promotion', detail: `${product.name} is already in a promotion (discount ${data.discount_amount}).`, life: 4000 });
-            return;
-        }
-    } catch (err) {
-        // On error, force-uncheck and show a toast and prevent selection to avoid inconsistent state
-        try { if (event && event.target) event.target.checked = false; } catch(e) {}
-        toast.add({ severity: 'error', summary: 'Check Failed', detail: `Failed to verify promotion for ${product.name}.`, life: 3000 });
-        return;
-    }
-
-    // If not in promotion, add to buffer
     selectionBuffer.value.push(product);
 }
 
 function isBufferSelected(product) {
-    return selectionBuffer.value.some(p => p.id === product.id);
+    return selectionBuffer.value.some((item) => Number(item.id) === Number(product.id));
 }
-
-async function selectAllInBuffer() {
-    // add only products that are not already in a promotion
-    if (isCheckingAll.value) return;
-    isCheckingAll.value = true;
-    isSelectAllLoading.value = true;
-    try {
-        const ids = new Set(selectionBuffer.value.map(p => p.id));
-        const candidates = (filteredProducts.value || []).filter(p => !ids.has(p.id));
-        if (candidates.length === 0) return;
-
-        // API checks 
-        const checks = await Promise.allSettled(
-            candidates.map(p => axios.post(`/promotions/checkprice`, { product_id: p.id }))
-        );
-
-        const skipped = [];
-        checks.forEach((res, idx) => {
-            const product = candidates[idx];
-            if (res.status === 'fulfilled') {
-                const data = res.value.data;
-                if (data && data.promotion_id) {
-                    skipped.push(product);
-                } else {
-                    // add to buffer if not already present
-                    if (!selectionBuffer.value.some(s => s.id === product.id)) selectionBuffer.value.push(product);
-                }
-            } else {
-                skipped.push(product);
-            }
-        });
-
-        if (skipped.length > 0) {
-            const names = skipped.slice(0,5).map(p => p.name).join(', ');
-            const more = skipped.length > 5 ? ` and ${skipped.length - 5} more` : '';
-            toast.add({ severity: 'warn', summary: 'Some products skipped', detail: `Skipped ${skipped.length} product(s) already in promotion: ${names}${more}`, life: 5000 });
-        }
-    } finally {
-        isCheckingAll.value = false;
-        isSelectAllLoading.value = false;
-    }
-}
-
-function openImportPicker() {
-    importInputRef.value?.click();
-}
-
-async function onImportExcel(event) {
-    const file = event.target?.files?.[0];
-    if (!file) return;
-
-    isImporting.value = true;
-    importFailList.value = [];
-
-    try {
-        const workbook = await readWorkbookFromFile(file);
-        const rows = readNormalizedSheetRows(workbook, ['sales_price_change', 'price_change', 'products']);
-
-        if (rows.length === 0) {
-            toast.add({ severity: 'error', summary: 'Import Failed', detail: 'No rows found in Excel sheet.', life: 3500 });
-            return;
-        }
-
-        const selectedIds = new Set((selectedProducts.value || []).map((item) => item.id));
-        let successCount = 0;
-
-        for (let i = 0; i < rows.length; i++) {
-            const row = rows[i];
-            const excelRow = i + 2;
-
-            const productId = normalizeCell(row.product_id || row.id || row.product);
-            const newPriceRaw = normalizeCell(row.new_price || row.sale_new_price || row.price);
-            const newPrice = Number(newPriceRaw);
-
-            if (!productId) {
-                importFailList.value.push({
-                    row: excelRow,
-                    product_id: '',
-                    barcode: normalizeCell(row.barcode || row.product_barcode),
-                    name: normalizeCell(row.product_name || row.name),
-                    new_price: newPriceRaw,
-                    reason: 'Missing product_id'
-                });
-                continue;
-            }
-
-            if (!Number.isFinite(newPrice) || newPrice < 0) {
-                importFailList.value.push({
-                    row: excelRow,
-                    product_id: productId,
-                    barcode: normalizeCell(row.barcode || row.product_barcode),
-                    name: normalizeCell(row.product_name || row.name),
-                    new_price: newPriceRaw,
-                    reason: 'Invalid new_price'
-                });
-                continue;
-            }
-
-            const product = (productList.value || []).find((item) => String(item.id) === productId);
-            if (!product) {
-                importFailList.value.push({
-                    row: excelRow,
-                    product_id: productId,
-                    barcode: normalizeCell(row.barcode || row.product_barcode),
-                    name: normalizeCell(row.product_name || row.name),
-                    new_price: newPrice,
-                    reason: 'Product not found'
-                });
-                continue;
-            }
-
-            if (selectedIds.has(product.id)) {
-                importFailList.value.push({
-                    row: excelRow,
-                    product_id: productId,
-                    barcode: product.barcode || '',
-                    name: product.name || '',
-                    new_price: newPrice,
-                    reason: 'Product already selected'
-                });
-                continue;
-            }
-
-            try {
-                const response = await axios.post('/promotions/checkprice', { product_id: product.id });
-                const data = response.data;
-                if (data && data.promotion_id) {
-                    importFailList.value.push({
-                        row: excelRow,
-                        product_id: productId,
-                        barcode: product.barcode || '',
-                        name: product.name || '',
-                        new_price: newPrice,
-                        reason: 'Already in promotion'
-                    });
-                    continue;
-                }
-            } catch (e) {
-                importFailList.value.push({
-                    row: excelRow,
-                    product_id: productId,
-                    barcode: product.barcode || '',
-                    name: product.name || '',
-                    new_price: newPrice,
-                    reason: 'Promotion check failed'
-                });
-                continue;
-            }
-
-            selectedProducts.value.push({
-                ...product,
-                old_price: Number(product.price) || 0,
-                new_price: newPrice,
-            });
-            selectedIds.add(product.id);
-            successCount += 1;
-        }
-
-        if (isProductDialogVisible.value) {
-            selectionBuffer.value = selectedProducts.value.slice();
-        }
-
-        if (successCount > 0) {
-            toast.add({
-                severity: 'success',
-                summary: 'Import Completed',
-                detail: `${successCount} product(s) imported successfully.`,
-                life: 3500
-            });
-        }
-
-        if (importFailList.value.length > 0) {
-            toast.add({
-                severity: 'warn',
-                summary: 'Some Rows Failed',
-                detail: `Failed rows: ${importFailList.value.slice(0, 8).map((item) => item.row).join(', ')}${importFailList.value.length > 8 ? ' ...' : ''}`,
-                life: 5000
-            });
-        }
-    } catch (err) {
-        toast.add({ severity: 'error', summary: 'Import Failed', detail: 'Unable to read or import this file.', life: 3500 });
-    } finally {
-        isImporting.value = false;
-        if (event?.target) event.target.value = '';
-    }
-}
-
-function removeFilteredFromBuffer() {
-    const filteredIds = new Set((filteredProducts.value || []).map(p => p.id));
-    selectionBuffer.value = selectionBuffer.value.filter(p => !filteredIds.has(p.id));
-}
-
-const allFilteredSelected = computed(() => {
-    const list = filteredProducts.value || [];
-    if (list.length === 0) return false;
-    return list.every(p => selectionBuffer.value.some(s => s.id === p.id));
-});
-
-const someFilteredSelected = computed(() => {
-    const list = filteredProducts.value || [];
-    if (list.length === 0) return false;
-    const some = list.some(p => selectionBuffer.value.some(s => s.id === p.id));
-    return some && !allFilteredSelected.value;
-});
-
-async function toggleHeaderSelection(event) {
-    const checked = event.target.checked;
-    if (checked) await selectAllInBuffer();
-    else removeFilteredFromBuffer();
-}
-
-// keep header checkbox indeterminate state in sync
-watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.value], () => {
-    if (headerCheckboxRef.value) {
-        headerCheckboxRef.value.indeterminate = someFilteredSelected.value;
-    }
-});
-
-// watch(() => formData.value.startDate, () => {
-//     syncPriceChangeStatusByStartDate();
-// }, { immediate: true });
-
-//check for inputted price value & selected price value type 
-watch([() => formData.value.priceChangeValue, () => formData.value.priceValueType],() => {
-        if (!selectedProducts.value.length) return;
-        if (!formData.value.priceValueType || !formData.value.priceChangeValue) return;
-        calculateNewPrices();
-    }
-);
-
 
 function confirmProductSelection() {
-    const changeValue = Number(formData.value.priceChangeValue);
-    const isIncrease = formData.value.priceValueType === 'INCREASE';
-    selectedProducts.value = selectionBuffer.value.map(p => ({
-        ...p,
-        old_price: Number(p.price) || 0, 
-        new_price:  changeValue > 0 ? isIncrease ? Number(p.price) + changeValue : Math.max(0, Number(p.price) - changeValue) : p.new_price || Number(p.price),
-    }));
+    const existingByKey = new Map(selectedRows.value.map((row) => [row.rowKey, row]));
+    const rows = selectionBuffer.value.flatMap((product) => buildAllTargetRows(product, branchOptions.value));
+    const selectedProductIds = new Set(selectionBuffer.value.map((product) => Number(product.id)));
+    const customRows = selectedRows.value.filter((row) => row.is_custom && selectedProductIds.has(Number(row.product_id)));
 
+    selectedRows.value = rows.map((row) => {
+        const existing = existingByKey.get(row.rowKey);
+        return existing ? { ...row, new_price: existing.new_price, min_qty: existing.min_qty, max_qty: existing.max_qty } : row;
+    }).concat(customRows);
+    if (!expandedProductIds.value.length && selectionBuffer.value.length) {
+        expandedProductIds.value = [selectionBuffer.value[0].id];
+    }
     isProductDialogVisible.value = false;
 }
 
@@ -375,339 +167,488 @@ function cancelProductSelection() {
     isProductDialogVisible.value = false;
 }
 
-function formatPrice(value) {
-    return Number(value).toLocaleString();
+function removeRow(rowKey) {
+    selectedRows.value = selectedRows.value.filter((row) => row.rowKey !== rowKey);
+    if (rangeModal.value.visible) {
+        rangeModal.value.rows = rangeModal.value.rows.filter((row) => row.rowKey !== rowKey);
+    }
 }
 
-//calculate the prices depending on the selected price value type
-function calculateNewPrices() {
-    const changeValue = Number(formData.value.priceChangeValue) || 0;
-    const isIncrease = formData.value.priceValueType === 'INCREASE';
+function resetRow(row) {
+    row.new_price = row.old_price;
+}
 
-    selectedProducts.value.forEach(product => {
-        const base = Number(product.old_price) || 0;
-        product.new_price = isIncrease ? base + changeValue : Math.max(0, base - changeValue);
+function addCustomRange(row) {
+    if (!isRangeTarget(row.target_type)) return;
+    const newRow = {
+        ...row,
+        rowKey: `${row.rowKey}:custom:${Date.now()}`,
+        is_custom: true,
+        product_unit_price_range_id: null,
+        branch_product_unit_price_range_id: null,
+        min_qty: 0,
+        max_qty: null,
+        old_price: row.old_price,
+        new_price: row.new_price,
+    };
+    selectedRows.value.push(newRow);
+    if (rangeModal.value.visible) {
+        rangeModal.value.rows.push(newRow);
+    }
+}
+
+function formatPrice(value) {
+    return Number(value || 0).toLocaleString('en-us');
+}
+
+function isChangedRow(row) {
+    return Number(row.new_price) !== Number(row.old_price);
+}
+
+function toggleProduct(productId) {
+    const id = Number(productId);
+    if (expandedProductIds.value.some((item) => Number(item) === id)) {
+        expandedProductIds.value = expandedProductIds.value.filter((item) => Number(item) !== id);
+        return;
+    }
+    expandedProductIds.value = [...expandedProductIds.value, id];
+}
+
+function isProductExpanded(productId) {
+    return expandedProductIds.value.some((item) => Number(item) === Number(productId));
+}
+
+function rangeGroupKey(row) {
+    return [
+        row.target_type,
+        row.branch_id || 0,
+        row.product_id,
+        row.product_unit_id || 0,
+        row.branch_product_unit_price_id || 0,
+    ].join(':');
+}
+
+function groupRangeRows(rows) {
+    const groupMap = new Map();
+    rows.forEach((row) => {
+        const key = rangeGroupKey(row);
+        if (!groupMap.has(key)) {
+            groupMap.set(key, {
+                key,
+                target_type: row.target_type,
+                product_name: row.product_name,
+                branch_name: row.branch_name,
+                unit_name: row.unit_name,
+                rows: [],
+            });
+        }
+        groupMap.get(key).rows.push(row);
+    });
+
+    return [...groupMap.values()].map((group) => ({
+        ...group,
+        changedCount: group.rows.filter(isChangedRow).length,
+        rangeCount: group.rows.length,
+    }));
+}
+
+function openRangeModal(group) {
+    rangeModal.value = {
+        visible: true,
+        title: `${targetLabel(group.target_type)} / ${group.branch_name} / ${group.unit_name}`,
+        rows: group.rows,
+    };
+}
+
+function closeRangeModal() {
+    rangeModal.value = {
+        visible: false,
+        title: '',
+        rows: [],
+    };
+}
+
+function calculateNewPrices() {
+    const changeValue = Number(formData.value.priceChangeValue);
+    if (!Number.isFinite(changeValue) || changeValue <= 0) return;
+
+    selectedRows.value.forEach((row) => {
+        const oldPrice = toNumber(row.old_price);
+        row.new_price = formData.value.priceValueType === 'INCREASE'
+            ? oldPrice + changeValue
+            : Math.max(0, oldPrice - changeValue);
     });
 }
 
-//check if there is individual price inputted in the table new price field
-const hasManualPrice = computed(() => {
-    return selectedProducts.value.some(
-        p =>
-            p.new_price &&
-            Number(p.new_price) > 0 &&
-            Number(p.new_price) !== Number(p.old_price)
-    );
-});
+watch([() => formData.value.priceChangeValue, () => formData.value.priceValueType], calculateNewPrices);
 
+function validateForm() {
+    errorMsg.value = { products: '', priceChangeValue: '' };
+
+    if (!selectedRows.value.length) {
+        errorMsg.value.products = errMsgList.product;
+        return false;
+    }
+    if (!changedRows.value.length) {
+        errorMsg.value.priceChangeValue = 'Please change at least one new price before saving.';
+        return false;
+    }
+
+    const invalidRange = changedRows.value.some((row) => (
+        isRangeTarget(row.target_type)
+        && (row.min_qty === '' || row.min_qty === null || row.min_qty === undefined)
+    ));
+    if (invalidRange) {
+        errorMsg.value.products = 'Range targets require min qty.';
+        return false;
+    }
+
+    return true;
+}
 
 async function formSubmit() {
-    if (formData.value.type === "") {
-        errorMsg.value = {
-            type: "Please select a price change type.",
-            priceChangeValue: "",
-            products: "",
-        }
-        return
-    } else if (selectedProducts.value.length === 0) {
-        errorMsg.value = {
-            type: "",
-            priceChangeValue: "",
-            products: errMsgList.product,
-        }
-        return
-    } else if (!formData.value.priceChangeValue && !hasManualPrice.value) {
-        errorMsg.value = {
-            type: "",
-            priceChangeValue: "Some product prices must be changed. Please input a price change value or set new prices manually.",
-            products: "",
-        };
-        return;
-
-    } 
+    if (!validateForm()) return;
 
     const payload = {
         description: formData.value.description,
         type: formData.value.type,
         start_at: formData.value.startDate,
-        // end_at: formData.value.endDate, 
-        status_id: priceChangeStatus.value ? 1 : 2,
+        end_at: formData.value.endDate || null,
         created_by: userData.value.id,
-        products: selectedProducts.value.map(p => ({
-            product_id: p.id,
-            old_price: p.old_price,  
-            new_price: p.new_price   
-        }))
-
+        products: changedRows.value.map(payloadForTargetRow),
     };
+
     await usePriceChange.addPriceChange(payload);
 
     if (usePriceChange.error.length) {
         usePriceChange.error.forEach((msg) => {
-            toast.add({
-            severity: 'error',
-            summary: 'Error Message',
-            detail: msg,
-            life: 3000
-            });
+            toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
         });
         return;
     }
 
-    if (usePriceChange.priceChangeList) {
-        toast.add({ severity: 'success', summary: 'Success Message', detail: 'Create sales price change successfully.', life: 3000 });
-        router.push('/sales_price_change');
-    }
+    toast.add({ severity: 'success', summary: 'Success Message', detail: 'Create sales price change successfully.', life: 3000 });
+    router.push('/sales_price_change');
 }
-
 </script>
 
 <template>
-    <div class="p-4">
-        <!-- Page Title -->
-        <PageTitle title="Create Sales Price Change">
-            <template #titleButtons>
-                <div class="flex gap-x-2 items-center">
-                    <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary"
-                        @click="changeRoute('/sales_price_change')" />
-                </div>
-            </template>
-        </PageTitle>
-        <!-- Form Section -->
-        <BaseCard class="mt-3 w-fit">
-            <template #cardElements>
-                <!-- Form section subtitle -->
-                <SubTitle label="Basic Info" />
-                <div class="flex gap-x-4 mt-6">
-                    <BaseInput 
-                        size="sm" 
-                        v-model="formData.startDate"
-                        label="Started Datetime"
-                        width="300px"
-                        height="h-[35px]" 
-                        type="datetime-local"
-                    />
-                    <!--  Type select -->
-                    <!-- <div class="flex flex-col gap-1 w-[300px]">
-                        <BaseLabel label="Price Change Type" />
-                        <select
-                            class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
-                            v-model="formData.type">
-                            <option value="sale">Sale</option>
-                        </select>
-                        <BaseErrorLabel v-if="errorMsg.type" :label="errorMsg.type" />
-                    </div> -->
-                    <!-- Status -->
-                    <div class="flex flex-col gap-y-1 w-[200px]">
-                        <BaseLabel label="Status" />
-                        <BaseSwitch v-model="priceChangeStatus" />
-                    </div>
-                </div>
-                <!-- <div class="flex gap-x-4 mt-6">
-                    <BaseInput 
-                        size="sm" 
-                        v-model="formData.endDate"
-                        label="Ended Datetime"
-                        width="300px"
-                        height="h-[35px]" 
-                        type="datetime-local"
-                    />
-                </div> -->
-                <!--  Price change value -->
-                <div class="flex flex-col gap-1 mt-6 w-[420px]">
-                    <BaseLabel label="Price Change Value" />
+    <div class="p-3 sm:p-4 lg:p-6">
+        <div class="mx-auto w-full max-w-screen-2xl">
+            <PageTitle title="Create Sales Price Change">
+                <template #titleButtons>
                     <div class="flex gap-x-2 items-center">
-                        <select
-                            class="text-md border border-gray-500 rounded-sm p-2 text-black w-[120px] h-[35px]"
-                            v-model="formData.priceValueType"
-                        >
-                            <option value="INCREASE">Increase</option>
-                            <option value="DECREASE">Decrease</option>
-                        </select>
-                        <BaseInput 
-                            size="sm" 
-                            v-model="formData.priceChangeValue"
-                            width="280px"
-                            height="h-[35px]" 
-                            type="number"
-                        />
+                        <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary" @click="changeRoute('/sales_price_change')" />
                     </div>
-                </div>
-                <!-- Description Input -->
-                <div class="flex gap-x-4 mt-4">
-                    <BaseInput 
-                        v-model="formData.description"
-                        label="Description"
-                        placeholder="Description" 
-                        />
-                </div>
-                <!-- Selected Product Section -->
-                <div class="flex flex-col">
-                    <input
-                        ref="importInputRef"
-                        type="file"
-                        accept=".xlsx,.xls"
-                        class="hidden"
-                        @change="onImportExcel"
-                    />
-                    <!-- Select Product Button -->
-                    <div class="flex items-center gap-x-2 mt-4 mb-4">
-                        <BaseButton 
-                            label="Select Products"
-                            class="w-fit"
-                            @click="openProductDialog()"
-                        />
-                        <BaseButton
-                            icon="fa fa-file-excel"
-                            :label="isImporting ? 'Importing...' : 'Import Excel'"
-                            severity="info"
-                            :disabled="isImporting"
-                            @click="openImportPicker"
-                        />
-                    </div>
-                    <span v-if="errorMsg.products" class="text-red-600 text-sm">{{ errorMsg.products }}</span>
-                    <span v-if="errorMsg.priceChangeValue" class="text-red-600 text-sm">{{ errorMsg.priceChangeValue }}</span>
-                    <div v-if="importFailList.length" class="mt-3 rounded border border-red-200 bg-red-50 p-3">
-                        <div class="text-sm font-medium text-red-700">Import Failed List ({{ importFailList.length }})</div>
-                        <div class="mt-2 max-h-[180px] overflow-auto rounded border border-red-100 bg-white">
-                            <table class="w-full text-xs">
-                                <thead>
-                                    <tr class="bg-red-100 text-left text-red-700">
-                                        <th class="p-2">Row</th>
-                                        <th class="p-2">Product ID</th>
-                                        <th class="p-2">Barcode</th>
-                                        <th class="p-2">Name</th>
-                                        <th class="p-2">New Price</th>
-                                        <th class="p-2">Reason</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="(item, idx) in importFailList" :key="`${item.row}-${idx}`" class="border-b last:border-b-0">
-                                        <td class="p-2">{{ item.row }}</td>
-                                        <td class="p-2">{{ item.product_id || '-' }}</td>
-                                        <td class="p-2">{{ item.barcode || '-' }}</td>
-                                        <td class="p-2">{{ item.name || '-' }}</td>
-                                        <td class="p-2">{{ item.new_price || '-' }}</td>
-                                        <td class="p-2 text-red-700">{{ item.reason }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    <!-- Selected Products Table (scrollable with fixed header) -->
-                    <div class="mt-4">
-                        <div class="max-h-[350px] overflow-y-auto rounded">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="text-left bg-white text-gray-600 sticky top-0 border-b">
-                                        <th class="p-2">Image</th>
-                                        <th class="p-2">Barcode</th>
-                                        <th class="p-2">Product Name</th>
-                                        <th class="p-2 text-right">Sale Old Price</th>
-                                        <th class="p-2 text-right">Sale New Price</th>
-                                        <th class="p-2">&nbsp;</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="product in selectedProducts" :key="product.id" class="border-b hover:bg-gray-50">
-                                        <td class="p-2">
-                                            <div class="w-12 h-12 overflow-hidden rounded">
-                                                <img :src="product.image_url" alt="product" class="w-full h-full object-cover" />
-                                            </div>
-                                        </td>
-                                        <td class="p-2">{{ product.barcode }}</td>
+                </template>
+            </PageTitle>
 
-                                        <td class="p-2">{{ product.name }}</td>
-                                        
-                                        <td class="p-2 text-right">{{ formatPrice(product.old_price || 0) }}</td>
-                                        <td class="border-b p-2 text-right">
-                                            <input
-                                                type="number"
-                                                class="w-24 text-right px-1 py-1 border rounded"
-                                                v-model.number="product.new_price"
-                                            />
-                                        </td>
-                                        <td class="p-2 text-right">
-                                            <button class="text-red-600 hover:text-red-800 px-2 py-1" @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)"><i class="pi pi-trash"></i></button>
-                                        </td>
-                                    </tr>
-                                    <tr v-if="selectedProducts.length === 0">
-                                        <td colspan="5" class="py-4 text-center text-gray-500">No products selected</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+            <BaseCard class="mt-3">
+                <template #cardElements>
+                    <div class="space-y-8">
+                        <section>
+                            <div class="flex items-center justify-between border-b border-gray-200 pb-3">
+                                <SubTitle label="Price Change Header" />
+                                <span class="rounded bg-red-50 px-2 py-1 text-xs text-red-600">* Required</span>
+                            </div>
+                            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <BaseInput size="sm" v-model="formData.startDate" label="Started Datetime" height="h-[35px]" type="datetime-local" />
+                                <BaseInput size="sm" v-model="formData.endDate" label="Ended Datetime" height="h-[35px]" type="datetime-local" />
+                                <div class="md:col-span-2">
+                                    <BaseInput v-model="formData.description" label="Description" placeholder="Description" height="h-[35px]" />
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="border-t border-gray-200 pt-6">
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <SubTitle label="Product Price Setup" />
+                                <span class="text-xs text-gray-500">Select products to show all global and branch price rows</span>
+                            </div>
+                            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <div class="flex flex-col gap-1">
+                                    <BaseLabel label="Quick Change Value" />
+                                    <div class="flex gap-x-2">
+                                        <select v-model="formData.priceValueType" class="h-[35px] w-[120px] rounded border border-gray-500 p-2 text-sm text-black">
+                                            <option value="INCREASE">Increase</option>
+                                            <option value="DECREASE">Decrease</option>
+                                        </select>
+                                        <BaseInput size="sm" v-model="formData.priceChangeValue" height="h-[35px]" type="number" />
+                                    </div>
+                                    <BaseErrorLabel v-if="errorMsg.priceChangeValue" :label="errorMsg.priceChangeValue" />
+                                </div>
+
+                                <div class="flex items-end">
+                                    <BaseButton label="Select Products" icon="fa fa-boxes-stacked" class="w-full md:w-fit" @click="openProductDialog" />
+                                </div>
+
+                                <div class="rounded border border-gray-200 bg-gray-50 p-3">
+                                    <div class="text-xs text-gray-500">Selected Products</div>
+                                    <div class="mt-1 text-lg font-semibold text-black">{{ selectedProductCount }}</div>
+                                </div>
+
+                                <div class="rounded border border-gray-200 bg-gray-50 p-3">
+                                    <div class="text-xs text-gray-500">Changed Price Rows</div>
+                                    <div class="mt-1 text-lg font-semibold text-black">{{ changedRows.length }}</div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="border-t border-gray-200 pt-6">
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <SubTitle label="Selected Product Price List" />
+                                <div class="flex items-center gap-3">
+                                    <label class="flex items-center gap-2 text-sm text-gray-700">
+                                        <input v-model="changedOnly" type="checkbox" class="h-4 w-4" />
+                                        Show changed only
+                                    </label>
+                                    <span class="text-xs text-gray-500">Only changed rows will be saved</span>
+                                </div>
+                            </div>
+                            <BaseErrorLabel v-if="errorMsg.products" :label="errorMsg.products" />
+
+                            <div class="mt-4 space-y-3">
+                                <div v-for="group in productGroups" :key="group.product_id" class="overflow-hidden rounded border border-gray-200 bg-white">
+                                    <button
+                                        class="flex w-full flex-col gap-3 bg-gray-50 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
+                                        @click="toggleProduct(group.product_id)"
+                                    >
+                                        <div class="flex min-w-0 items-center gap-3">
+                                            <img class="h-12 w-12 rounded object-cover" :src="group.image_url" />
+                                            <div class="min-w-0">
+                                                <div class="truncate font-semibold text-black">{{ group.product_name }}</div>
+                                                <div class="text-xs text-gray-500">{{ group.product_barcode || '-' }}</div>
+                                            </div>
+                                        </div>
+                                        <div class="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                                            <span class="rounded bg-white px-2 py-1">{{ group.totalCount }} price rows</span>
+                                            <span class="rounded bg-blue-50 px-2 py-1 text-blue-700">{{ group.changedCount }} changed</span>
+                                            <i :class="isProductExpanded(group.product_id) ? 'fa fa-chevron-up' : 'fa fa-chevron-down'"></i>
+                                        </div>
+                                    </button>
+
+                                    <div v-if="isProductExpanded(group.product_id)" class="space-y-5 p-4">
+                                        <div v-if="group.globalRows.length" class="space-y-2">
+                                            <div class="text-sm font-semibold text-gray-800">Global Prices</div>
+                                            <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                                                <div v-for="row in group.globalRows" :key="row.rowKey" class="rounded border border-gray-200 p-3">
+                                                    <div class="flex items-start justify-between gap-2">
+                                                        <div>
+                                                            <div class="font-medium text-black">{{ targetLabel(row.target_type) }}</div>
+                                                            <div class="text-xs text-gray-500">{{ row.unit_name }}</div>
+                                                        </div>
+                                                        <span class="rounded px-2 py-1 text-xs" :class="isChangedRow(row) ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'">
+                                                            {{ row.old_price_source || '-' }}
+                                                        </span>
+                                                    </div>
+                                                    <div class="mt-3 grid grid-cols-2 gap-2">
+                                                        <div>
+                                                            <div class="text-xs text-gray-500">Old Price</div>
+                                                            <div class="font-semibold text-gray-800">{{ formatPrice(row.old_price) }}</div>
+                                                        </div>
+                                                        <div>
+                                                            <div class="text-xs text-gray-500">New Price</div>
+                                                            <input v-model.number="row.new_price" type="number" class="mt-1 h-[32px] w-full rounded border px-2 text-right" />
+                                                        </div>
+                                                    </div>
+                                                    <div class="mt-2 flex justify-end">
+                                                        <button class="px-2 py-1 text-gray-600 hover:text-gray-800" @click="resetRow(row)">
+                                                            <i class="fa fa-rotate-left"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div v-if="group.branchGroups.length" class="space-y-3">
+                                            <div class="text-sm font-semibold text-gray-800">Branch Prices</div>
+                                            <div v-for="branchGroup in group.branchGroups" :key="branchGroup.branch_id" class="rounded border border-gray-200">
+                                                <div class="border-b border-gray-200 bg-gray-50 px-3 py-2 font-medium text-black">{{ branchGroup.branch_name }}</div>
+                                                <div class="grid grid-cols-1 gap-2 p-3 lg:grid-cols-2">
+                                                    <div v-for="row in branchGroup.rows" :key="row.rowKey" class="rounded border border-gray-200 p-3">
+                                                        <div class="flex items-start justify-between gap-2">
+                                                            <div>
+                                                                <div class="font-medium text-black">{{ targetLabel(row.target_type) }}</div>
+                                                                <div class="text-xs text-gray-500">{{ row.unit_name }}</div>
+                                                            </div>
+                                                            <span class="rounded px-2 py-1 text-xs" :class="isChangedRow(row) ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'">
+                                                                {{ row.old_price_source || '-' }}
+                                                            </span>
+                                                        </div>
+                                                        <div class="mt-3 grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <div class="text-xs text-gray-500">Old Price</div>
+                                                                <div class="font-semibold text-gray-800">{{ formatPrice(row.old_price) }}</div>
+                                                            </div>
+                                                            <div>
+                                                                <div class="text-xs text-gray-500">New Price</div>
+                                                                <input v-model.number="row.new_price" type="number" class="mt-1 h-[32px] w-full rounded border px-2 text-right" />
+                                                            </div>
+                                                        </div>
+                                                        <div class="mt-2 flex justify-end">
+                                                            <button class="px-2 py-1 text-gray-600 hover:text-gray-800" @click="resetRow(row)">
+                                                                <i class="fa fa-rotate-left"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div v-if="group.rangeGroups.length" class="space-y-2">
+                                            <div class="text-sm font-semibold text-gray-800">Range Prices</div>
+                                            <div class="grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-3">
+                                                <div v-for="rangeGroup in group.rangeGroups" :key="rangeGroup.key" class="rounded border border-gray-200 p-3">
+                                                    <div class="font-medium text-black">{{ targetLabel(rangeGroup.target_type) }}</div>
+                                                    <div class="mt-1 text-xs text-gray-500">{{ rangeGroup.branch_name }} / {{ rangeGroup.unit_name }}</div>
+                                                    <div class="mt-3 flex items-center justify-between text-sm">
+                                                        <span>{{ rangeGroup.rangeCount }} ranges</span>
+                                                        <span class="rounded bg-blue-50 px-2 py-1 text-xs text-blue-700">{{ rangeGroup.changedCount }} changed</span>
+                                                    </div>
+                                                    <BaseButton label="Manage Ranges" icon="fa fa-sliders" severity="secondary" class="mt-3 w-full" @click="openRangeModal(rangeGroup)" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div v-if="!group.globalRows.length && !group.branchGroups.length && !group.rangeGroups.length" class="rounded border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500">
+                                            No visible price rows for this product
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-if="!productGroups.length" class="rounded border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
+                                    No products selected
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+
+                    <div class="sticky bottom-0 z-10 mt-8 border-t border-gray-200 bg-white/95 py-4 backdrop-blur">
+                        <div class="flex justify-end">
+                            <BaseButton
+                                label="Save"
+                                :isLoading="usePriceChange.loading"
+                                :icon="usePriceChange.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'"
+                                severity="primary"
+                                class="w-full sm:w-auto"
+                                :disabled="usePriceChange.loading"
+                                @click="formSubmit"
+                            />
                         </div>
                     </div>
-                </div>
-                <div class="flex justify-end mt-4">
-                    <!-- Save Button -->
-                    <BaseButton 
-                        label="Save" 
-                        :isLoading="usePriceChange.loading"
-                        :icon="usePriceChange.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary"
-                        @click="formSubmit" 
-                        :disabled="usePriceChange.loading" 
-                    />
-                </div>
-            </template>
-        </BaseCard>
+                </template>
+            </BaseCard>
+        </div>
     </div>
-    <!-- Product Selection Modal -->
+
+    <div v-if="rangeModal.visible" class="fixed inset-0 z-50 flex items-center justify-center text-black">
+        <div class="absolute inset-0 bg-black opacity-50" @click="closeRangeModal"></div>
+        <div class="z-10 max-h-[86vh] w-[94%] max-w-5xl overflow-hidden rounded bg-white p-4 shadow-lg">
+            <div class="flex flex-col gap-2 border-b py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <SubTitle label="Manage Range Prices" />
+                    <div class="mt-1 text-sm text-gray-500">{{ rangeModal.title }}</div>
+                </div>
+                <BaseButton severity="secondary" label="Close" icon="fa fa-xmark" @click="closeRangeModal" />
+            </div>
+
+            <div class="max-h-[58vh] overflow-auto py-4">
+                <table class="w-full min-w-[900px] text-sm">
+                    <thead>
+                        <tr class="border-b bg-gray-50 text-left text-gray-700">
+                            <th class="p-2">Range</th>
+                            <th class="p-2">Min Qty</th>
+                            <th class="p-2">Max Qty</th>
+                            <th class="p-2 text-right">Old Price</th>
+                            <th class="p-2">Old Price Source</th>
+                            <th class="p-2 text-right">New Price</th>
+                            <th class="p-2 text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="row in rangeModal.rows" :key="row.rowKey" class="border-b hover:bg-gray-50">
+                            <td class="p-2">{{ formatRange(row) }}</td>
+                            <td class="p-2">
+                                <input v-model.number="row.min_qty" type="number" class="h-[32px] w-24 rounded border px-2 text-right" />
+                            </td>
+                            <td class="p-2">
+                                <input v-model.number="row.max_qty" type="number" class="h-[32px] w-24 rounded border px-2 text-right" placeholder="No max" />
+                            </td>
+                            <td class="p-2 text-right">{{ formatPrice(row.old_price) }}</td>
+                            <td class="p-2">
+                                <span class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-600">{{ row.old_price_source || '-' }}</span>
+                            </td>
+                            <td class="p-2 text-right">
+                                <input v-model.number="row.new_price" type="number" class="h-[32px] w-28 rounded border px-2 text-right" />
+                            </td>
+                            <td class="p-2 text-center">
+                                <div class="flex justify-center gap-1">
+                                    <button class="px-2 py-1 text-gray-600 hover:text-gray-800" @click="resetRow(row)">
+                                        <i class="fa fa-rotate-left"></i>
+                                    </button>
+                                    <button v-if="row.is_custom" class="px-2 py-1 text-red-600 hover:text-red-800" @click="removeRow(row.rowKey)">
+                                        <i class="pi pi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex justify-between gap-x-2 border-t py-4">
+                <BaseButton
+                    v-if="rangeModal.rows.length"
+                    severity="secondary"
+                    label="Add Range"
+                    icon="fa fa-plus"
+                    @click="addCustomRange(rangeModal.rows[0])"
+                />
+                <BaseButton label="Done" @click="closeRangeModal" />
+            </div>
+        </div>
+    </div>
+
     <div v-if="isProductDialogVisible" class="fixed inset-0 z-50 flex items-center justify-center text-black">
         <div class="absolute inset-0 bg-black opacity-50" @click="cancelProductSelection"></div>
-        <div class="bg-white rounded shadow-lg w-[90%] max-w-4xl max-h-[80vh] overflow-hidden z-10 p-4">
-            <div class="flex items-center justify-between py-4 border-b">
+        <div class="z-10 max-h-[80vh] w-[94%] max-w-5xl overflow-hidden rounded bg-white p-4 shadow-lg">
+            <div class="flex items-center justify-between border-b py-4">
                 <SubTitle label="Select Products" />
                 <div class="text-sm text-gray-600">{{ selectionBuffer.length }} selected</div>
             </div>
-            <div class="py-4 flex gap-x-2 items-center">
-                <input v-model="searchTerm" placeholder="Search by name or barcode" class="border p-2 rounded w-full" />
+            <div class="py-4">
+                <input v-model="searchTerm" placeholder="Search by name or barcode" class="h-[35px] w-full rounded border p-2" />
             </div>
-            <div class="py-4 overflow-auto max-h-[50vh]">
-                <table class="w-full text-sm">
+            <div class="max-h-[50vh] overflow-auto">
+                <table class="w-full min-w-[650px] text-sm">
                     <thead>
-                        <tr class="text-left text-gray-600 border-b">
-                            <th class="py-2">
-                                <div class="flex items-center gap-x-2">
-                                    <span v-if="isSelectAllLoading" class="text-sm text-gray-600"><i class="fa fa-spinner fa-spin"></i></span>
-                                    <input v-else type="checkbox" :checked="allFilteredSelected" @change="toggleHeaderSelection" ref="headerCheckboxRef" :disabled="isCheckingAll || isSelectAllLoading" />
-                                </div>
-                            </th>
-                            <th>Image</th>
+                        <tr class="border-b text-left text-gray-600">
+                            <th class="py-2"></th>
+                            <th class="py-2">Image</th>
                             <th class="py-2">Name</th>
                             <th class="py-2">Barcode</th>
-                            <th class="py-2 text-end">Price</th>
+                            <th class="py-2 text-right">Global Price</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="product in filteredProducts" :key="product.id" class="hover:bg-gray-50">
                             <td class="py-2">
-                                <input type="checkbox" :checked="isBufferSelected(product)" @change="toggleProductInBuffer($event, product)" />
+                                <input type="checkbox" :checked="isBufferSelected(product)" @change="toggleProductInBuffer(product)" />
                             </td>
-                            <td class="py-2">
-                                <img class="object-cover w-10 h-10 rounded" :src="product.image_url" />
-                            </td>
+                            <td class="py-2"><img class="h-10 w-10 rounded object-cover" :src="product.image_url" /></td>
                             <td class="py-2">{{ product.name }}</td>
-                            <td class="py-2">{{ product.barcode }}</td>
-                            <td class="py-2 text-end">{{ Number(product.price).toLocaleString() || 0 }}</td>
+                            <td class="py-2">{{ product.barcode || '-' }}</td>
+                            <td class="py-2 text-right">{{ formatPrice(product.price) }}</td>
                         </tr>
-                        <tr v-if="(filteredProducts || []).length === 0">
-                            <td colspan="4" class="py-4 text-center text-gray-500">No products found</td>
+                        <tr v-if="!filteredProducts.length">
+                            <td colspan="5" class="py-4 text-center text-gray-500">No products found</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
-            <div class="flex justify-end gap-x-2 py-4 border-t">
-                <BaseButton 
-                    severity="secondary" 
-                    label="Cancel"
-                    @click="cancelProductSelection" 
-                />
-                <BaseButton 
-                    label="Add Product"
-                    class="px-4 py-2 bg-blue-600 text-white rounded"
-                    @click="confirmProductSelection" 
-                />
+            <div class="flex justify-end gap-x-2 border-t py-4">
+                <BaseButton severity="secondary" label="Cancel" @click="cancelProductSelection" />
+                <BaseButton label="Show Price List" @click="confirmProductSelection" />
             </div>
         </div>
     </div>

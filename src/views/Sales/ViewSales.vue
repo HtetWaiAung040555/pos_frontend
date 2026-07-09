@@ -30,6 +30,41 @@ const formData = ref({
     products: [],
 })
 
+function salesDetailUnitName(detail = {}) {
+  return detail.uom?.unit_name
+    || detail.unit_name
+    || detail.unit?.name
+    || detail.product_unit?.unit_name
+    || detail.product_unit?.unit_id?.name
+    || detail.product?.unit_id?.name
+    || '-';
+}
+
+function salesDetailQuantity(detail = {}) {
+  return Number(detail.uom?.unit_quantity ?? detail.quantity ?? 0);
+}
+
+function salesDetailConversion(detail = {}) {
+  return Number(detail.uom?.conversion_to_base ?? detail.conversion_to_base ?? detail.product_unit?.conversion_to_base ?? 1);
+}
+
+function salesDetailProductUnitId(detail = {}) {
+  return detail.uom?.product_unit_id
+    || detail.product_unit_id
+    || detail.product_unit?.product_unit_id
+    || detail.product_unit?.id
+    || null;
+}
+
+function salesDetailUnitId(detail = {}) {
+  return detail.uom?.unit_id
+    || detail.unit_id
+    || detail.unit?.id
+    || detail.product_unit?.unit_id?.id
+    || detail.product_unit?.unit_id
+    || null;
+}
+
 // Navigate back to previous route with fallback
 function goBack() {
   if (window.history.length > 1) {
@@ -44,6 +79,8 @@ onMounted(async () => {
     await useSales.fetchSales(route.query.id);
     formData.value = {
         salesId: useSales.salesList.id,
+        branchId: useSales.salesList.branch?.id,
+        branchName: useSales.salesList.branch?.name,
         warehouseId: useSales.salesList.warehouse.id,
         warehouseName: useSales.salesList.warehouse.name,
         customerName: useSales.salesList.customer.name,
@@ -76,6 +113,11 @@ function mergeSelectedProducts(details = []) {
     const promotionId = item.promotion?.id ?? item.promotion_id ?? null;
     const discountType = item.promotion?.discount_type ?? item.discount_type ?? null;
     const discountValue = Number(item.promotion?.discount_value ?? item.discount_value ?? 0);
+    const productUnitId = salesDetailProductUnitId(item);
+    const unitId = salesDetailUnitId(item);
+    const unitName = salesDetailUnitName(item);
+    const unitQuantity = salesDetailQuantity(item);
+    const conversionToBase = salesDetailConversion(item);
     const unitPrice = Number(item.price ?? product.price ?? 0);
     const unitDiscountAmount = Number(item.discount_amount ?? 0);
     const unitDiscountPrice = Number(item.discount_price ?? (unitPrice - unitDiscountAmount));
@@ -84,6 +126,9 @@ function mergeSelectedProducts(details = []) {
 
     const mergeKey = [
       productId,
+      productUnitId ?? 'base-unit',
+      unitId ?? 'no-unit',
+      unitName,
       promotionId ?? 'no-promo',
       discountType ?? 'NO_DISCOUNT',
       discountValue,
@@ -96,6 +141,8 @@ function mergeSelectedProducts(details = []) {
     const existing = mergedProducts.get(mergeKey);
     if (existing) {
       existing.quantity += quantity;
+      existing.uom.unit_quantity += unitQuantity;
+      existing.uom.base_quantity += Number(item.uom?.base_quantity ?? item.base_quantity ?? (unitQuantity * conversionToBase));
       existing.total += totalPrice;
       return;
     }
@@ -110,6 +157,19 @@ function mergeSelectedProducts(details = []) {
       },
       quantity,
       price: unitPrice,
+      uom: {
+        product_unit_id: productUnitId,
+        unit_id: unitId,
+        unit_name: unitName,
+        unit_quantity: unitQuantity,
+        base_quantity: Number(item.uom?.base_quantity ?? item.base_quantity ?? (unitQuantity * conversionToBase)),
+        conversion_to_base: conversionToBase,
+        unit_barcode: item.uom?.unit_barcode || item.unit_barcode || item.product_unit?.barcode || null,
+      },
+      product_unit_id: productUnitId,
+      unit_id: unitId,
+      unit_name: unitName,
+      conversion_to_base: conversionToBase,
       discount_amount: unitDiscountAmount,
       discount_price: unitDiscountPrice,
       total: totalPrice,
@@ -133,11 +193,77 @@ function buildSlipSalesData(sales = {}) {
   };
 }
 
+function getAndroidPrintBridge() {
+  if (typeof window === 'undefined') return null;
+
+  const bridge = window.Android;
+  return bridge && typeof bridge.print === 'function' ? bridge : null;
+}
+
+function buildAndroidPrintPayload(slip) {
+  return {
+    type: 'sales_receipt',
+    printerLanguage: 'ESC_POS',
+    receiptWidth: '80mm',
+    source: 'ViewSales',
+    printedAt: moment().format('YYYY-MM-DDTHH:mm:ss'),
+    branch: {
+      id: formData.value.branchId,
+      name: formData.value.branchName,
+      location: useSales.salesList.branch?.location || userData.value.branch?.location || '',
+      phone: useSales.salesList.branch?.phone || userData.value.branch?.phone || '',
+    },
+    sale: {
+      id: formData.value.salesId,
+      counter: useSales.salesList.counter || '',
+      cashier: useSales.salesList.created_by || '',
+      customerName: formData.value.customerName || '',
+      paymentMethodName: formData.value.paymentMethodName || '',
+      saleDate: formData.value.salesDate,
+      subTotalAmount: Number(formData.value.subTotalAmount || 0),
+      orderDiscountAmount: Number(formData.value.orderDiscountAmount || 0),
+      totalAmount: Number(formData.value.totalAmount || 0),
+      paidAmount: Number(formData.value.paidAmount || 0),
+      changeAmount: Number(formData.value.changeAmount || 0),
+      items: selectedProducts.value.map((item) => ({
+        productName: item.product?.name || '',
+        unitName: salesDetailUnitName(item),
+        quantity: salesDetailQuantity(item),
+        unitPrice: Number(item.product?.price ?? item.price ?? 0),
+        discountAmount: Number(item.discount_amount || 0),
+        discountPrice: Number(item.discount_price || 0),
+        totalAmount: Number(item.total || 0),
+        promotion: item.promotion || null,
+        isFree: Boolean(item.is_foc),
+      })),
+    },
+    slipHtml: slip.innerHTML,
+  };
+}
+
+function printWithAndroidBridge(slip) {
+  const bridge = getAndroidPrintBridge();
+  if (!bridge) return false;
+
+  try {
+    bridge.print(JSON.stringify(buildAndroidPrintPayload(slip)));
+    return true;
+  } catch (error) {
+    console.error('Android print bridge failed', error);
+    alert('Android printer error. Please check printer connection.');
+    return true;
+  }
+}
+
 // Print only the slip section between the markers
 function printSlip() {
   const slip = document.getElementById('slip-section');
   if (!slip) {
     alert('Slip section not found');
+    return;
+  }
+
+  if (printWithAndroidBridge(slip)) {
     return;
   }
 
@@ -227,6 +353,7 @@ function printSlip() {
                     <div class="col-span-2 grid grid-cols-2 gap-2 h-fit">
                         <DetailRow label="Sales ID:" :value="useSales.salesList.id" />
                         <DetailRow label="Customer Name:" :value="useSales.salesList.customer?.name" />
+                        <DetailRow label="Branch:" :value="useSales.salesList.branch?.name" />
                         <DetailRow label="Warehouse:" :value="useSales.salesList.warehouse?.name" />
                         <DetailRow label="Sales Date" :value="useSales.salesList.sale_date" :formatter="v => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
                         <DetailRow label="Payment Method" :value="useSales.salesList.payment_method?.name" />
@@ -255,6 +382,7 @@ function printSlip() {
                     <tr class="bg-gray-100 text-right">
                         <th class="p-2 w-[50px]"></th>
                         <th class="p-2 text-center">Product Name</th>
+                        <th class="p-2 text-center">Unit</th>
                         <th class="p-2">Unit Price</th>
                         <th class="p-2">Discount Amt</th>
                         <th class="p-2">Sales Price</th>
@@ -271,10 +399,11 @@ function printSlip() {
                           {{ product.product.name }}
                           <span v-if="product.is_foc" class="text-blue-500 bg-blue-100 font-bold px-2 py-1 rounded-md"> FREE GIFT </span>
                         </td>
+                        <td class="border-b border-gray-200 p-2 text-center">{{ salesDetailUnitName(product) }}</td>
                         <td class="border-b border-gray-200 p-2">{{ Number(product.price).toLocaleString('en-us') }}</td>
                         <td class="border-b border-gray-200 p-2">{{ Number(product.discount_amount).toLocaleString('en-us') }}</td>
                         <td class="border-b border-gray-200 p-2">{{ Number(product.discount_price == 0? product.price : product.discount_price).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 p-2">{{ product.quantity }}</td>
+                        <td class="border-b border-gray-200 p-2">{{ salesDetailQuantity(product).toLocaleString('en-us') }}</td>
                         <td class="border-b border-gray-200 p-2">{{ Number(product.total).toLocaleString('en-us') }}</td>
                     </tr>
                 </tbody>
@@ -333,8 +462,8 @@ function printSlip() {
             border-bottom: 1px solid black;
           ">
           <h1 class="text-lg font-bold">FUSION MART</h1>
-          <div>{{ userData.branch?.location }}</div>
-          <div>{{ userData.branch?.phone }}</div>
+          <div>{{ useSales.salesList.branch?.location || userData.branch?.location }}</div>
+          <div>{{ useSales.salesList.branch?.phone || userData.branch?.phone }}</div>
         </header>
 
         <!-- Receipt Info -->
@@ -394,7 +523,7 @@ function printSlip() {
                     -webkit-box-orient: vertical;
                     -webkit-line-clamp: 2;
                   ">
-                    {{ item.product.name }}
+                    {{ `${item.product.name} (${salesDetailUnitName(item)})` }}
                   </span>
                   <span v-if="item.promotion.id && !item.is_foc" style="font-size: 12px;">
                     Dis[-{{ item.promotion.discount_type === 'AMOUNT' ? Number(item.promotion.discount_value).toLocaleString()+" Ks." : item.discount_value+'%' }}]
@@ -402,7 +531,7 @@ function printSlip() {
                   <span v-if="item.is_foc" style="font-weight: bold;"> [FREE GIFT] </span>
                 </div>
               </td>
-              <td style="padding: 2px 0; text-align: center;">{{ item.quantity }}</td>
+              <td style="padding: 2px 0; text-align: center;">{{ salesDetailQuantity(item) }}</td>
               <td style="padding: 2px 0; text-align: right;">
                 <div class="flex flex-col">
                   <span>{{ Number(item.product.price).toLocaleString() }}</span>
@@ -413,8 +542,8 @@ function printSlip() {
                   display: flex;
                   flex-direction: column;
                 ">
-                  <span>{{ (item.quantity * item.product.price).toLocaleString() }}</span>
-                  <span v-if="item.promotion.id && !item.is_foc">- {{ (item.quantity * item.discount_amount).toLocaleString() }}</span>
+                  <span>{{ (salesDetailQuantity(item) * item.product.price).toLocaleString() }}</span>
+                  <span v-if="item.promotion.id && !item.is_foc">- {{ (salesDetailQuantity(item) * item.discount_amount).toLocaleString() }}</span>
                 </div>
               </td>
             </tr>

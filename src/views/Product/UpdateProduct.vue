@@ -3,19 +3,23 @@ import PageTitle from '@/components/PageTitle.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import BaseCard from '@/components/BaseCard.vue';
 import SubTitle from '@/components/SubTitle.vue';
+import Loading from '@/components/Loading.vue';
 import BaseInput from '@/components/BaseInput.vue';
 import BaseSwitch from '@/components/BaseSwitch.vue';
 import BaseLabel from '@/components/BaseLabel.vue';
 import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
 import ProductUnitForm from '@/components/ProductUnitForm.vue';
+import BranchProductPricingForm from '@/components/BranchProductPricingForm.vue';
 import { errMsgList } from '@/utils/const';
 import { useProductStore } from '@/stores/useProductStore';
 import { useCategoryStore } from '@/stores/useCategoryStore';
 import { useUnitStore } from '@/stores/useUnitStore';
-import { onMounted, ref } from 'vue';
+import { useBranchStore } from '@/stores/useBranchStore';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
 import { Select } from 'primevue';
+import { buildBranchProducts, normalizeBranchProducts } from '@/utils/branchProductPricing';
 
 const router = useRouter();
 const route = useRoute();
@@ -23,6 +27,7 @@ const toast = useToast();
 const useProduct = useProductStore();
 const useCategory = useCategoryStore();
 const useUnit = useUnitStore();
+const useBranch = useBranchStore();
 
 const formData = ref({
   name: '',
@@ -34,44 +39,63 @@ const formData = ref({
   image_url: '',
 });
 const productUnits = ref([]);
+const branchProducts = ref([]);
 const status = ref(true);
 const uomEnabled = ref(true);
+const isInitLoading = ref(true);
 const userData = ref({});
 const errorMsg = ref({
   name: '',
   price: '',
   unit: '',
+  branchProducts: '',
 });
 const uploadImage = ref('');
 const selectedCategory = ref('');
 const selectedUnit = ref('');
+
+const branchPricingProductUnits = computed(() => {
+  if (uomEnabled.value) return productUnits.value;
+  if (!selectedUnit.value?.id) return [];
+
+  return [singleProductUnitPayload()];
+});
 
 function changeRoute(pathname) {
   router.push(pathname);
 }
 
 onMounted(async () => {
-  userData.value = JSON.parse(localStorage.getItem('user'));
-  await useProduct.fetchProduct(route.query.id);
-  await useCategory.fetchAllCategory();
-  await useUnit.fetchAllUnit();
+  isInitLoading.value = true;
+  try {
+    userData.value = JSON.parse(localStorage.getItem('user'));
+    await Promise.all([
+      useProduct.fetchProduct(route.query.id),
+      useCategory.fetchAllCategory(),
+      useUnit.fetchAllUnit(),
+      useBranch.fetchAllBranch(),
+    ]);
 
-  const product = useProduct.productList;
-  formData.value = {
-    name: product.name || '',
-    sec_prop: product.sec_prop || '',
-    price: product.price || 0,
-    purchasePrice: product.purchase_price || 0,
-    barcode: product.barcode || '',
-    image: '',
-    image_url: product.image_url || '',
-  };
-  uploadImage.value = product.image_url || '';
-  status.value = product.status?.id === 1;
-  uomEnabled.value = !!product.uom_enabled || !!product.product_units?.length;
-  selectedCategory.value = useCategory.categoryList?.find((el) => el.id === product.category_id?.id) || '';
-  selectedUnit.value = useUnit.unitList?.find((el) => el.id === product.unit_id?.id) || '';
-  productUnits.value = buildProductUnits(product);
+    const product = useProduct.productList;
+    formData.value = {
+      name: product.name || '',
+      sec_prop: product.sec_prop || '',
+      price: product.price || 0,
+      purchasePrice: product.purchase_price || 0,
+      barcode: product.barcode || '',
+      image: '',
+      image_url: product.image_url || '',
+    };
+    uploadImage.value = product.image_url || '';
+    status.value = product.status?.id === 1;
+    uomEnabled.value = !!product.uom_enabled || !!product.product_units?.length;
+    selectedCategory.value = useCategory.categoryList?.find((el) => el.id === product.category_id?.id) || '';
+    selectedUnit.value = useUnit.unitList?.find((el) => el.id === product.unit_id?.id) || '';
+    productUnits.value = buildProductUnits(product);
+    branchProducts.value = buildBranchProducts(product);
+  } finally {
+    isInitLoading.value = false;
+  }
 });
 
 function blankPriceRange(price = 0) {
@@ -206,6 +230,27 @@ function normalizeProductUnits() {
   }));
 }
 
+function singleProductUnitPayload() {
+  const existingUnit = productUnits.value.find((unit) => Number(unit.unit_id) === Number(selectedUnit.value?.id))
+    || productUnits.value[0]
+    || {};
+
+  return {
+    ...(existingUnit.id ? { id: existingUnit.id } : {}),
+    unit_id: selectedUnit.value?.id || existingUnit.unit_id || '',
+    unit_name: selectedUnit.value?.name || '',
+    barcode: formData.value.barcode || existingUnit.barcode || null,
+    conversion_to_base: toNumber(existingUnit.conversion_to_base, 1),
+    price: toNumber(formData.value.price),
+    purchase_price: toNumber(formData.value.purchasePrice),
+    is_base_unit: true,
+    is_default_sale_unit: true,
+    sort_order: 0,
+    status_id: status.value ? 1 : 2,
+    price_ranges: normalizePriceRanges(existingUnit.price_ranges || []),
+  };
+}
+
 function selectedProductUnit() {
   if (!uomEnabled.value) {
     return {
@@ -221,7 +266,7 @@ function selectedProductUnit() {
 }
 
 function validateForm() {
-  errorMsg.value = { name: '', price: '', unit: '' };
+  errorMsg.value = { name: '', price: '', unit: '', branchProducts: '' };
 
   if (!formData.value.name) {
     errorMsg.value.name = errMsgList.name;
@@ -237,7 +282,7 @@ function validateForm() {
       errorMsg.value.unit = errMsgList.unit;
       return false;
     }
-    return true;
+    return validateBranchPricing();
   }
 
   if (!productUnits.value.length) {
@@ -255,6 +300,22 @@ function validateForm() {
   const hasDefaultSaleUnit = productUnits.value.some((unit) => unit.is_default_sale_unit);
   if (!hasBaseUnit || !hasDefaultSaleUnit) {
     errorMsg.value.unit = 'Select one base unit and one default sale unit.';
+    return false;
+  }
+
+  return validateBranchPricing();
+}
+
+function validateBranchPricing() {
+  const invalidRange = branchProducts.value.some((branchProduct) => (
+    (branchProduct.unit_prices || []).some((unitPrice) => (
+      (unitPrice.price === '' || unitPrice.price === null || unitPrice.price === undefined)
+      && (unitPrice.price_ranges || []).some((range) => range.price !== '' && range.price !== null && range.price !== undefined)
+    ))
+  ));
+
+  if (invalidRange) {
+    errorMsg.value.branchProducts = 'Enter a branch sales price before adding branch price ranges.';
     return false;
   }
 
@@ -278,13 +339,21 @@ async function formSubmit() {
   fd.append('status_id', status.value ? '1' : '2');
   fd.append('updated_by', userData.value.id);
 
-  if (uomEnabled.value) {
-    const unitsPayload = normalizeProductUnits();
-    const defaultUnit = productUnits.value.find((unit) => unit.is_default_sale_unit);
+  const branchProductsPayload = normalizeBranchProducts(branchProducts.value);
+  if (uomEnabled.value || branchProductsPayload.length) {
+    const unitsPayload = uomEnabled.value ? normalizeProductUnits() : [singleProductUnitPayload()];
+    const defaultUnit = uomEnabled.value
+      ? productUnits.value.find((unit) => unit.is_default_sale_unit)
+      : singleProductUnitPayload();
+
     fd.append('product_units', JSON.stringify(unitsPayload));
     if (defaultUnit?.id) {
       fd.append('default_product_unit_id', defaultUnit.id);
     }
+  }
+
+  if (branchProductsPayload.length) {
+    fd.append('branch_products', JSON.stringify(branchProductsPayload));
   }
 
   if (formData.value.image && typeof formData.value.image !== 'string') fd.append('image', formData.value.image);
@@ -305,82 +374,142 @@ async function formSubmit() {
 </script>
 
 <template>
-  <div class="p-4">
-    <PageTitle title="Update Product">
-      <template #titleButtons>
-        <div class="flex gap-x-2 items-center">
-          <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary" @click="changeRoute('/product')" />
+  <div class="p-3 sm:p-4 lg:p-6">
+    <div class="mx-auto w-full max-w-screen-2xl">
+      <div v-if="isInitLoading" class="fixed inset-0 z-50 flex items-center justify-center bg-opacity-30">
+        <div class="bg-white rounded-lg shadow-lg p-8 flex flex-col items-center">
+          <Loading variant="page" loadingWidth="w-[56px]" />
         </div>
-      </template>
-    </PageTitle>
+      </div>
 
-    <BaseCard class="mt-3">
-      <template #cardElements>
-        <SubTitle label="Basic Info" />
-        <div class="flex gap-x-4 mt-6">
-          <div class="relative w-20 h-20 rounded-md">
-            <input id="productImage" type="file" accept="image/*" class="w-full hidden z-10" @change="onImageSelected" />
-            <label
-              for="productImage"
-              :class="uploadImage ? '' : 'border-2 border-dashed border-gray-300'"
-              class="flex cursor-pointer w-full h-full absolute text-3xl items-center justify-center rounded-md"
-            >
-              <i v-if="!uploadImage" class="fa fa-image"></i>
-            </label>
-            <img v-if="uploadImage" :src="uploadImage" :alt="formData.name" class="object-cover w-full h-full rounded-md" />
+      <PageTitle title="Update Product">
+        <template #titleButtons>
+          <div class="flex gap-x-2 items-center">
+            <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary" @click="changeRoute('/product')" />
           </div>
-        </div>
+        </template>
+      </PageTitle>
 
-        <div class="grid grid-cols-1 gap-4 mt-4 md:grid-cols-2">
-          <BaseInput size="sm" v-model="formData.name" label="Name" placeholder="Name" height="h-[35px]" :isRequire="true" :error="errorMsg.name" />
-          <div class="flex flex-col gap-y-1">
-            <BaseLabel label="Status" />
-            <BaseSwitch v-model="status" />
-          </div>
-          <div class="flex flex-col gap-y-1">
-            <BaseLabel label="Category" />
-            <Select v-model="selectedCategory" :options="useCategory.categoryList" showClear filter optionLabel="name" placeholder="Select category" class="h-[35px] items-center" />
-          </div>
-          <BaseInput size="sm" v-model="formData.sec_prop" label="Secondary Property" placeholder="Red, Green, Blue, ..." height="h-[35px]" />
-          <div class="flex flex-col gap-y-1">
-            <BaseLabel label="Multi-unit UOM" />
-            <BaseSwitch v-model="uomEnabled" />
-          </div>
-        </div>
+      <BaseCard v-if="!isInitLoading" class="mt-3">
+        <template #cardElements>
+          <div class="space-y-8">
+            <section>
+              <div class="flex flex-col gap-5 lg:flex-row lg:items-start">
+                <div class="w-full lg:w-[220px] xl:w-[260px]">
+                  <BaseLabel label="Product Photo" />
+                  <div class="mt-2 flex items-center gap-4 lg:block">
+                    <div class="relative h-24 w-24 shrink-0 overflow-hidden rounded border border-gray-200 bg-gray-50 sm:h-28 sm:w-28 lg:h-36 lg:w-36">
+                      <input id="productImage" type="file" accept="image/*" class="hidden" @change="onImageSelected" />
+                      <label
+                        for="productImage"
+                        class="absolute inset-0 flex cursor-pointer items-center justify-center text-2xl text-gray-400"
+                        :class="uploadImage ? '' : 'border-2 border-dashed border-gray-300'"
+                      >
+                        <i v-if="!uploadImage" class="fa fa-image"></i>
+                      </label>
+                      <img v-if="uploadImage" :src="uploadImage" :alt="formData.name" class="h-full w-full object-cover" />
+                    </div>
+                    <label for="productImage" class="inline-flex h-[35px] cursor-pointer items-center rounded border border-gray-300 px-3 text-sm text-black hover:bg-gray-50 lg:mt-3">
+                      Change Image
+                    </label>
+                  </div>
+                </div>
 
-        <ProductUnitForm
-          v-if="uomEnabled"
-          v-model="productUnits"
-          :units="useUnit.unitList || []"
-          :error="errorMsg.unit"
-          @generate-barcode="generateBarcode"
-        />
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center justify-between gap-3 border-b border-gray-200 pb-3">
+                    <SubTitle label="Product Info" />
+                    <span class="rounded bg-red-50 px-2 py-1 text-xs text-red-600">* Required</span>
+                  </div>
 
-        <div v-else class="grid grid-cols-1 gap-4 mt-6 md:grid-cols-2">
-          <div class="flex flex-col gap-y-1">
-            <BaseLabel label="Unit" />
-            <Select v-model="selectedUnit" :options="useUnit.unitList" showClear filter optionLabel="name" placeholder="Select unit" class="h-[35px] items-center" />
-            <BaseErrorLabel v-if="errorMsg.unit" :label="errorMsg.unit" />
-          </div>
-          <div class="flex gap-x-2 items-end">
-            <BaseInput size="sm" v-model="formData.barcode" label="Barcode" placeholder="Barcode" height="h-[35px]" />
-            <BaseButton icon="fa fa-refresh" severity="secondary" class="h-[35px]" @click="generateBarcode()" />
-          </div>
-          <BaseInput size="sm" v-model="formData.price" label="Sales Price" height="h-[35px]" type="number" :isRequire="true" :error="errorMsg.price" />
-          <BaseInput size="sm" v-model="formData.purchasePrice" label="Purchase Price" height="h-[35px]" type="number" />
-        </div>
+                  <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div class="md:col-span-2 xl:col-span-2">
+                      <BaseInput size="sm" v-model="formData.name" label="Name" placeholder="Name" height="h-[35px]" :isRequire="true" :error="errorMsg.name" />
+                    </div>
 
-        <div class="flex justify-end mt-4">
-          <BaseButton
-            label="Update"
-            :isLoading="useProduct.loading"
-            :icon="useProduct.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'"
-            severity="primary"
-            :disabled="useProduct.loading"
-            @click="formSubmit"
-          />
-        </div>
-      </template>
-    </BaseCard>
+                    <div class="flex flex-col gap-y-1">
+                      <BaseLabel label="Status" />
+                      <div class="flex h-[35px] items-center">
+                        <BaseSwitch v-model="status" />
+                      </div>
+                    </div>
+
+                    <div class="flex flex-col gap-y-1">
+                      <BaseLabel label="Category" />
+                      <Select v-model="selectedCategory" :options="useCategory.categoryList" showClear filter optionLabel="name" placeholder="Select category" class="h-[35px] items-center" />
+                    </div>
+
+                    <BaseInput size="sm" v-model="formData.sec_prop" label="Secondary Property" placeholder="Red, Green, Blue, ..." height="h-[35px]" />
+
+                    <div class="flex flex-col gap-y-1">
+                      <BaseLabel label="Multi-unit UOM" />
+                      <div class="flex h-[35px] items-center">
+                        <BaseSwitch v-model="uomEnabled" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="border-t border-gray-200 pt-6">
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <SubTitle label="UOM & Prices" />
+                <span class="text-xs text-gray-500">{{ uomEnabled ? 'Multi-unit pricing' : 'Single-unit pricing' }}</span>
+              </div>
+
+              <ProductUnitForm
+                v-if="uomEnabled"
+                v-model="productUnits"
+                :units="useUnit.unitList || []"
+                :error="errorMsg.unit"
+                @generate-barcode="generateBarcode"
+              />
+
+              <div v-else class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div class="flex flex-col gap-y-1">
+                  <BaseLabel label="Unit" :isRequire="true" />
+                  <Select v-model="selectedUnit" :options="useUnit.unitList" showClear filter optionLabel="name" placeholder="Select unit" class="h-[35px] items-center" />
+                  <BaseErrorLabel v-if="errorMsg.unit" :label="errorMsg.unit" />
+                </div>
+                <div class="flex gap-x-2 items-end">
+                  <BaseInput size="sm" v-model="formData.barcode" label="Barcode" placeholder="Barcode" height="h-[35px]" />
+                  <BaseButton icon="fa fa-refresh" severity="secondary" class="h-[35px] shrink-0" @click="generateBarcode()" />
+                </div>
+                <BaseInput size="sm" v-model="formData.price" label="Sales Price" height="h-[35px]" type="number" :isRequire="true" :error="errorMsg.price" />
+                <BaseInput size="sm" v-model="formData.purchasePrice" label="Purchase Price" height="h-[35px]" type="number" />
+              </div>
+            </section>
+
+            <section class="border-t border-gray-200 pt-6">
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <SubTitle label="Branch Pricing" />
+                <span class="text-xs text-gray-500">Optional</span>
+              </div>
+              <BranchProductPricingForm
+                v-model="branchProducts"
+                :branches="useBranch.branchList || []"
+                :productUnits="branchPricingProductUnits"
+                :units="useUnit.unitList || []"
+                :error="errorMsg.branchProducts"
+              />
+            </section>
+          </div>
+
+          <div class="sticky bottom-0 z-10 mt-8 border-t border-gray-200 bg-white/95 py-4 backdrop-blur">
+            <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <BaseButton
+                label="Update"
+                :isLoading="useProduct.loading"
+                :icon="useProduct.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'"
+                severity="primary"
+                class="w-full sm:w-auto"
+                :disabled="useProduct.loading"
+                @click="formSubmit"
+              />
+            </div>
+          </div>
+        </template>
+      </BaseCard>
+    </div>
   </div>
 </template>

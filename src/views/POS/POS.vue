@@ -73,15 +73,16 @@ const sortedHoldList = computed(() => {
 
 onMounted(async () => {
   initialLoading.value = true;
+  const currentUser = JSON.parse(localStorage.getItem('user'));
+  userData.value = currentUser;
   await Promise.all([
     useCustomer.fetchAllCustomer(),
     usePromo.fetchAllPromo(),
-    useProduct.fetchSalesProduct({ warehouse_id: JSON.parse(localStorage.getItem('user')).branch.warehouse_id }),
+    useProduct.fetchSalesProduct({ branch_id: currentUser.branch.id }),
     useStatus.fetchAllStatus(),
   ]);
   selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
   productList.value = useProduct.productList;
-  userData.value = JSON.parse(localStorage.getItem('user'));
   initialLoading.value = false;
 });
 
@@ -95,36 +96,75 @@ function unitAvailableQty(baseQty, conversionToBase) {
   return Math.floor(Number(baseQty || 0) / conversion);
 }
 
-function resolveRangePrice(product, quantity) {
-  const regularPrice = Number(product.regular_price ?? product.price ?? 0);
-  const numericQty = Number(quantity || 0);
-  const ranges = [...(product.price_ranges || [])]
-    .sort((left, right) => Number(right.min_qty || 0) - Number(left.min_qty || 0));
+function recordId(value) {
+  return value?.id || value || null;
+}
 
-  const matchedRange = ranges.find((range) => {
-    const minQty = Number(range.min_qty || 0);
-    const hasMax = range.max_qty !== null && range.max_qty !== '' && range.max_qty !== undefined;
-    const maxQty = hasMax ? Number(range.max_qty) : null;
-    return numericQty >= minQty && (!hasMax || numericQty < maxQty);
-  });
+function linePromotionId(value) {
+  return value?.promotion_id || value?.promotion?.id || value?.promotion?.promotion_id || null;
+}
+
+function lineQuantity(product) {
+  return Number(product?.qty ?? product?.quantity ?? 0);
+}
+
+function lineConversionToBase(product) {
+  const conversion = Number(product?.conversion_to_base || 1);
+  return conversion > 0 ? conversion : 1;
+}
+
+function lineUomSnapshot(product) {
+  const quantity = lineQuantity(product);
+  const conversionToBase = lineConversionToBase(product);
+  const hasProductUnit = !!product?.product_unit_id;
 
   return {
-    price: matchedRange ? Number(matchedRange.price) : regularPrice,
-    priceRangeId: matchedRange?.id || null,
+    product_unit_id: product?.product_unit_id || null,
+    unit_id: recordId(product?.unit_id),
+    unit_name: hasProductUnit ? (product?.unit_name || null) : null,
+    unit_quantity: quantity,
+    base_quantity: quantity * conversionToBase,
+    conversion_to_base: conversionToBase,
+    unit_barcode: hasProductUnit ? (product?.unit_barcode || product?.barcode || null) : null,
+    price_range_id: product?.price_range_id || null,
   };
 }
 
-function applyRangePrice(product) {
-  const rangePrice = resolveRangePrice(product, product.qty);
-  product.price = rangePrice.price;
-  product.price_range_id = rangePrice.priceRangeId;
+function saleProductPayload(product) {
+  const promotionId = linePromotionId(product);
+  const uomSnapshot = lineUomSnapshot(product);
+
+  return {
+    product_id: product.id,
+    ...uomSnapshot,
+    quantity: lineQuantity(product),
+    price: product.is_foc ? 0 : product.price,
+    original_price: product.is_foc ? 0 : product.price,
+    discount_amount: product.is_foc || !promotionId ? 0 : (Number(product.discount_amount) || 0),
+    discount_price: product.is_foc ? 0 : (promotionId ? (product.discount_price || 0) : product.price),
+    promotion_id: promotionId,
+    is_foc: product.is_foc ? true : false,
+    reward_id: product.reward_id || null,
+  };
+}
+
+function sameProductUnit(left, right) {
+  return Number(left.product_id || left.id) === Number(right.product_id || right.id)
+    && Number(left.product_unit_id || 0) === Number(right.product_unit_id || 0);
+}
+
+function pricedItemFor(product, pricedItems = []) {
+  return pricedItems.find(item => sameProductUnit(item, product))
+    || pricedItems.find(item => Number(item.product_id || item.id) === Number(product.id));
 }
 
 const catalogProducts = computed(() => {
   return (productList.value || []).flatMap((product) => {
     const units = Array.isArray(product.product_units) ? product.product_units : [];
 
-    if (!product.uom_enabled || units.length === 0) {
+    console.log('units for product', product.id, units);
+
+    if (units.length === 0) {
       return [{
         ...product,
         catalog_key: `${product.id}:base`,
@@ -134,7 +174,7 @@ const catalogProducts = computed(() => {
         conversion_to_base: 1,
         base_qty: Number(product.qty || 0),
         regular_price: Number(product.price || 0),
-        price_ranges: [],
+        regular_price_source: product.price_source || null,
       }];
     }
 
@@ -144,14 +184,15 @@ const catalogProducts = computed(() => {
       base_name: product.name,
       name: `${product.name} (${unit.unit_name || 'Unit'})`,
       product_unit_id: unit.id,
-      unit_id: unit.unit_id,
+      unit_id: recordId(unit.unit_id),
       unit_name: unit.unit_name,
       barcode: unit.barcode || null,
       conversion_to_base: Number(unit.conversion_to_base || 1),
       price: Number(unit.price || 0),
       regular_price: Number(unit.price || 0),
+      price_source: unit.price_source || product.price_source || null,
+      regular_price_source: unit.price_source || product.price_source || null,
       purchase_price: Number(unit.purchase_price || 0),
-      price_ranges: unit.price_ranges || [],
       base_qty: Number(product.qty || 0),
       qty: unitAvailableQty(product.qty, unit.conversion_to_base),
       is_base_unit: !!unit.is_base_unit,
@@ -197,59 +238,6 @@ watch(visible, (newVal) => {
   }
 });
 
-// async function addProduct(product) {
-//   const productId = product?.id;
-//   if (!productId) return;
-//   if (pendingAddIds.value.has(productId)) return;
-//   pendingAddIds.value.add(productId);
-
-//   let checkQty = product.qty <= 0;
-//   if (checkQty) {
-//     toast.add({
-//       severity: 'warn',
-//       summary: 'Stock Qty Warning',
-//       detail: "Insufficient quantity.",
-//       life: 3000
-//     });
-//   }
-//   try {
-//     let exist = selectedProducts.value.find(p => p.id === product.id);
-//     if (exist) {
-//       selectedPId.value = product.id;
-//       increaseQty(exist);
-//       //visible.value = true;
-//       return;
-//     }
-//     const checkPromo = await axios.post(`/promotions/checkprice`, { product_id: product.id });
-//     if (checkPromo.data.promotion_id) {
-//       selectedProducts.value = [
-//         ...selectedProducts.value,
-//         {
-//           ...product,
-//           qty: 1,
-//           promotion_id: checkPromo.data.promotion_id,
-//           discount_value: checkPromo.data.discount_value,
-//           discount_amount: checkPromo.data.discount_amount,
-//           discount_type: checkPromo.data.discount_type,
-//           discount_price: product.price - checkPromo.data.discount_amount
-//         }
-//       ];
-//       selectedPId.value = product.id;
-//     } else {
-//       selectedProducts.value = [
-//         ...selectedProducts.value,
-//         {
-//           ...product,
-//           qty: 1
-//         }
-//       ];
-//       selectedPId.value = product.id;
-//     }
-//   } finally {
-//     pendingAddIds.value.delete(productId);
-//   }
-// }
-
 async function addProduct(product) {
   const productId = product?.id;
   if (!productId) return;
@@ -287,6 +275,8 @@ async function addProduct(product) {
 
       selectedPId.value = lineKey;
     }
+
+    console.log('Selected products after adding:', selectedProducts.value);
 
     await nextTick();
     await recalculatePromotions();
@@ -415,22 +405,13 @@ async function holdSale() {
     applied_promotions: salesData.value.appliedPromotions,
     branch_id: userData.value.branch.id,
     warehouse_id: userData.value.branch.warehouse_id,
-    products: selectedProducts.value.map(p => ({
-      product_id: p.id,
-      quantity: p.qty,
-      price: p.is_foc ? 0 : p.price,
-      discount_amount: p.is_foc? 0 : (Number(p.discount_amount) || 0),
-      discount_price: p.is_foc? 0 : (p.discount_price || 0),
-      promotion_id: p.promotion_id || null,
-      is_foc: p.is_foc ? true : false,
-      reward_id: p.reward_id || null,
-    })),
+    products: selectedProducts.value.map(saleProductPayload),
     payment_id: selectedCustomer.value?.is_default ? 1 : 3,
     sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
     status_id: useStatus.getStatusId('Hold'),
     created_by: userData.value.id,
   };
-  console.log('Hold sale payload:', payload);
+  console.log('Final POS hold sale payload:', payload);
   await useSales.addSales(payload);
   if (useSales.error.length) {
     useSales.error.forEach((msg) => {
@@ -488,11 +469,19 @@ async function editHold(hold) {
           return {
             ...i.product,
             qty: i.quantity,
+            product_unit_id: i.product_unit_id || i.product_unit?.id || i.product_unit?.product_unit_id || null,
+            unit_id: i.unit_id || i.unit?.id || i.product_unit?.unit_id || null,
+            unit_name: i.unit_name || i.unit?.name || i.product_unit?.unit_name || i.product_unit?.unit_id?.name || null,
+            unit_quantity: Number(i.unit_quantity ?? i.quantity ?? 0),
+            base_quantity: Number(i.base_quantity ?? (Number(i.quantity || 0) * Number(i.conversion_to_base || i.product_unit?.conversion_to_base || 1))),
+            conversion_to_base: Number(i.conversion_to_base || i.product_unit?.conversion_to_base || 1),
+            unit_barcode: i.unit_barcode || i.product_unit?.barcode || null,
+            price_range_id: i.price_range_id || null,
             price: i.price ?? i.product.price,
-            promotion_id: i.promotion.id || null,
+            promotion_id: linePromotionId(i),
             discount_amount: i.discount_amount || 0,
-            discount_type: i.promotion.discount_type,
-            discount_value: i.promotion.discount_value,
+            discount_type: i.promotion?.discount_type || i.discount_type || null,
+            discount_value: i.promotion?.discount_value || i.discount_value || 0,
             discount_price: i.discount_price,
             is_foc: Boolean(i.is_foc),
             reward_id: i.reward_id || null,
@@ -663,18 +652,9 @@ async function onPayClick() {
     }
 
     if (productsChanged) {
-      payload.products = selectedProducts.value.map(p => ({
-        product_id: p.id,
-        quantity: p.qty,
-        price: p.is_foc ? 0 : p.price,
-        discount_amount: p.is_foc ? 0 : (Number(p.discount_amount) || 0),
-        discount_price: p.is_foc ? 0 : (p.discount_price || 0),
-        promotion_id: p.promotion_id || null,
-        is_foc: p.is_foc ? true : false,
-        reward_id: p.reward_id || null,
-      }));
+      payload.products = selectedProducts.value.map(saleProductPayload);
     }
-    console.log('Edit hold sale payload:', payload);
+    console.log('Final POS held sale completion payload:', payload);
     await useSales.editSales(payload, selectedHold.value.id);
     if (useSales.error.length) {
       useSales.error.forEach((msg) => {
@@ -722,20 +702,13 @@ async function onPayClick() {
       order_discount_amount: salesData.value.orderDiscountAmount,
       applied_promotions: salesData.value.appliedPromotions,
       status_id: useStatus.getStatusId('Complete'),
+      branch_id: userData.value.branch.id,
       warehouse_id: userData.value.branch.warehouse_id,
-      products: selectedProducts.value.map(p => ({
-        product_id: p.id,
-        quantity: p.qty,
-        price: p.is_foc ? 0 : p.price,
-        discount_amount: p.is_foc ? 0 : (Number(p.discount_amount) || 0),
-        discount_price: p.is_foc ? 0 : (p.discount_price || 0),
-        promotion_id: p.promotion_id || null,
-        is_foc: p.is_foc ? true : false,
-        reward_id: p.reward_id || null,
-      })),
+      products: selectedProducts.value.map(saleProductPayload),
       sale_date: moment().format("YYYY/MM/DD HH:mm:ss"),
       created_by: userData.value.id,
     };
+    console.log('Final POS sale payload:', payload);
     await useSales.addSales(payload);
     if (useSales.error.length) {
       useSales.error.forEach((msg) => {
@@ -751,7 +724,6 @@ async function onPayClick() {
     if (useSales.salesList) {
       toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales created successfully.', life: 3000 });
       savedSalesData.value = buildSlipSalesData(useSales.salesList);
-      console.log('Saved sales data for slip:', savedSalesData.value);
 
       if (useSales.salesList.customer) {
         useCustomer.updateCustomerBalance(
@@ -880,91 +852,10 @@ function removeProduct(product) {
   nextTick(() => barcodeInput.value?.focus());
 }
 
-// async function recalculatePromotions() {
-//   if (!selectedProducts.value.length) return;
-
-//   try {
-//     const payload = {
-//       cart: selectedProducts.value.map(p => ({
-//         product_id: p.id,
-//         qty: p.qty,
-//         price: p.promotion_id ? p.discount_price : p.price,
-//       })),
-//       sale_date: moment().format("YYYY-MM-DD HH:mm:ss")
-//     };
-
-//     const res = await axios.post('/promotions/checkprice', payload);
-
-//     const data = res.data;
-
-//     // Save order discount amount for UI
-//     salesData.value.orderDiscountAmount = data.order_discount_amount || 0;
-
-//     selectedProducts.value = selectedProducts.value.map(p => ({
-//       ...p,
-//       promotion_id: null,
-//       discount_amount: 0,
-//       discount_price: p.price
-//     }));
-
-//     if (data.product_discounts) {
-//       selectedProducts.value = selectedProducts.value.map(p => {
-//         const promo = data.product_discounts.find(d => d.product_id === p.id);
-
-//         if (promo) {
-//           return {
-//             ...p,
-//             promotion_id: promo.promotion_id,
-//             discount_value: promo.discount_value,
-//             discount_type: promo.discount_type,
-//             discount_amount: promo.discount_amount,
-//             discount_price: p.price - promo.discount_amount
-//           };
-//         }
-//         return p;
-//       });
-//     }
-
-//     if (data.order_discount_amount) {
-//       const total = selectedProducts.value.reduce((sum, p) => sum + (p.price * p.qty), 0);
-//     }
-
-//     if (data.free_items?.length) {
-//       data.free_items.forEach(free => {
-//         const exist = selectedProducts.value.find(p => p.id === free.product_id);
-
-//         if (exist) {
-//           exist.qty = free.qty;
-//           exist.is_foc = true;
-//         } else {
-//           const product = productList.value.find(p => p.id === free.product_id);
-
-//           if (product) {
-//             selectedProducts.value.push({
-//               ...product,
-//               qty: free.qty,
-//               price: 0,
-//               discount_price: 0,
-//               is_foc: true
-//             });
-//           }
-//         }
-//       });
-//     }
-
-//   } catch (err) {
-//     console.error('Promotion calculation failed', err);
-//   }
-// }
-
 async function recalculatePromotions() {
   if (!selectedProducts.value.length) return;
 
   try {
-    selectedProducts.value
-      .filter(product => !product.is_foc)
-      .forEach(applyRangePrice);
-
     const payload = {
       branch_id: userData.value.branch.id,
       warehouse_id: userData.value.branch.warehouse_id,
@@ -973,10 +864,8 @@ async function recalculatePromotions() {
         .map(p => ({
           product_id: p.id,
           product_unit_id: p.product_unit_id || null,
-          unit_id: p.unit_id || null,
+          unit_id: recordId(p.unit_id),
           qty: Number(p.qty),
-          base_qty: Number(p.qty) * Number(p.conversion_to_base || 1),
-          price: Number(p.price),
         }))
     };
 
@@ -987,12 +876,20 @@ async function recalculatePromotions() {
 
     selectedProducts.value = selectedProducts.value
       .filter(p => !p.is_foc)
-      .map(p => ({
-        ...p,
-        promotion_id: null,
-        discount_amount: 0,
-        discount_price: p.price
-      }));
+      .map(p => {
+        const pricedItem = pricedItemFor(p, data.priced_items || []);
+        const price = Number(pricedItem?.price ?? p.price ?? 0);
+
+        return {
+          ...p,
+          price,
+          price_source: pricedItem?.price_source || p.price_source || null,
+          price_range_id: pricedItem?.price_range_id || p.price_range_id || null,
+          promotion_id: null,
+          discount_amount: 0,
+          discount_price: price
+        };
+      });
 
     if (data.items?.length) {
       selectedProducts.value = selectedProducts.value.map(p => {
@@ -1004,12 +901,12 @@ async function recalculatePromotions() {
 
         if (!promo) return p;
 
-        const discountPrice = Number(promo.discount_price ?? p.price);
+        const discountPrice = Number(promo.discount_price ?? Math.max(0, Number(p.price || 0) - Number(promo.discount_amount || 0)));
         const discountAmount = Math.max(0, Number(p.price) - discountPrice);
 
         return {
           ...p,
-          promotion_id: promo.promotion_id,
+          promotion_id: linePromotionId(promo),
           discount_value: promo.discount_value,
           discount_type: promo.discount_type,
           discount_amount: discountAmount,
@@ -1038,7 +935,7 @@ async function recalculatePromotions() {
           discount_amount: 0,
           is_foc: true,
           reward_id: free.reward_id,
-          promotion_id: free.promotion_id
+          promotion_id: linePromotionId(free)
         });
       });
 

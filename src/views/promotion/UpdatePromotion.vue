@@ -5,6 +5,7 @@ import axios from 'axios';
 import moment from 'moment';
 import BaseInput from '@/components/BaseInput.vue';
 import BaseLabel from '@/components/BaseLabel.vue';
+import BaseTextarea from '@/components/BaseTextarea.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import { errMsgList, getPromotionLifecycleStatusName, getPromotionStatusId, statusBadgeHtml } from '@/utils/const';
 import { useToast } from 'primevue';
@@ -12,6 +13,7 @@ import { usePromotionStore } from '@/stores/usePromotionStore';
 import PageTitle from '@/components/PageTitle.vue';
 import BaseCard from '@/components/BaseCard.vue';
 import SubTitle from '@/components/SubTitle.vue';
+import Loading from '@/components/Loading.vue';
 import { useProductStore } from '@/stores/useProductStore';
 import { useBranchStore } from '@/stores/useBranchStore';
 import { useStatusStore } from '@/stores/useStatusStore';
@@ -93,6 +95,7 @@ const isCheckingAll = ref(false);
 const isSelectAllLoading = ref(false);
 const focTierEditIndex = ref(null);
 const selectedBranch = ref([]);
+const isInitLoading = ref(true);
 
 const errorMsg = ref({
     name: "",
@@ -157,111 +160,116 @@ function clearErrors() {
 }
 
 onMounted(async () => {
-    userData.value = JSON.parse(localStorage.getItem('user'));
-    await Promise.all([
-        useProduct.fetchAllProduct(),
-        useBranch.fetchAllBranch(),
-        useStatus.fetchAllStatus(),
-    ]);
-    productList.value = useProduct.productList || [];
+    isInitLoading.value = true;
+    try {
+        userData.value = JSON.parse(localStorage.getItem('user'));
+        await Promise.all([
+            useProduct.fetchAllProduct(),
+            useBranch.fetchAllBranch(),
+            useStatus.fetchAllStatus(),
+        ]);
+        productList.value = useProduct.productList || [];
 
-    if (promoId.value) {
-        await usePromo.fetchPromo(promoId.value);
-        const promo = usePromo.promoList || {};
-        console.log('Fetched promo:', promo);
-        // Fill form fields from API response
-        formData.value.name = promo.name || '';
-        formData.value.description = promo.description || '';
-        formData.value.promoType = promo.promo_type || 'PRODUCT_DISCOUNT';
-        formData.value.discountType = promo.discount_type || 'AMOUNT';
-        formData.value.discountValue = Number(promo.discount_value) || 0;
-        formData.value.overridePrice = Number(promo.override_price) || 0;
-        formData.value.branchScopeType = promo.branch_scope_type || 'ALL';
-        formData.value.warehouseScopeType = promo.warehouse_scope_type || formData.value.branchScopeType;
-        formData.value.startDate = promo.start_at || formData.value.startDate;
-        formData.value.endDate = promo.end_at || formData.value.endDate;
-        loadedPromotionStatusName.value = getPromotionLifecycleStatusName(promo.start_at, promo.end_at);
-        promoMode.value = promo.promo_mode || 'TIER';
-        maxDiscountAmount.value = Number(promo.max_reward_value) || 0;
+        if (promoId.value) {
+            await usePromo.fetchPromo(promoId.value);
+            const promo = usePromo.promoList || {};
+            console.log('Fetched promo:', promo);
+            // Fill form fields from API response
+            formData.value.name = promo.name || '';
+            formData.value.description = promo.description || '';
+            formData.value.promoType = promo.promo_type || 'PRODUCT_DISCOUNT';
+            formData.value.discountType = promo.discount_type || 'AMOUNT';
+            formData.value.discountValue = Number(promo.discount_value) || 0;
+            formData.value.overridePrice = Number(promo.override_price) || 0;
+            formData.value.branchScopeType = promo.branch_scope_type || 'ALL';
+            formData.value.warehouseScopeType = promo.warehouse_scope_type || formData.value.branchScopeType;
+            formData.value.startDate = promo.start_at || formData.value.startDate;
+            formData.value.endDate = promo.end_at || formData.value.endDate;
+            loadedPromotionStatusName.value = getPromotionLifecycleStatusName(promo.start_at, promo.end_at);
+            promoMode.value = promo.promo_mode || 'TIER';
+            maxDiscountAmount.value = Number(promo.max_reward_value) || 0;
 
-        if (formData.value.branchScopeType === 'SELECTED' && Array.isArray(promo.branches)) {
-            const branchIds = new Set(promo.branches.map(branch => branch.id));
-            selectedBranch.value = branchOptions.value.filter(branch => branchIds.has(branch.id));
-        }
+            if (formData.value.branchScopeType === 'SELECTED' && Array.isArray(promo.branches)) {
+                const branchIds = new Set(promo.branches.map(branch => branch.id));
+                selectedBranch.value = branchOptions.value.filter(branch => branchIds.has(branch.id));
+            }
 
-        // PRODUCT_DISCOUNT
-        if (['PRODUCT_DISCOUNT', 'PRICE_OVERRIDE'].includes(promo.promo_type)) {
-            if (Array.isArray(promo.products) && promo.products.length > 0) {
-                if (typeof promo.products[0] === 'object') {
-                    selectedProducts.value = promo.products.map((promotionProduct) => withPromotionUnit({
-                        ...(productList.value.find(product => product.id === promotionProduct.id) || {}),
-                        ...promotionProduct,
-                    }, promotionProduct.promotion_product_unit_id));
-                } else {
-                    selectedProducts.value = promo.products
-                        .map(id => withPromotionUnit(productList.value.find(product => product.id === id)))
-                        .filter(Boolean);
+            // PRODUCT_DISCOUNT
+            if (['PRODUCT_DISCOUNT', 'PRICE_OVERRIDE'].includes(promo.promo_type)) {
+                if (Array.isArray(promo.products) && promo.products.length > 0) {
+                    if (typeof promo.products[0] === 'object') {
+                        selectedProducts.value = promo.products.map((promotionProduct) => withPromotionUnit({
+                            ...(productList.value.find(product => product.id === promotionProduct.id) || {}),
+                            ...promotionProduct,
+                        }, promotionProduct.promotion_product_unit_id));
+                    } else {
+                        selectedProducts.value = promo.products
+                            .map(id => withPromotionUnit(productList.value.find(product => product.id === id)))
+                            .filter(Boolean);
+                    }
                 }
             }
-        }
 
-        if (promo.promo_type === 'PRICE_OVERRIDE' && Array.isArray(promo.conditions)) {
-            const firstCondition = promo.conditions[0] || {};
-            priceOverrideTiers.value = [{
-                condition_type: 'ORDER_QTY',
-                target_value: Number(firstCondition.target_value) || 0,
-                conditionProductId: '',
-                rewards: [],
-            }];
-            syncPriceOverrideMode();
-        }
+            if (promo.promo_type === 'PRICE_OVERRIDE' && Array.isArray(promo.conditions)) {
+                const firstCondition = promo.conditions[0] || {};
+                priceOverrideTiers.value = [{
+                    condition_type: 'ORDER_QTY',
+                    target_value: Number(firstCondition.target_value) || 0,
+                    conditionProductId: '',
+                    rewards: [],
+                }];
+                syncPriceOverrideMode();
+            }
 
-        // ORDER_DISCOUNT
-        if (promo.promo_type === 'ORDER_DISCOUNT' && Array.isArray(promo.conditions)) {
-            orderDiscountTiers.value = promo.conditions.map((cond, idx) => {
-                const reward = (promo.rewards || []).find(r => r.tier === cond.tier);
-                return {
-                    condition_type: cond.condition_type,
-                    target_value: Number(cond.target_value),
-                    discount_type: reward?.reward_type === 'PERCENT' ? 'PERCENT' : 'AMOUNT',
-                    discount_value: Number(reward?.reward_value) || 0,
-                };
-            });
-        }
+            // ORDER_DISCOUNT
+            if (promo.promo_type === 'ORDER_DISCOUNT' && Array.isArray(promo.conditions)) {
+                orderDiscountTiers.value = promo.conditions.map((cond, idx) => {
+                    const reward = (promo.rewards || []).find(r => r.tier === cond.tier);
+                    return {
+                        condition_type: cond.condition_type,
+                        target_value: Number(cond.target_value),
+                        discount_type: reward?.reward_type === 'PERCENT' ? 'PERCENT' : 'AMOUNT',
+                        discount_value: Number(reward?.reward_value) || 0,
+                    };
+                });
+            }
 
-        // FOC
-        if (promo.promo_type === 'FOC' && Array.isArray(promo.conditions)) {
-            focTiers.value = promo.conditions.map((cond, idx) => {
-                const rewards = (promo.rewards || []).filter(r => r.tier === cond.tier && r.reward_type === 'FREE_PRODUCT');
-                return {
-                    condition_type: cond.condition_type,
-                    target_value: Number(cond.target_value),
-                    conditionProductId: cond.product?.id || '',
-                    conditionProductUnitId: cond.uom?.product_unit_id || '',
-                    rewards: rewards.map(r => ({
-                        ...withPromotionUnit({
-                            ...(productList.value.find(product => product.id === r.product?.id) || {}),
-                            ...(r.product || {}),
-                        }, r.uom?.product_unit_id),
-                        rewardQty: Number(r.reward_qty) || 1,
-                    })),
-                };
-            });
-        }
+            // FOC
+            if (promo.promo_type === 'FOC' && Array.isArray(promo.conditions)) {
+                focTiers.value = promo.conditions.map((cond, idx) => {
+                    const rewards = (promo.rewards || []).filter(r => r.tier === cond.tier && r.reward_type === 'FREE_PRODUCT');
+                    return {
+                        condition_type: cond.condition_type,
+                        target_value: Number(cond.target_value),
+                        conditionProductId: cond.product?.id || '',
+                        conditionProductUnitId: cond.uom?.product_unit_id || '',
+                        rewards: rewards.map(r => ({
+                            ...withPromotionUnit({
+                                ...(productList.value.find(product => product.id === r.product?.id) || {}),
+                                ...(r.product || {}),
+                            }, r.uom?.product_unit_id),
+                            rewardQty: Number(r.reward_qty) || 1,
+                        })),
+                    };
+                });
+            }
 
-        if (promo.promo_type === 'FOC' && Array.isArray(promo.foc_allocations)) {
-            focAllocations.value = promo.foc_allocations.map((allocation) => ({
-                ...withPromotionUnit({
-                    ...(productList.value.find(product => product.id === (allocation.product?.id ?? allocation.product_id)) || {}),
-                    ...(allocation.product || {}),
-                }, allocation.uom?.product_unit_id),
-                allocationId: allocation.id ?? null,
-                id: allocation.product?.id ?? allocation.product_id,
-                name: allocation.product?.name ?? allocation.name ?? '',
-                image_url: allocation.product?.image_url ?? allocation.image_url ?? '',
-                allocatedQty: Number(allocation.uom?.unit_quantity ?? allocation.allocated_qty ?? allocation.allocatedQty) || 1,
-            }));
+            if (promo.promo_type === 'FOC' && Array.isArray(promo.foc_allocations)) {
+                focAllocations.value = promo.foc_allocations.map((allocation) => ({
+                    ...withPromotionUnit({
+                        ...(productList.value.find(product => product.id === (allocation.product?.id ?? allocation.product_id)) || {}),
+                        ...(allocation.product || {}),
+                    }, allocation.uom?.product_unit_id),
+                    allocationId: allocation.id ?? null,
+                    id: allocation.product?.id ?? allocation.product_id,
+                    name: allocation.product?.name ?? allocation.name ?? '',
+                    image_url: allocation.product?.image_url ?? allocation.image_url ?? '',
+                    allocatedQty: Number(allocation.uom?.unit_quantity ?? allocation.allocated_qty ?? allocation.allocatedQty) || 1,
+                }));
+            }
         }
+    } finally {
+        isInitLoading.value = false;
     }
 });
 
@@ -934,477 +942,603 @@ async function formSubmit() {
 </script>
 
 <template>
-    <div class="p-4">
-        <!-- Page Title -->
-        <PageTitle title="Update Promotion">
-            <template #titleButtons>
-                <div class="flex gap-x-2 items-center">
-                    <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary"
-                        @click="changeRoute('/promotion')" />
+    <div class="p-3 sm:p-4 lg:p-6">
+        <div class="mx-auto w-full max-w-screen-2xl">
+            <div v-if="isInitLoading" class="fixed inset-0 z-50 flex items-center justify-center">
+                <div class="flex flex-col items-center rounded-lg bg-white p-8 shadow-lg">
+                    <Loading variant="page" loadingWidth="w-[56px]" />
                 </div>
-            </template>
-        </PageTitle>
-        <!-- Form Section -->
-        <BaseCard class="mt-3">
-            <template #cardElements>
-                <SubTitle label="Step 1: Basic Info" />
-                <div class="flex gap-x-4 mt-6">
-                    <!-- Customer Name Input -->
-                    <BaseInput 
-                        size="sm" 
-                        v-model="formData.name"
-                        label="Name"
-                        placeholder="Name"
-                        width="300px"
-                        height="h-[35px]"
-                        :isRequire="true"
-                        :error="errorMsg.name" 
-                        :disabled="isInactivePromotion"
-                    />
+            </div>
 
-                    <div class="flex flex-col gap-1 w-[300px]">
-                        <BaseLabel label="Promo Type" />
-                        <select
-                            class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
-                            v-model="formData.promoType"
-                            :disabled="locksPromotionRules"
-                        >
-                            <option value="PRODUCT_DISCOUNT">PRODUCT_DISCOUNT</option>
-                            <option value="ORDER_DISCOUNT">ORDER_DISCOUNT</option>
-                            <option value="FOC">FOC</option>
-                            <option value="PRICE_OVERRIDE">PRICE_OVERRIDE</option>
-                        </select>
-                        <span v-if="errorMsg.promoType" class="text-red-500 text-sm">{{ errorMsg.promoType }}</span>
-                    </div>
-
-                    <div class="flex flex-col gap-y-1 w-[200px]">
-                        <BaseLabel label="Status" />
-                        <div class="h-[35px] flex items-center">
-                            <span v-html="statusBadgeHtml(autoPromoStatusName)"></span>
-                        </div>
-                    </div>
-                </div>
-                <div class="flex gap-x-4 mt-4" v-if="isOrderDiscount || isFOC">
-                    <!-- Promo Mode and Max Discount Amount for ORDER_DISCOUNT and FOC -->
-                    <template v-if="isOrderDiscount || isFOC">
-                        <div class="flex flex-col gap-1 w-[300px]">
-                            <BaseLabel label="Promo Mode" />
-                            <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]" v-model="promoMode" :disabled="locksPromotionRules">
-                                <option value="TIER">TIER</option>
-                                <option value="MULTIPLIER">MULTIPLIER</option>
-                            </select>
-                        </div>
-                    </template>
-                    <template v-if="isOrderDiscount">
-                        <div class="flex flex-col gap-1 w-[300px]">
-                            <BaseLabel label="Max Discount Amount (optional)" />
-                            <BaseInput v-model="maxDiscountAmount" type="number" min="0" placeholder="Max Discount Amount" :disabled="locksPromotionRules" />
-                        </div>
-                    </template>
-                </div>
-                <div class="flex gap-x-4 mt-4">
-                    <!-- Started datetime input -->
-                    <BaseInput 
-                        size="sm" 
-                        v-model="formData.startDate"
-                        label="Started Datetime"
-                        width="300px"
-                        height="h-[35px]" 
-                        type="datetime-local"
-                        :disabled="locksPromotionRules"
-                    />
-                    <!-- Ended datetime input -->
-                    <BaseInput 
-                        size="sm" 
-                        v-model="formData.endDate"
-                        label="Ended Datetime"
-                        width="300px"
-                        height="h-[35px]" 
-                        type="datetime-local"
-                        :disabled="isInactivePromotion"
-                    />
-                </div>
-                <div class="flex gap-x-4 mt-4">
-                    <!-- Discount type select -->
-                    <!-- Description input -->
-                    <BaseInput 
-                        v-model="formData.description"
-                        label="Description"
-                        placeholder="Description" 
-                        :disabled="locksPromotionRules"
-                    />
-                </div>
-
-                <div class="mt-4">
-                    <SubTitle label="Branch Scope" class="mt-6 mb-4" />
-                    <div class="flex gap-x-4 items-end flex-wrap">
-                        <div class="flex flex-col gap-1 w-[300px]">
-                            <BaseLabel label="Branch Scope" />
-                            <select
-                                class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
-                                v-model="formData.branchScopeType"
-                                :disabled="locksPromotionRules"
-                            >
-                                <option value="ALL">All Branches</option>
-                                <option value="SELECTED">Selected Branches</option>
-                            </select>
-                        </div>
-                        <div v-if="formData.branchScopeType === 'SELECTED'" class="flex flex-col gap-1 min-w-[300px]">
-                            <BaseLabel label="Warehouses" />
-                            <div class="min-h-[35px] border border-gray-300 rounded-sm px-3 py-2 text-sm bg-gray-50">
-                                {{ selectedWarehouseNames.length ? selectedWarehouseNames.join(', ') : '-' }}
-                            </div>
-                        </div>
-                    </div>
-                    <span v-if="errorMsg.branch" class="text-red-500 text-sm">{{ errorMsg.branch }}</span>
-
-                    <div v-if="formData.branchScopeType === 'SELECTED'" class="mt-3 max-h-[220px] overflow-y-auto rounded border border-gray-200">
-                        <table class="w-full text-sm border-collapse">
-                            <thead>
-                                <tr class="text-left text-gray-600">
-                                    <th class="py-2 px-2 border-b w-[60px]">Select</th>
-                                    <th class="py-2 px-2 border-b">Branch</th>
-                                    <th class="py-2 px-2 border-b">Warehouse</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="branch in branchOptions" :key="branch.id" class="border-b hover:bg-gray-50">
-                                    <td class="py-2 px-2">
-                                        <input
-                                            type="checkbox"
-                                            :checked="isBranchSelected(branch)"
-                                            @change="toggleBranchSelection(branch)"
-                                            :disabled="locksPromotionRules"
-                                        />
-                                    </td>
-                                    <td class="py-2 px-2">{{ branch.name }}</td>
-                                    <td class="py-2 px-2">{{ branch.warehouse?.name || '-' }}</td>
-                                </tr>
-                                <tr v-if="branchOptions.length === 0">
-                                    <td colspan="3" class="py-4 text-center text-gray-500">No branches found</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <template v-if="isProductDiscount || isPriceOverride">
-                    <div v-if="isProductDiscount" class="flex gap-x-4 mt-4">
-                        <div class="flex flex-col gap-1 w-[300px]">
-                            <BaseLabel label="Discount Type" />
-                            <select
-                                class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]"
-                                v-model="formData.discountType"
-                                :disabled="locksPromotionRules"
-                            >
-                                <option value="AMOUNT">Amount</option>
-                                <option value="PERCENT">Percent</option>
-                            </select>
-                        </div>
-                        <BaseInput 
-                            size="sm" 
-                            v-model="formData.discountValue"
-                            label="Discount Value"
-                            width="300px"
-                            height="h-[35px]" 
-                            type="number"
-                            :error="errorMsg.discountValue"
-                            :disabled="locksPromotionRules"
+            <PageTitle title="Update Promotion">
+                <template #titleButtons>
+                    <div class="flex gap-x-2 items-center">
+                        <BaseButton
+                            icon="fa fa-chevron-left"
+                            label="Back"
+                            severity="secondary"
+                            @click="changeRoute('/promotion')"
                         />
                     </div>
-
-                    <div v-if="isPriceOverride">
-                        <div class="flex gap-x-4 mt-4">
-                            <BaseInput
-                                size="sm"
-                                v-model="formData.overridePrice"
-                                label="Override Price"
-                                width="300px"
-                                height="h-[35px]"
-                                type="number"
-                                :disabled="locksPromotionRules"
-                            />
-                        </div>
-
-                        <SubTitle label="Price Override Conditions" class="mt-6 mb-4" />
-                        <div v-for="(tier, idx) in priceOverrideTiers" :key="idx" class="border rounded p-4 mb-4 bg-gray-50">
-                            <div class="flex gap-x-4 flex-wrap items-end">
-                                <div class="flex flex-col gap-1 w-[200px]">
-                                    <BaseLabel label="Condition Type" />
-                                    <div class="border p-2 rounded bg-gray-100 h-[35px]">ORDER_QTY</div>
-                                </div>
-                                <BaseInput size="sm" v-model="tier.target_value" label="Target Value" width="200px" height="h-[35px]" type="number" :disabled="locksPromotionRules" />
-                            </div>
-                        </div>
-                    </div>
-
-                <!-- Selected Product Section -->
-                <div class="flex flex-col">
-                    <!-- Select Product Button -->
-                    <BaseButton 
-                        label="Select Products"  
-                        class="w-fit mt-4 mb-4"
-                        @click="openProductDialog('PRODUCT_DISCOUNT')"
-                        :disabled="locksPromotionRules"
-                    />
-                    <span v-if="errorMsg.products" class="text-red-500 text-sm">{{ errorMsg.products }}</span>
-                    <!-- Selected Products Table (scrollable with fixed header) -->
-                    <div class="mt-4">
-                        <div class="max-h-[350px] overflow-y-auto rounded">
-                            <table class="w-full text-sm border-collapse">
-                                <thead>
-                                    <tr class="text-left text-gray-600">
-                                        <th class="py-2 sticky top-0 bg-white z-10 border-b">Image</th>
-                                        <th class="py-2 sticky top-0 bg-white z-10 border-b">Product Name</th>
-                                        <th class="py-2 sticky top-0 bg-white z-10 border-b">Unit</th>
-                                        <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">Price</th>
-                                        <th class="py-2 text-right sticky top-0 bg-white z-10 border-b">{{ isPriceOverride ? 'Override Price' : 'Final Price' }}</th>
-                                        <th class="py-2 sticky top-0 bg-white z-10 border-b">&nbsp;</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="product in selectedProducts" :key="product.id" class="border-b hover:bg-gray-50">
-                                        <td class="py-2">
-                                            <div class="w-12 h-12 overflow-hidden rounded">
-                                                <img :src="product.image_url" alt="product" class="w-full h-full object-cover" />
-                                            </div>
-                                        </td>
-                                        <td class="py-2">{{ product.name }}</td>
-                                        <td class="py-2 pr-2">
-                                            <select v-model="product.productUnitId" class="border border-gray-300 rounded px-2 py-1 w-full min-w-[130px] disabled:bg-gray-100" :disabled="locksPromotionRules">
-                                                <option value="">All Units</option>
-                                                <option v-for="unit in productUnitOptions(product)" :key="unit.id" :value="unit.id">{{ unit.unit_id?.name }}</option>
-                                            </select>
-                                        </td>
-                                        <td class="py-2 text-right">{{ formatPrice(selectedUnitPrice(product)) }}</td>
-                                        <td class="py-2 text-right">{{ formatPrice(isPriceOverride ? formData.overridePrice : getFinalPrice(product)) }}</td>
-                                        <td class="py-2 text-right">
-                                            <button class="text-red-600 hover:text-red-800 px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed" :disabled="locksPromotionRules" @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)"><i class="pi pi-trash"></i></button>
-                                        </td>
-                                    </tr>
-                                    <tr v-if="selectedProducts.length === 0">
-                                        <td colspan="6" class="py-4 text-center text-gray-500">No products selected</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
                 </template>
+            </PageTitle>
 
-                <template v-else>
-                    <!-- Tier-based UI for ORDER_DISCOUNT -->
-                    <div v-if="isOrderDiscount">
-                        <SubTitle :label="promoMode === 'MULTIPLIER' ? 'Multiplier' : 'Tiers'" class="mt-6 mb-4" />
-                        <div v-for="(tier, idx) in orderDiscountTiers" :key="idx" class="border rounded p-4 mb-4 bg-gray-50">
-                            <div class="flex gap-x-4 flex-wrap items-end">
-                                <div class="flex flex-col gap-1 w-[200px]">
-                                    <BaseLabel label="Condition Type" />
-                                    <select class="border p-2 rounded" v-model="tier.condition_type" :disabled="locksPromotionRules">
-                                        <option value="ORDER_QTY">ORDER_QTY</option>
-                                        <option value="ORDER_AMOUNT">ORDER_AMOUNT</option>
-                                    </select>
-                                </div>
-                                <BaseInput size="sm" v-model="tier.target_value" label="Target Value" width="200px" height="h-[35px]" type="number" :disabled="locksPromotionRules" />
-                                <div class="flex flex-col gap-1 w-[200px]">
-                                    <BaseLabel label="Discount Type" />
-                                    <select class="border p-2 rounded" v-model="tier.discount_type" :disabled="locksPromotionRules">
-                                        <option value="AMOUNT">Amount</option>
-                                        <option value="PERCENT">Percent</option>
-                                    </select>
-                                </div>
-                                <BaseInput size="sm" v-model="tier.discount_value" label="Reward Value" width="200px" height="h-[35px]" type="number" :disabled="locksPromotionRules" />
-                                <BaseButton v-if="orderDiscountTiers.length > 1 && promoMode !== 'MULTIPLIER'" label="Remove" severity="danger" class="ml-2" @click="orderDiscountTiers.splice(idx, 1)" :disabled="locksPromotionRules" />
+            <BaseCard v-if="!isInitLoading" class="mt-3">
+                <template #cardElements>
+                    <div class="space-y-8">
+                        <section>
+                            <div class="flex flex-col gap-2 border-b border-gray-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                                <SubTitle label="Promotion Details" />
+                                <span class="w-fit rounded bg-red-50 px-2 py-1 text-xs text-red-600">* Required</span>
                             </div>
-                        </div>
-                        <BaseButton v-if="promoMode !== 'MULTIPLIER'" label="Add Tier" class="mb-4" @click="orderDiscountTiers.push({ condition_type: 'ORDER_AMOUNT', target_value: 0, discount_type: 'AMOUNT', discount_value: 0 })" :disabled="locksPromotionRules" />
-                    </div>
-                    <!-- Tier-based UI for FOC -->
-                    <div v-if="isFOC">
-                        <SubTitle :label="promoMode === 'MULTIPLIER' ? 'Multiplier' : 'Tiers'" class="mt-6 mb-4" />
-                        <div v-for="(tier, idx) in focTiers" :key="idx" class="border rounded p-4 mb-4 bg-gray-50">
-                            <div class="flex gap-x-4 flex-wrap items-end">
-                                <div class="flex flex-col gap-1 w-[200px]">
-                                    <BaseLabel label="Condition Type" />
-                                    <select class="border p-2 rounded" v-model="tier.condition_type" :disabled="locksPromotionRules">
-                                        <option value="ITEM_QTY">ITEM_QTY</option>
-                                        <option value="ITEM_AMOUNT">ITEM_AMOUNT</option>
-                                        <option value="ORDER_QTY">ORDER_QTY</option>
-                                        <option value="ORDER_AMOUNT">ORDER_AMOUNT</option>
+
+                            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <div class="md:col-span-2">
+                                    <BaseInput
+                                        size="sm"
+                                        v-model="formData.name"
+                                        label="Promotion Name"
+                                        placeholder="Enter promotion name"
+                                        height="h-[35px]"
+                                        :isRequire="true"
+                                        :error="errorMsg.name"
+                                        :disabled="isInactivePromotion"
+                                    />
+                                </div>
+
+                                <div class="flex flex-col gap-1">
+                                    <BaseLabel label="Promotion Type" :isRequire="true" />
+                                    <select
+                                        class="h-[35px] w-full rounded border border-[#cbd5e1] px-2 py-1 text-sm text-black outline-none focus:border-black disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                        v-model="formData.promoType"
+                                        :disabled="locksPromotionRules"
+                                    >
+                                        <option value="PRODUCT_DISCOUNT">Product Discount</option>
+                                        <option value="ORDER_DISCOUNT">Order Discount</option>
+                                        <option value="FOC">Free Item (FOC)</option>
+                                        <option value="PRICE_OVERRIDE">Price Override</option>
                                     </select>
+                                    <span v-if="errorMsg.promoType" class="text-[11px] text-red-500">{{ errorMsg.promoType }}</span>
                                 </div>
-                                <div v-if="['ITEM_QTY','ITEM_AMOUNT'].includes(tier.condition_type)" class="flex flex-col gap-1 w-[200px]">
-                                    <BaseLabel label="Condition Product" />
-                                    <BaseButton :label="tier.conditionProductId ? (productList.find(p => p.id == tier.conditionProductId)?.name || 'Select Product') : 'Select Product'" class="w-full" @click="() => selectFocTierConditionProduct(idx)" :disabled="locksPromotionRules" />
+
+                                <div class="flex flex-col gap-y-1">
+                                    <BaseLabel label="Auto Status" />
+                                    <div class="flex h-[35px] items-center rounded border border-gray-200 bg-gray-50 px-3">
+                                        <span v-html="statusBadgeHtml(autoPromoStatusName)"></span>
+                                    </div>
                                 </div>
-                                <div v-if="['ITEM_QTY','ITEM_AMOUNT'].includes(tier.condition_type) && tier.conditionProductId" class="flex flex-col gap-1 w-[180px]">
-                                    <BaseLabel label="Condition Unit" />
-                                    <select v-model="tier.conditionProductUnitId" class="border p-2 rounded h-[35px] disabled:bg-gray-100" :disabled="locksPromotionRules" @change="onConditionUnitChange(tier)">
-                                        <option value="">All Units</option>
-                                        <option v-for="unit in productUnitOptions(productForTier(tier))" :key="unit.id" :value="unit.id">{{ unit.unit_id?.name }}</option>
-                                    </select>
+
+                                <template v-if="isOrderDiscount || isFOC">
+                                    <div class="flex flex-col gap-1">
+                                        <BaseLabel label="Promotion Mode" :isRequire="true" />
+                                        <select
+                                            class="h-[35px] w-full rounded border border-[#cbd5e1] px-2 py-1 text-sm text-black outline-none focus:border-black disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                            v-model="promoMode"
+                                            :disabled="locksPromotionRules"
+                                        >
+                                            <option value="TIER">Tier</option>
+                                            <option value="MULTIPLIER">Multiplier</option>
+                                        </select>
+                                    </div>
+                                </template>
+
+                                <template v-if="isOrderDiscount">
+                                    <BaseInput
+                                        size="sm"
+                                        v-model="maxDiscountAmount"
+                                        label="Max Discount Amount"
+                                        height="h-[35px]"
+                                        type="number"
+                                        placeholder="Optional"
+                                        :disabled="locksPromotionRules"
+                                    />
+                                </template>
+
+                                <BaseInput
+                                    size="sm"
+                                    v-model="formData.startDate"
+                                    label="Start Date and Time"
+                                    height="h-[35px]"
+                                    type="datetime-local"
+                                    :disabled="locksPromotionRules"
+                                />
+
+                                <BaseInput
+                                    size="sm"
+                                    v-model="formData.endDate"
+                                    label="End Date and Time"
+                                    height="h-[35px]"
+                                    type="datetime-local"
+                                    :disabled="isInactivePromotion"
+                                />
+
+                                <div class="md:col-span-2 xl:col-span-4">
+                                    <BaseTextarea
+                                        size="sm"
+                                        v-model="formData.description"
+                                        label="Description"
+                                        placeholder="Optional note for this promotion"
+                                        :rows="3"
+                                        :disabled="locksPromotionRules"
+                                    />
                                 </div>
-                                <BaseInput size="sm" v-model="tier.target_value" label="Target Value" width="200px" height="h-[35px]" type="number" :disabled="locksPromotionRules" />
-                                <BaseButton v-if="focTiers.length > 1 && promoMode !== 'MULTIPLIER'" label="Remove" severity="danger" class="ml-2" @click="focTiers.splice(idx, 1)" :disabled="locksPromotionRules" />
                             </div>
-                            <div class="mt-4">
-                                <BaseLabel label="Reward Products" />
-                                <BaseButton label="Select Reward Products" class="mb-2" @click="() => selectFocTierRewardProducts(idx)" :disabled="locksPromotionRules" />
-                                <div class="max-h-[200px] overflow-y-auto rounded border border-gray-200 mt-2">
-                                    <table class="w-full text-sm border-collapse">
+                        </section>
+
+                        <section class="border-t border-gray-200 pt-6">
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <SubTitle label="Branch Scope" />
+                                <span class="text-xs text-gray-500">{{ formData.branchScopeType === 'ALL' ? 'All branches' : `${selectedBranch.length} selected` }}</span>
+                            </div>
+
+                            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                                <div class="flex flex-col gap-1">
+                                    <BaseLabel label="Branch Scope" :isRequire="true" />
+                                    <select
+                                        class="h-[35px] w-full rounded border border-[#cbd5e1] px-2 py-1 text-sm text-black outline-none focus:border-black disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                        v-model="formData.branchScopeType"
+                                        :disabled="locksPromotionRules"
+                                    >
+                                        <option value="ALL">All Branches</option>
+                                        <option value="SELECTED">Selected Branches</option>
+                                    </select>
+                                    <span v-if="errorMsg.branch" class="text-[11px] text-red-500">{{ errorMsg.branch }}</span>
+                                </div>
+
+                                <div v-if="formData.branchScopeType === 'SELECTED'" class="flex flex-col gap-1 lg:col-span-2">
+                                    <BaseLabel label="Linked Warehouses" />
+                                    <div class="min-h-[35px] rounded border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                                        {{ selectedWarehouseNames.length ? selectedWarehouseNames.join(', ') : '-' }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div v-if="formData.branchScopeType === 'SELECTED'" class="mt-4 overflow-hidden rounded border border-gray-200">
+                                <div class="max-h-[260px] overflow-auto">
+                                    <table class="w-full min-w-[560px] border-collapse text-sm">
                                         <thead>
                                             <tr class="text-left text-gray-600">
-                                                <th class="py-2 px-2 border-b">Image</th>
-                                                <th class="py-2 px-2 border-b">Product Name</th>
-                                                <th class="py-2 px-2 border-b">Unit</th>
-                                                <th class="py-2 px-2 border-b text-right">Reward Qty</th>
-                                                <th class="py-2 px-2 border-b text-right">&nbsp;</th>
+                                                <th class="sticky top-0 z-10 w-[72px] border-b bg-white px-3 py-2">Select</th>
+                                                <th class="sticky top-0 z-10 border-b bg-white px-3 py-2">Branch</th>
+                                                <th class="sticky top-0 z-10 border-b bg-white px-3 py-2">Warehouse</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <tr v-for="reward in tier.rewards" :key="reward.id" class="border-b hover:bg-gray-50">
-                                                <td class="py-2 px-2">
-                                                    <img class="object-cover w-10 h-10 rounded" :src="reward.image_url" />
+                                            <tr v-for="branch in branchOptions" :key="branch.id" class="border-b hover:bg-gray-50">
+                                                <td class="px-3 py-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        :checked="isBranchSelected(branch)"
+                                                        :disabled="locksPromotionRules"
+                                                        @change="toggleBranchSelection(branch)"
+                                                    />
                                                 </td>
-                                                <td class="py-2 px-2">{{ reward.name }}</td>
-                                                <td class="py-2 px-2">
-                                                    <select v-model="reward.productUnitId" class="border border-gray-300 rounded px-2 py-1 min-w-[120px] disabled:bg-gray-100" :disabled="locksPromotionRules" @change="onRewardUnitChange(reward)">
-                                                        <option value="">All Units</option>
-                                                        <option v-for="unit in productUnitOptions(reward)" :key="unit.id" :value="unit.id">{{ unit.unit_id?.name }}</option>
-                                                    </select>
-                                                </td>
-                                                <td class="py-2 px-2 text-right">
-                                                    <input v-model.number="reward.rewardQty" type="number" min="1" class="text-md border border-gray-500 rounded-sm p-2 text-black w-[100px] h-[35px] text-right disabled:bg-gray-100 disabled:cursor-not-allowed" :disabled="locksPromotionRules" />
-                                                </td>
-                                                <td class="py-2 px-2 text-right">
-                                                    <button class="text-red-600 hover:text-red-800 px-2 py-1 disabled:opacity-40 disabled:cursor-not-allowed" :disabled="locksPromotionRules" @click="tier.rewards = tier.rewards.filter(p => p.id !== reward.id)"><i class="pi pi-trash"></i></button>
-                                                </td>
+                                                <td class="px-3 py-2">{{ branch.name }}</td>
+                                                <td class="px-3 py-2">{{ branch.warehouse?.name || '-' }}</td>
                                             </tr>
-                                            <tr v-if="tier.rewards.length === 0">
-                                                <td colspan="5" class="py-4 text-center text-gray-500">No reward products selected</td>
+                                            <tr v-if="branchOptions.length === 0">
+                                                <td colspan="3" class="px-3 py-5 text-center text-gray-500">No branches found</td>
                                             </tr>
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
-                        </div>
-                        <BaseButton v-if="promoMode !== 'MULTIPLIER'" label="Add Tier" class="mb-4" @click="focTiers.push({ condition_type: 'ORDER_AMOUNT', target_value: 0, conditionProductId: '', conditionProductUnitId: '', rewards: [] })" :disabled="locksPromotionRules" />
-                        <div class="border rounded p-4 mb-4 bg-gray-50">
-                            <SubTitle label="FOC Stock" class="mt-6 mb-4" />
-                            <div class="max-h-[200px] overflow-y-auto rounded border border-gray-200 mt-2">
-                                <table class="w-full text-sm border-collapse">
+                        </section>
+
+                        <section class="border-t border-gray-200 pt-6">
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <SubTitle label="Promotion Rules" />
+                                <span class="text-xs text-gray-500">{{ formData.promoType.replace('_', ' ') }}</span>
+                            </div>
+
+                            <template v-if="isProductDiscount || isPriceOverride">
+                                <div v-if="isProductDiscount" class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                    <div class="flex flex-col gap-1">
+                                        <BaseLabel label="Discount Type" :isRequire="true" />
+                                        <select
+                                            class="h-[35px] w-full rounded border border-[#cbd5e1] px-2 py-1 text-sm text-black outline-none focus:border-black disabled:bg-gray-100 disabled:cursor-not-allowed"
+                                            v-model="formData.discountType"
+                                            :disabled="locksPromotionRules"
+                                        >
+                                            <option value="AMOUNT">Amount</option>
+                                            <option value="PERCENT">Percent</option>
+                                        </select>
+                                    </div>
+                                    <BaseInput
+                                        size="sm"
+                                        v-model="formData.discountValue"
+                                        label="Discount Value"
+                                        height="h-[35px]"
+                                        type="number"
+                                        :isRequire="true"
+                                        :error="errorMsg.discountValue"
+                                        :disabled="locksPromotionRules"
+                                    />
+                                </div>
+
+                                <div v-if="isPriceOverride" class="mt-4 space-y-4">
+                                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                        <BaseInput
+                                            size="sm"
+                                            v-model="formData.overridePrice"
+                                            label="Override Price"
+                                            height="h-[35px]"
+                                            type="number"
+                                            :isRequire="true"
+                                            :disabled="locksPromotionRules"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <div class="mb-3 flex items-center justify-between gap-3">
+                                            <SubTitle label="Price Override Conditions" />
+                                        </div>
+                                        <div v-for="(tier, idx) in priceOverrideTiers" :key="idx" class="rounded border border-gray-200 bg-gray-50 p-4">
+                                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                                <div class="flex flex-col gap-1">
+                                                    <BaseLabel label="Condition Type" />
+                                                    <div class="flex h-[35px] items-center rounded border border-gray-200 bg-white px-2 text-sm text-gray-700">Order Qty</div>
+                                                </div>
+                                                <BaseInput size="sm" v-model="tier.target_value" label="Target Value" height="h-[35px]" type="number" :isRequire="true" :disabled="locksPromotionRules" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-6">
+                                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                        <div>
+                                            <SubTitle label="Products" />
+                                            <span v-if="errorMsg.products" class="text-[11px] text-red-500">{{ errorMsg.products }}</span>
+                                        </div>
+                                        <BaseButton
+                                            label="Select Products"
+                                            class="w-full sm:w-auto"
+                                            :disabled="locksPromotionRules"
+                                            @click="openProductDialog('PRODUCT_DISCOUNT')"
+                                        />
+                                    </div>
+
+                                    <div class="mt-4 overflow-hidden rounded border border-gray-200">
+                                        <div class="max-h-[360px] overflow-auto">
+                                            <table class="w-full min-w-[760px] border-collapse text-sm">
+                                                <thead>
+                                                    <tr class="text-left text-gray-600">
+                                                        <th class="sticky top-0 z-10 border-b bg-white px-3 py-2">Image</th>
+                                                        <th class="sticky top-0 z-10 border-b bg-white px-3 py-2">Product Name</th>
+                                                        <th class="sticky top-0 z-10 border-b bg-white px-3 py-2">Unit</th>
+                                                        <th class="sticky top-0 z-10 border-b bg-white px-3 py-2 text-right">Price</th>
+                                                        <th class="sticky top-0 z-10 border-b bg-white px-3 py-2 text-right">{{ isPriceOverride ? 'Override Price' : 'Final Price' }}</th>
+                                                        <th class="sticky top-0 z-10 w-[56px] border-b bg-white px-3 py-2"></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr v-for="product in selectedProducts" :key="product.id" class="border-b hover:bg-gray-50">
+                                                        <td class="px-3 py-2">
+                                                            <div class="h-12 w-12 overflow-hidden rounded">
+                                                                <img :src="product.image_url" alt="product" class="h-full w-full object-cover" />
+                                                            </div>
+                                                        </td>
+                                                        <td class="px-3 py-2">{{ product.name }}</td>
+                                                        <td class="px-3 py-2">
+                                                            <select v-model="product.productUnitId" class="h-[35px] w-full min-w-[130px] rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100 disabled:cursor-not-allowed" :disabled="locksPromotionRules">
+                                                                <option value="">All Units</option>
+                                                                <option v-for="unit in productUnitOptions(product)" :key="unit.id" :value="unit.id">
+                                                                    {{ unit.unit_id?.name }}
+                                                                </option>
+                                                            </select>
+                                                        </td>
+                                                        <td class="px-3 py-2 text-right">{{ formatPrice(selectedUnitPrice(product)) }}</td>
+                                                        <td class="px-3 py-2 text-right">{{ formatPrice(isPriceOverride ? formData.overridePrice : getFinalPrice(product)) }}</td>
+                                                        <td class="px-3 py-2 text-right">
+                                                            <button class="rounded px-2 py-1 text-red-600 hover:bg-red-50 hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-40" :disabled="locksPromotionRules" @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)">
+                                                                <i class="pi pi-trash"></i>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                    <tr v-if="selectedProducts.length === 0">
+                                                        <td colspan="6" class="px-3 py-5 text-center text-gray-500">No products selected</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <template v-else>
+                                <div v-if="isOrderDiscount" class="mt-4">
+                                    <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                        <SubTitle :label="promoMode === 'MULTIPLIER' ? 'Multiplier Rule' : 'Discount Tiers'" />
+                                        <BaseButton
+                                            v-if="promoMode !== 'MULTIPLIER'"
+                                            label="Add Tier"
+                                            class="w-full sm:w-auto"
+                                            :disabled="locksPromotionRules"
+                                            @click="orderDiscountTiers.push({ condition_type: 'ORDER_AMOUNT', target_value: 0, discount_type: 'AMOUNT', discount_value: 0 })"
+                                        />
+                                    </div>
+
+                                    <div class="space-y-3">
+                                        <div v-for="(tier, idx) in orderDiscountTiers" :key="idx" class="rounded border border-gray-200 bg-gray-50 p-4">
+                                            <div class="mb-3 flex items-center justify-between gap-3">
+                                                <span class="text-sm font-medium text-gray-700">Tier {{ idx + 1 }}</span>
+                                                <BaseButton
+                                                    v-if="orderDiscountTiers.length > 1 && promoMode !== 'MULTIPLIER'"
+                                                    label="Remove"
+                                                    severity="danger"
+                                                    size="sm"
+                                                    :disabled="locksPromotionRules"
+                                                    @click="orderDiscountTiers.splice(idx, 1)"
+                                                />
+                                            </div>
+                                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                                <div class="flex flex-col gap-1">
+                                                    <BaseLabel label="Condition Type" :isRequire="true" />
+                                                    <select class="h-[35px] rounded border border-[#cbd5e1] px-2 py-1 text-sm text-black outline-none focus:border-black disabled:bg-gray-100 disabled:cursor-not-allowed" v-model="tier.condition_type" :disabled="locksPromotionRules">
+                                                        <option value="ORDER_QTY">Order Qty</option>
+                                                        <option value="ORDER_AMOUNT">Order Amount</option>
+                                                    </select>
+                                                </div>
+                                                <BaseInput size="sm" v-model="tier.target_value" label="Target Value" height="h-[35px]" type="number" :isRequire="true" :disabled="locksPromotionRules" />
+                                                <div class="flex flex-col gap-1">
+                                                    <BaseLabel label="Discount Type" :isRequire="true" />
+                                                    <select class="h-[35px] rounded border border-[#cbd5e1] px-2 py-1 text-sm text-black outline-none focus:border-black disabled:bg-gray-100 disabled:cursor-not-allowed" v-model="tier.discount_type" :disabled="locksPromotionRules">
+                                                        <option value="AMOUNT">Amount</option>
+                                                        <option value="PERCENT">Percent</option>
+                                                    </select>
+                                                </div>
+                                                <BaseInput size="sm" v-model="tier.discount_value" label="Reward Value" height="h-[35px]" type="number" :isRequire="true" :disabled="locksPromotionRules" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div v-if="isFOC" class="mt-4">
+                                    <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                        <SubTitle :label="promoMode === 'MULTIPLIER' ? 'Multiplier Rule' : 'FOC Tiers'" />
+                                        <BaseButton
+                                            v-if="promoMode !== 'MULTIPLIER'"
+                                            label="Add Tier"
+                                            class="w-full sm:w-auto"
+                                            :disabled="locksPromotionRules"
+                                            @click="focTiers.push({ condition_type: 'ORDER_AMOUNT', target_value: 0, conditionProductId: '', conditionProductUnitId: '', rewards: [] })"
+                                        />
+                                    </div>
+
+                                    <div class="space-y-4">
+                                        <div v-for="(tier, idx) in focTiers" :key="idx" class="rounded border border-gray-200 bg-gray-50 p-4">
+                                            <div class="mb-3 flex items-center justify-between gap-3">
+                                                <span class="text-sm font-medium text-gray-700">Tier {{ idx + 1 }}</span>
+                                                <BaseButton
+                                                    v-if="focTiers.length > 1 && promoMode !== 'MULTIPLIER'"
+                                                    label="Remove"
+                                                    severity="danger"
+                                                    size="sm"
+                                                    :disabled="locksPromotionRules"
+                                                    @click="focTiers.splice(idx, 1)"
+                                                />
+                                            </div>
+
+                                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                                <div class="flex flex-col gap-1">
+                                                    <BaseLabel label="Condition Type" :isRequire="true" />
+                                                    <select class="h-[35px] rounded border border-[#cbd5e1] px-2 py-1 text-sm text-black outline-none focus:border-black disabled:bg-gray-100 disabled:cursor-not-allowed" v-model="tier.condition_type" :disabled="locksPromotionRules">
+                                                        <option value="ITEM_QTY">Item Qty</option>
+                                                        <option value="ITEM_AMOUNT">Item Amount</option>
+                                                        <option value="ORDER_QTY">Order Qty</option>
+                                                        <option value="ORDER_AMOUNT">Order Amount</option>
+                                                    </select>
+                                                </div>
+
+                                                <div v-if="['ITEM_QTY','ITEM_AMOUNT'].includes(tier.condition_type)" class="flex flex-col gap-1">
+                                                    <BaseLabel label="Condition Product" :isRequire="true" />
+                                                    <BaseButton
+                                                        :label="tier.conditionProductId ? (productList.find(p => p.id == tier.conditionProductId)?.name || 'Select Product') : 'Select Product'"
+                                                        class="h-[35px] w-full justify-center overflow-hidden"
+                                                        :disabled="locksPromotionRules"
+                                                        @click="() => selectFocTierConditionProduct(idx)"
+                                                    />
+                                                </div>
+
+                                                <div v-if="['ITEM_QTY','ITEM_AMOUNT'].includes(tier.condition_type) && tier.conditionProductId" class="flex flex-col gap-1">
+                                                    <BaseLabel label="Condition Unit" />
+                                                    <select v-model="tier.conditionProductUnitId" class="h-[35px] rounded border border-[#cbd5e1] px-2 py-1 text-sm text-black outline-none focus:border-black disabled:bg-gray-100 disabled:cursor-not-allowed" :disabled="locksPromotionRules" @change="onConditionUnitChange(tier)">
+                                                        <option value="">All Units</option>
+                                                        <option v-for="unit in productUnitOptions(productForTier(tier))" :key="unit.id" :value="unit.id">
+                                                            {{ unit.unit_id?.name }}
+                                                        </option>
+                                                    </select>
+                                                </div>
+
+                                                <BaseInput size="sm" v-model="tier.target_value" label="Target Value" height="h-[35px]" type="number" :isRequire="true" :disabled="locksPromotionRules" />
+                                            </div>
+
+                                            <div class="mt-5">
+                                                <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                                    <BaseLabel label="Reward Products" :isRequire="true" />
+                                                    <BaseButton
+                                                        label="Select Reward Products"
+                                                        class="w-full sm:w-auto"
+                                                        :disabled="locksPromotionRules"
+                                                        @click="() => selectFocTierRewardProducts(idx)"
+                                                    />
+                                                </div>
+
+                                                <div class="overflow-hidden rounded border border-gray-200 bg-white">
+                                                    <div class="max-h-[220px] overflow-auto">
+                                                        <table class="w-full min-w-[680px] border-collapse text-sm">
+                                                            <thead>
+                                                                <tr class="text-left text-gray-600">
+                                                                    <th class="sticky top-0 z-10 border-b bg-white px-3 py-2">Image</th>
+                                                                    <th class="sticky top-0 z-10 border-b bg-white px-3 py-2">Product Name</th>
+                                                                    <th class="sticky top-0 z-10 border-b bg-white px-3 py-2">Unit</th>
+                                                                    <th class="sticky top-0 z-10 border-b bg-white px-3 py-2 text-right">Reward Qty</th>
+                                                                    <th class="sticky top-0 z-10 w-[56px] border-b bg-white px-3 py-2"></th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <tr v-for="reward in tier.rewards" :key="reward.id" class="border-b hover:bg-gray-50">
+                                                                    <td class="px-3 py-2">
+                                                                        <img class="h-10 w-10 rounded object-cover" :src="reward.image_url" />
+                                                                    </td>
+                                                                    <td class="px-3 py-2">{{ reward.name }}</td>
+                                                                    <td class="px-3 py-2">
+                                                                        <select v-model="reward.productUnitId" class="h-[35px] min-w-[120px] rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100 disabled:cursor-not-allowed" :disabled="locksPromotionRules" @change="onRewardUnitChange(reward)">
+                                                                            <option value="">All Units</option>
+                                                                            <option v-for="unit in productUnitOptions(reward)" :key="unit.id" :value="unit.id">{{ unit.unit_id?.name }}</option>
+                                                                        </select>
+                                                                    </td>
+                                                                    <td class="px-3 py-2 text-right">
+                                                                        <input v-model.number="reward.rewardQty" type="number" min="1" class="h-[35px] w-[100px] rounded border border-gray-300 p-2 text-right text-sm text-black disabled:bg-gray-100 disabled:cursor-not-allowed" :disabled="locksPromotionRules" />
+                                                                    </td>
+                                                                    <td class="px-3 py-2 text-right">
+                                                                        <button class="rounded px-2 py-1 text-red-600 hover:bg-red-50 hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-40" :disabled="locksPromotionRules" @click="tier.rewards = tier.rewards.filter(p => p.id !== reward.id)">
+                                                                            <i class="pi pi-trash"></i>
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                                <tr v-if="tier.rewards.length === 0">
+                                                                    <td colspan="5" class="px-3 py-5 text-center text-gray-500">No reward products selected</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-6 rounded border border-gray-200 bg-gray-50 p-4">
+                                        <SubTitle label="FOC Stock" />
+                                        <div class="mt-3 overflow-hidden rounded border border-gray-200 bg-white">
+                                            <div class="max-h-[220px] overflow-auto">
+                                                <table class="w-full min-w-[620px] border-collapse text-sm">
+                                                    <thead>
+                                                        <tr class="text-left text-gray-600">
+                                                            <th class="sticky top-0 z-10 border-b bg-white px-3 py-2">Image</th>
+                                                            <th class="sticky top-0 z-10 border-b bg-white px-3 py-2">Product Name</th>
+                                                            <th class="sticky top-0 z-10 border-b bg-white px-3 py-2">Unit</th>
+                                                            <th class="sticky top-0 z-10 border-b bg-white px-3 py-2 text-right">Allocated Qty</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr v-for="alloc in focAllocations" :key="`${alloc.id}-${alloc.productUnitId || 'default'}`" class="border-b hover:bg-gray-50">
+                                                            <td class="px-3 py-2">
+                                                                <img class="h-10 w-10 rounded object-cover" :src="alloc.image_url" />
+                                                            </td>
+                                                            <td class="px-3 py-2">{{ alloc.name }}</td>
+                                                            <td class="px-3 py-2">
+                                                                <select v-model="alloc.productUnitId" class="h-[35px] min-w-[120px] rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100 disabled:cursor-not-allowed" :disabled="locksPromotionRules">
+                                                                    <option value="">All Units</option>
+                                                                    <option v-for="unit in productUnitOptions(alloc)" :key="unit.id" :value="unit.id">{{ unit.unit_id?.name }}</option>
+                                                                </select>
+                                                            </td>
+                                                            <td class="px-3 py-2 text-right">
+                                                                <input v-model.number="alloc.allocatedQty" type="number" min="1" class="h-[35px] w-[100px] rounded border border-gray-300 p-2 text-right text-sm text-black disabled:bg-gray-100 disabled:cursor-not-allowed" :disabled="locksPromotionRules" />
+                                                            </td>
+                                                        </tr>
+                                                        <tr v-if="focAllocations.length === 0">
+                                                            <td colspan="4" class="px-3 py-5 text-center text-gray-500">No allocated products</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </section>
+                    </div>
+
+                    <div v-if="isProductDialogVisible" class="fixed inset-0 z-50 flex items-center justify-center p-3">
+                        <div class="absolute inset-0 bg-black opacity-50" @click="cancelProductSelection"></div>
+                        <div class="z-10 flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded bg-white shadow-lg">
+                            <div class="flex items-center justify-between gap-3 border-b px-4 py-3">
+                                <SubTitle :label="productDialogTitle" />
+                                <div class="text-sm text-gray-600">{{ selectionBuffer.length }} selected</div>
+                            </div>
+
+                            <div class="border-b px-4 py-3">
+                                <input
+                                    v-model="searchTerm"
+                                    placeholder="Search by name or barcode"
+                                    class="h-[35px] w-full rounded border border-[#cbd5e1] px-3 text-sm outline-none focus:border-black"
+                                />
+                            </div>
+
+                            <div class="min-h-0 flex-1 overflow-auto px-4 py-3">
+                                <table class="w-full min-w-[640px] text-sm">
                                     <thead>
-                                        <tr class="text-left text-gray-600">
-                                            <th class="py-2 px-2 border-b">Image</th>
-                                            <th class="py-2 px-2 border-b">Product Name</th>
-                                            <th class="py-2 px-2 border-b">Unit</th>
-                                            <th class="py-2 px-2 border-b text-right">Allocated Qty</th>
+                                        <tr class="border-b text-left text-gray-600">
+                                            <th class="sticky top-0 z-10 bg-white py-2">
+                                                <div v-if="!isSingleSelectionDialog" class="flex items-center gap-x-2">
+                                                    <span v-if="isSelectAllLoading && productDialogMode === 'PRODUCT_DISCOUNT'" class="text-sm text-gray-600"><i class="fa fa-spinner fa-spin"></i></span>
+                                                    <input v-else type="checkbox" :checked="allFilteredSelected" @change="toggleHeaderSelection" ref="headerCheckboxRef" :disabled="isCheckingAll || isSelectAllLoading" />
+                                                </div>
+                                                <span v-else>Select</span>
+                                            </th>
+                                            <th class="sticky top-0 z-10 bg-white py-2">Image</th>
+                                            <th class="sticky top-0 z-10 bg-white py-2">Name</th>
+                                            <th class="sticky top-0 z-10 bg-white py-2">Barcode</th>
+                                            <th class="sticky top-0 z-10 bg-white py-2 text-end">Price</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr v-for="alloc in focAllocations" :key="`${alloc.id}-${alloc.productUnitId || 'default'}`" class="border-b hover:bg-gray-50">
-                                            <td class="py-2 px-2">
-                                                <img class="object-cover w-10 h-10 rounded" :src="alloc.image_url" />
+                                        <tr v-for="product in filteredProducts" :key="product.id" class="hover:bg-gray-50">
+                                            <td class="py-2">
+                                                <input
+                                                    :type="isSingleSelectionDialog ? 'radio' : 'checkbox'"
+                                                    :name="isSingleSelectionDialog ? 'single-product-select' : undefined"
+                                                    :checked="isBufferSelected(product)"
+                                                    @change="toggleProductInBuffer($event, product)"
+                                                />
                                             </td>
-                                            <td class="py-2 px-2">{{ alloc.name }}</td>
-                                            <td class="py-2 px-2">
-                                                <select v-model="alloc.productUnitId" class="border border-gray-300 rounded px-2 py-1 min-w-[120px] disabled:bg-gray-100" :disabled="locksPromotionRules">
-                                                    <option value="">All Units</option>
-                                                    <option v-for="unit in productUnitOptions(alloc)" :key="unit.id" :value="unit.id">{{ unit.unit_id?.name }}</option>
-                                                </select>
+                                            <td class="py-2">
+                                                <img class="h-10 w-10 rounded object-cover" :src="product.image_url" />
                                             </td>
-                                            <td class="py-2 px-2 text-right">
-                                                <input v-model.number="alloc.allocatedQty" type="number" min="1" class="text-md border border-gray-500 rounded-sm p-2 text-black w-[100px] h-[35px] text-right disabled:bg-gray-100 disabled:cursor-not-allowed" :disabled="locksPromotionRules" />
-                                            </td>
+                                            <td class="py-2">{{ product.name }}</td>
+                                            <td class="py-2">{{ product.barcode }}</td>
+                                            <td class="py-2 text-end">{{ Number(product.price).toLocaleString() || 0 }}</td>
                                         </tr>
-                                        <tr v-if="focAllocations.length === 0">
-                                            <td colspan="4" class="py-4 text-center text-gray-500">No allocated products</td>
+                                        <tr v-if="(filteredProducts || []).length === 0">
+                                            <td colspan="5" class="py-5 text-center text-gray-500">No products found</td>
                                         </tr>
                                     </tbody>
                                 </table>
                             </div>
+
+                            <div class="flex flex-col-reverse gap-2 border-t px-4 py-3 sm:flex-row sm:justify-end">
+                                <BaseButton
+                                    severity="secondary"
+                                    label="Cancel"
+                                    class="w-full sm:w-auto"
+                                    @click="cancelProductSelection"
+                                />
+                                <BaseButton
+                                    label="Add Product"
+                                    class="w-full sm:w-auto"
+                                    @click="confirmProductSelection"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sticky bottom-0 z-10 mt-8 border-t border-gray-200 bg-white/95 py-4 backdrop-blur">
+                        <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                            <BaseButton
+                                label="Update"
+                                :isLoading="usePromo.loading"
+                                :icon="usePromo.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'"
+                                severity="primary"
+                                class="w-full sm:w-auto"
+                                @click="formSubmit"
+                                :disabled="usePromo.loading || isInactivePromotion"
+                            />
                         </div>
                     </div>
                 </template>
-
-                <!-- Shared Product Selection Modal -->
-                <div v-if="isProductDialogVisible" class="fixed inset-0 z-50 flex items-center justify-center">
-                    <div class="absolute inset-0 bg-black opacity-50" @click="cancelProductSelection"></div>
-                    <div class="bg-white rounded shadow-lg w-[90%] max-w-4xl max-h-[80vh] overflow-hidden z-10 p-4">
-                        <div class="flex items-center justify-between py-4 border-b">
-                            <SubTitle :label="productDialogTitle" />
-                            <div class="text-sm text-gray-600">{{ selectionBuffer.length }} selected</div>
-                        </div>
-                        <div class="py-4 flex gap-x-2 items-center">
-                            <input v-model="searchTerm" placeholder="Search by name or barcode" class="border p-2 rounded w-full" />
-                        </div>
-                        <div class="py-4 overflow-auto max-h-[50vh]">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="text-left text-gray-600 border-b">
-                                        <th class="py-2">
-                                            <div v-if="!isSingleSelectionDialog" class="flex items-center gap-x-2">
-                                                <span v-if="isSelectAllLoading && productDialogMode === 'PRODUCT_DISCOUNT'" class="text-sm text-gray-600"><i class="fa fa-spinner fa-spin"></i></span>
-                                                <input v-else type="checkbox" :checked="allFilteredSelected" @change="toggleHeaderSelection" ref="headerCheckboxRef" :disabled="isCheckingAll || isSelectAllLoading" />
-                                            </div>
-                                            <span v-else>Select</span>
-                                        </th>
-                                        <th>Image</th>
-                                        <th class="py-2">Name</th>
-                                        <th class="py-2">Barcode</th>
-                                        <th class="py-2 text-end">Price</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr v-for="product in filteredProducts" :key="product.id" class="hover:bg-gray-50">
-                                        <td class="py-2">
-                                            <input
-                                                :type="isSingleSelectionDialog ? 'radio' : 'checkbox'"
-                                                :name="isSingleSelectionDialog ? 'single-product-select' : undefined"
-                                                :checked="isBufferSelected(product)"
-                                                @change="toggleProductInBuffer($event, product)"
-                                            />
-                                        </td>
-                                        <td class="py-2">
-                                            <img class="object-cover w-10 h-10 rounded" :src="product.image_url" />
-                                        </td>
-                                        <td class="py-2">{{ product.name }}</td>
-                                        <td class="py-2">{{ product.barcode }}</td>
-                                        <td class="py-2 text-end">{{ Number(product.price).toLocaleString() || 0 }}</td>
-                                    </tr>
-                                    <tr v-if="(filteredProducts || []).length === 0">
-                                        <td colspan="4" class="py-4 text-center text-gray-500">No products found</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="flex justify-end gap-x-2 py-4 border-t">
-                            <BaseButton 
-                                severity="secondary" 
-                                label="Cancel"
-                                @click="cancelProductSelection" 
-                            />
-                            <BaseButton 
-                                label="Add Product"
-                                class="px-4 py-2 bg-blue-600 text-white rounded"
-                                @click="confirmProductSelection" 
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                <div class="flex justify-end mt-4">
-                    <!-- Update Button -->
-                    <BaseButton 
-                        label="Update" 
-                        :isLoading="usePromo.loading"
-                        :icon="usePromo.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" severity="primary"
-                        @click="formSubmit" 
-                        :disabled="usePromo.loading || isInactivePromotion" 
-                    />
-                </div>
-            </template>
-        </BaseCard>
+            </BaseCard>
+        </div>
     </div>
 </template>

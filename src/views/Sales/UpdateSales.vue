@@ -6,7 +6,7 @@ import BaseCard from '@/components/BaseCard.vue';
 import SubTitle from '@/components/SubTitle.vue';
 import { useRoute, useRouter } from 'vue-router';
 import BaseInput from '@/components/BaseInput.vue';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import BaseLabel from '@/components/BaseLabel.vue';
 import { useSaleStore } from '@/stores/useSalesStore';
@@ -14,6 +14,10 @@ import moment from 'moment';
 import { usePaymentMethodStore } from '@/stores/usePaymentMethodStore';
 import { useProductStore } from '@/stores/useProductStore';
 import axios from 'axios';
+import { Select } from 'primevue';
+import { useBranchStore } from '@/stores/useBranchStore';
+import { useWarehouseStore } from '@/stores/useWarehouseStore';
+import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -21,10 +25,14 @@ const toast = useToast();
 const useSales = useSaleStore();
 const usePaymentMethod = usePaymentMethodStore();
 const useProduct = useProductStore();
+const useBranch = useBranchStore();
+const useWarehouse = useWarehouseStore();
 
 const userData = ref({});
 const selectedProducts = ref([]);
 const oldSelectedProducts = ref([]);
+const selectedBranch = ref(null);
+const selectedWarehouse = ref(null);
 const isProductDialogVisible = ref(false);
 const productList = ref([]);
 const searchTerm = ref('');
@@ -33,6 +41,7 @@ const headerCheckboxRef = ref(null);
 const isCheckingAll = ref(false);
 const isSelectAllLoading = ref(false);
 const appliedPromotions = ref([]);
+const isInitializing = ref(true);
 const formData = ref({
   salesId: '',
   warehouseId: '',
@@ -47,6 +56,10 @@ const formData = ref({
   salesDate: moment().format('YYYY-MM-DDTHH:mm'),
   products: [],
 })
+const errorMsg = ref({
+  branch: "",
+  warehouse: "",
+});
 
 const filteredProducts = computed(() => {
   const q = (searchTerm.value || '').toString().trim().toLowerCase();
@@ -85,6 +98,91 @@ const grandTotalAmount = computed(() => {
 
 const changeAmount = computed(() => Number(formData.value.paidAmount || 0) - grandTotalAmount.value);
 
+function recordId(value) {
+  return value?.id || value || null;
+}
+
+function defaultProductUnit(product) {
+  if (product?.default_product_unit?.id) return product.default_product_unit;
+  return product?.product_units?.find((unit) => unit.is_default_sale_unit)
+    || product?.product_units?.find((unit) => unit.is_base_unit)
+    || product?.product_units?.[0]
+    || null;
+}
+
+function productUnitId(product) {
+  return product?.product_unit_id || defaultProductUnit(product)?.id || null;
+}
+
+function explicitProductUnitId(item = {}) {
+  return item.product_unit_id
+    || item.uom?.product_unit_id
+    || item.product_unit?.product_unit_id
+    || item.product_unit?.id
+    || null;
+}
+
+function lineKey(product) {
+  return `${Number(product?.product_id || product?.id || 0)}:${Number(product?.product_unit_id || 0)}`;
+}
+
+function productUnitUnitId(product) {
+  return recordId(product?.unit_id) || recordId(defaultProductUnit(product)?.unit_id);
+}
+
+function selectedProductUnit(product) {
+  const units = Array.isArray(product?.product_units) ? product.product_units : [];
+  const selectedUnitId = product?.product_unit_id;
+  return units.find((unit) => Number(unit.id) === Number(selectedUnitId))
+    || defaultProductUnit(product);
+}
+
+function productUnitName(product) {
+  const unit = selectedProductUnit(product);
+  return product?.unit_name || unit?.unit_name || unit?.unit_id?.name || null;
+}
+
+function productHasSelectedUnit(product) {
+  return (product.product_units || []).some(unit => Number(unit.id) === Number(product.product_unit_id));
+}
+
+function productUnitBarcode(product) {
+  const unit = selectedProductUnit(product);
+  return product?.unit_barcode || unit?.barcode || (product?.product_unit_id ? product?.barcode : null) || null;
+}
+
+function productConversionToBase(product) {
+  const unit = selectedProductUnit(product);
+  const conversion = Number(product?.conversion_to_base || unit?.conversion_to_base || 1);
+  return conversion > 0 ? conversion : 1;
+}
+
+function productLineUomSnapshot(product, quantity) {
+  const unitQuantity = Number(quantity || 0);
+  const conversionToBase = productConversionToBase(product);
+
+  return {
+    product_unit_id: product?.product_unit_id || productUnitId(product),
+    unit_id: productUnitUnitId(product),
+    unit_name: productUnitName(product),
+    unit_quantity: unitQuantity,
+    base_quantity: unitQuantity * conversionToBase,
+    conversion_to_base: conversionToBase,
+    unit_barcode: productUnitBarcode(product),
+    price_range_id: product?.priceRangeId || product?.price_range_id || null,
+  };
+}
+
+function sameProductUnit(left, right) {
+  return Number(left.product_id || left.id) === Number(right.product_id || right.id)
+    && Number(left.product_unit_id || 0) === Number(right.product_unit_id || 0);
+}
+
+function pricedItemFor(product, pricedItems = []) {
+  return pricedItems.find(item => sameProductUnit(item, product))
+    || pricedItems.find(item => Number(item.product_id || item.id) === Number(product.id));
+}
+
 // Change route function
 function changeRoute(pathname) {
   router.push(pathname);
@@ -92,11 +190,25 @@ function changeRoute(pathname) {
 
 onMounted(async () => {
   userData.value = JSON.parse(localStorage.getItem('user'));
-  await useSales.fetchSales(route.query.id);
+  await Promise.all([
+    useSales.fetchSales(route.query.id),
+    usePaymentMethod.fetchAllPaymentMethod(),
+    useBranch.fetchAllBranch(),
+    useWarehouse.fetchAllWarehouse(),
+  ]);
+
+  const saleBranch = useSales.salesList.branch || useSales.salesList.warehouse?.branch || null;
+  selectedBranch.value = (useBranch.branchList || []).find(branch => Number(branch.id) === Number(saleBranch?.id || useSales.salesList.branch_id))
+    || saleBranch
+    || null;
+  syncWarehouseFromBranch(selectedBranch.value);
+
   formData.value = {
     salesId: useSales.salesList.id,
-    warehouseId: useSales.salesList.warehouse.id,
-    warehouseName: useSales.salesList.warehouse.name,
+    branchId: selectedBranch.value?.id || '',
+    branchName: selectedBranch.value?.name || '',
+    warehouseId: selectedWarehouse.value?.id || '',
+    warehouseName: selectedWarehouse.value?.name || '',
     customerName: useSales.salesList.customer.name,
     customerId: useSales.salesList.customer.id,
     paymentId: useSales.salesList.payment_method.id,
@@ -110,15 +222,76 @@ onMounted(async () => {
     remark: useSales.salesList.remark,
     salesDate: moment(useSales.salesList.sale_date).format('YYYY-MM-DDTHH:mm'),
   };
+  console.log('Sales Details:', useSales.salesList.details);
   selectedProducts.value = mergeSelectedProducts(useSales.salesList.details || []);
   appliedPromotions.value = useSales.salesList.applied_promotions || [];
   oldSelectedProducts.value = JSON.parse(JSON.stringify(selectedProducts.value));
-  await Promise.all([
-    usePaymentMethod.fetchAllPaymentMethod(),
-    useProduct.fetchAllProduct(),
-  ]);
-  productList.value = useProduct.productList || [];
+  await loadProductsForBranch(selectedBranch.value?.id);
+  hydrateSelectedProductsFromCatalog();
+  await nextTick();
+  isInitializing.value = false;
 });
+
+function branchWarehouse(branch) {
+  return branch?.warehouse
+    || (useWarehouse.warehouseList || []).find(warehouse => Number(warehouse.id) === Number(branch?.warehouse_id))
+    || null;
+}
+
+function syncWarehouseFromBranch(branch) {
+  if (!branch) {
+    selectedWarehouse.value = null;
+    formData.value.branchId = '';
+    formData.value.branchName = '';
+    formData.value.warehouseId = '';
+    formData.value.warehouseName = '';
+    return;
+  }
+
+  const warehouse = branchWarehouse(branch);
+  selectedWarehouse.value = warehouse || null;
+  formData.value.branchId = branch?.id || '';
+  formData.value.branchName = branch?.name || '';
+  formData.value.warehouseId = selectedWarehouse.value?.id || branch?.warehouse_id || '';
+  formData.value.warehouseName = selectedWarehouse.value?.name || '';
+}
+
+async function loadProductsForBranch(branchId) {
+  if (!branchId) {
+    productList.value = [];
+    return;
+  }
+
+  await useProduct.fetchSalesProduct({ branch_id: branchId });
+  productList.value = useProduct.productList || [];
+}
+
+function hydrateSelectedProductsFromCatalog() {
+  selectedProducts.value = selectedProducts.value.map((product) => {
+    const catalogProduct = (productList.value || []).find(item => Number(item.id) === Number(product.id));
+    if (!catalogProduct) return product;
+    console.log('Catalog Product for Selected Product', product.id, catalogProduct);
+    const catalogUnits = catalogProduct.product_units || product.product_units || [];
+    console.log('Catalog Units for Product', product.id, catalogUnits);
+    const matchedUnit = catalogUnits.find(unit => Number(unit.id) === Number(product.product_unit_id))
+      || catalogUnits.find(unit => Number(recordId(unit.unit_id)) === Number(recordId(product.unit_id)))
+      || catalogUnits.find(unit => (unit.unit_id?.name || unit.unit_name) === product.unit_name)
+      || null;
+
+    return {
+      ...product,
+      image_url: product.image_url || catalogProduct.image_url,
+      base_barcode: product.base_barcode || catalogProduct.barcode,
+      product_units: catalogUnits,
+      product_unit_id: matchedUnit?.id || product.product_unit_id || null,
+      unit_id: matchedUnit ? recordId(matchedUnit.unit_id) : product.unit_id,
+      unit_name: matchedUnit ? (matchedUnit.unit_id?.name || matchedUnit.unit_name || product.unit_name) : product.unit_name,
+      unit_barcode: matchedUnit?.barcode || product.unit_barcode,
+      conversion_to_base: matchedUnit ? Number(matchedUnit.conversion_to_base || 1) : product.conversion_to_base,
+      barcode: matchedUnit?.barcode || product.barcode,
+    };
+  });
+}
 
 function mergeSelectedProducts(details = []) {
   const mergedProducts = new Map();
@@ -164,8 +337,15 @@ function mergeSelectedProducts(details = []) {
       id: productId,
       name: product.name || '',
       barcode: product.barcode || '',
+      base_barcode: product.base_barcode || product.barcode || '',
       image_url: product.image_url || '',
       quantity: quantity,
+      product_units: product.product_units || [],
+      product_unit_id: explicitProductUnitId(item),
+      unit_id: item.unit_id || item.unit?.id || recordId(item.product_unit?.unit_id) || null,
+      unit_name: item.unit_name || item.unit?.name || item.product_unit?.unit_name || productUnitName(product),
+      unit_barcode: item.unit_barcode || item.product_unit?.barcode || productUnitBarcode(product),
+      conversion_to_base: item.conversion_to_base || item.product_unit?.conversion_to_base || productConversionToBase(product),
       price: unitPrice,
       discountAmount: unitDiscountAmount,
       discountPrice: unitDiscountPrice,
@@ -178,12 +358,24 @@ function mergeSelectedProducts(details = []) {
     });
   });
 
+  console.log('Merged selected products:', Array.from(mergedProducts.values()));
   return Array.from(mergedProducts.values());
 }
 
 function openProductDialog() {
-  const selectedIds = new Set(selectedProducts.value.filter(p => !p.isFoc).map(p => p.id));
-  selectionBuffer.value = (productList.value || []).filter(p => selectedIds.has(p.id));
+  if (!selectedBranch.value) {
+    errorMsg.value.branch = "Please select a branch first.";
+    toast.add({
+      severity: 'warn',
+      summary: 'Branch Required',
+      detail: 'Please select a branch before selecting products.',
+      life: 3000
+    });
+    return;
+  }
+
+  const selectedIds = new Set(selectedProducts.value.filter(p => !p.isFoc).map(p => Number(p.id)));
+  selectionBuffer.value = (productList.value || []).filter(p => selectedIds.has(Number(p.id)));
   searchTerm.value = '';
   isProductDialogVisible.value = true;
 }
@@ -234,17 +426,27 @@ watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.va
 });
 
 async function confirmProductSelection() {
-  const existingMap = new Map(selectedProducts.value.filter(p => !p.isFoc).map(p => [p.id, p]));
+  const existingByLine = new Map(selectedProducts.value.filter(p => !p.isFoc).map(p => [lineKey(p), p]));
+  const existingByProduct = new Map(selectedProducts.value.filter(p => !p.isFoc).map(p => [Number(p.id), p]));
   const selected = selectionBuffer.value.map((p) => {
-    const existing = existingMap.get(p.id);
+    const defaultUnitId = productUnitId(p);
+    const existing = existingByLine.get(`${Number(p.id)}:${Number(defaultUnitId || 0)}`)
+      || existingByProduct.get(Number(p.id));
     const basePrice = Number(existing?.price ?? p.price ?? 0);
 
     return {
       id: p.id,
       name: p.name,
       barcode: p.barcode,
+      base_barcode: p.base_barcode || p.barcode,
       quantity: Number(existing?.quantity) || 1,
       image_url: p.image_url,
+      product_units: p.product_units || [],
+      product_unit_id: existing?.product_unit_id || productUnitId(p),
+      unit_id: existing?.unit_id || productUnitUnitId(p),
+      unit_name: existing?.unit_name || productUnitName(p),
+      unit_barcode: existing?.unit_barcode || productUnitBarcode(p),
+      conversion_to_base: existing?.conversion_to_base || productConversionToBase(p),
       price: basePrice,
       promotionId: existing?.promotionId || null,
       discountAmount: Number(existing?.discountAmount) || 0,
@@ -279,6 +481,24 @@ function onChangePrice(product) {
   recalculatePromotions();
 }
 
+function onProductUnitChange(product) {
+  if (product.isFoc) return;
+
+  const unit = (product.product_units || []).find(item => Number(item.id) === Number(product.product_unit_id));
+  product.unit_id = recordId(unit?.unit_id) || null;
+  product.unit_name = unit?.unit_id?.name || unit?.unit_name || '-';
+  product.unit_barcode = unit?.barcode || null;
+  product.conversion_to_base = Number(unit?.conversion_to_base || 1);
+  product.barcode = unit?.barcode || product.base_barcode || product.barcode || '';
+  product.price = 0;
+  product.discountAmount = 0;
+  product.discountPrice = 0;
+  product.promotionId = null;
+  product.priceSource = null;
+  product.priceRangeId = null;
+  recalculatePromotions();
+}
+
 function removeProduct(product) {
   selectedProducts.value = selectedProducts.value.filter(p => p.id !== product.id);
   recalculatePromotions();
@@ -296,12 +516,13 @@ async function recalculatePromotions() {
 
   try {
     const payload = {
-      warehouse_id: formData.value.warehouseId ?? userData.value.branch?.warehouse_id ?? null,
+      branch_id: selectedBranch.value?.id ?? null,
+      warehouse_id: selectedWarehouse.value?.id ?? selectedBranch.value?.warehouse_id ?? null,
       cart: normalProducts.map(p => ({
         product_id: p.id,
+        product_unit_id: p.product_unit_id || null,
+        unit_id: recordId(p.unit_id),
         qty: Number(p.quantity || 0),
-        original_price: Number(p.price || 0),
-        price: p.promotionId ? Number(p.discountPrice || 0) : Number(p.price || 0),
       })),
       sale_date: moment(formData.value.salesDate).format('YYYY-MM-DD HH:mm:ss'),
     };
@@ -309,23 +530,33 @@ async function recalculatePromotions() {
     const res = await axios.post('/promotions/checkprice', payload);
     const data = res.data || {};
 
-    selectedProducts.value = normalProducts.map(p => ({
-      ...p,
-      promotionId: null,
-      discountAmount: 0,
-      discountPrice: Number(p.price || 0),
-      discountValue: 0,
-      discountType: '',
-      isFoc: false,
-      rewardId: null,
-    }));
+    selectedProducts.value = normalProducts.map(p => {
+      const pricedItem = pricedItemFor(p, data.priced_items || []);
+      const price = Number(pricedItem?.price ?? 0);
+
+      return {
+        ...p,
+        price,
+        priceSource: pricedItem?.price_source || null,
+        priceRangeId: pricedItem?.price_range_id || null,
+        promotionId: null,
+        discountAmount: 0,
+        discountPrice: price,
+        discountValue: 0,
+        discountType: '',
+        isFoc: false,
+        rewardId: null,
+      };
+    });
 
     if (Array.isArray(data.items) && data.items.length > 0) {
       selectedProducts.value = selectedProducts.value.map(p => {
-        const promo = data.items.find(item => Number(item.product_id) === Number(p.id));
+        const promo = data.items.find(item => sameProductUnit(item, p))
+          || data.items.find(item => Number(item.product_id) === Number(p.id));
         if (!promo) return p;
 
-        const discountAmount = Number(promo.discount_amount) || 0;
+        const discountPrice = Number(promo.discount_price ?? Math.max(0, Number(p.price || 0) - Number(promo.discount_amount || 0)));
+        const discountAmount = Math.max(0, Number(p.price || 0) - discountPrice);
 
         return {
           ...p,
@@ -333,7 +564,7 @@ async function recalculatePromotions() {
           discountValue: Number(promo.discount_value) || 0,
           discountType: promo.discount_type || '',
           discountAmount: discountAmount,
-          discountPrice: Math.max(0, Number(p.price || 0) - discountAmount),
+          discountPrice: discountPrice,
         };
       });
     }
@@ -350,8 +581,15 @@ async function recalculatePromotions() {
           id: product.id,
           name: product.name,
           barcode: product.barcode,
+          base_barcode: product.base_barcode || product.barcode,
           quantity: Number(free.qty) || 1,
           image_url: product.image_url,
+          product_units: product.product_units || [],
+          product_unit_id: free.product_unit_id || productUnitId(product),
+          unit_id: free.unit_id || productUnitUnitId(product),
+          unit_name: free.unit_name || productUnitName(product),
+          unit_barcode: free.unit_barcode || productUnitBarcode(product),
+          conversion_to_base: free.conversion_to_base || productConversionToBase(product),
           price: 0,
           promotionId: free.promotion_id || null,
           discountAmount: 0,
@@ -388,7 +626,29 @@ async function recalculatePromotions() {
   }
 }
 
+watch(selectedBranch, async (branch) => {
+  if (isInitializing.value) return;
+
+  errorMsg.value.branch = "";
+  syncWarehouseFromBranch(branch);
+  await loadProductsForBranch(branch?.id);
+  hydrateSelectedProductsFromCatalog();
+
+  if (!branch) {
+    selectedProducts.value = [];
+    formData.value.orderDiscountAmount = 0;
+    appliedPromotions.value = [];
+    return;
+  }
+
+  if (selectedProducts.value.length > 0) {
+    await recalculatePromotions();
+  }
+});
+
 watch([() => formData.value.warehouseId, () => formData.value.salesDate], () => {
+  if (isInitializing.value) return;
+
   if (selectedProducts.value.length > 0) {
     recalculatePromotions();
   }
@@ -400,6 +660,8 @@ function areSelectedProdsEqual() {
   const normalize = (products = []) => products
     .map(p => ({
       id: Number(p.id),
+      productUnitId: Number(p.product_unit_id || 0),
+      unitId: Number(recordId(p.unit_id) || 0),
       quantity: Number(p.quantity) || 0,
       price: Number(p.price) || 0,
       promotionId: p.promotionId || null,
@@ -415,6 +677,21 @@ function areSelectedProdsEqual() {
 
 // Form Submit function
 async function formSubmit(isPrint = false) {
+  errorMsg.value = {
+    branch: "",
+    warehouse: "",
+  };
+
+  if (!selectedBranch.value?.id) {
+    errorMsg.value.branch = "Please select a branch.";
+    return;
+  }
+
+  if (!selectedWarehouse.value?.id && !selectedBranch.value?.warehouse_id) {
+    errorMsg.value.warehouse = "Selected branch does not have a warehouse.";
+    return;
+  }
+
   const promotionsOk = await recalculatePromotions();
   if (!promotionsOk) return;
   const isProdsEqual = areSelectedProdsEqual();
@@ -429,14 +706,17 @@ async function formSubmit(isPrint = false) {
     total_amount: grandTotalAmount.value,
     order_discount_amount: formData.value.orderDiscountAmount,
     applied_promotions: appliedPromotions.value,
-    branch_id: userData.value.branch.id,
+    branch_id: selectedBranch.value.id,
+    warehouse_id: selectedWarehouse.value?.id || selectedBranch.value.warehouse_id,
   }
 
   if (!isProdsEqual) {
     payload.products = selectedProducts.value.map(p => ({
       product_id: p.id,
+      ...productLineUomSnapshot(p, p.quantity),
       quantity: p.quantity,
       price: p.isFoc ? 0 : p.price,
+      original_price: p.isFoc ? 0 : p.price,
       promotion_id: p.promotionId || null,
       discount_amount: p.isFoc ? 0 : (Number(p.discountAmount) || 0),
       discount_price: p.isFoc ? 0 : (Number(p.discountPrice) || 0),
@@ -445,6 +725,7 @@ async function formSubmit(isPrint = false) {
     }));
   }
 
+  console.log('Final sales update payload:', payload);
   await useSales.editSales(payload, route.query.id);
   if (useSales.error.length) {
     useSales.error.forEach((msg) => {
@@ -554,9 +835,19 @@ function printSlip() {
           <!-- Customer -->
           <BaseInput size="sm" v-model="formData.customerName" label="Customer" placeholder="Customer" height="h-[35px]"
             disabled />
+          <!-- Branch -->
+          <div class="flex flex-col gap-y-1">
+            <BaseLabel label="Branch" :isRequire="true" />
+            <Select v-model="selectedBranch" :options="useBranch.branchList" showClear filter
+              optionLabel="name" placeholder="Select a branch" class="h-[35px] items-center" />
+            <BaseErrorLabel v-if="errorMsg.branch" :label="errorMsg.branch" />
+          </div>
           <!-- Warehouse -->
-          <BaseInput size="sm" v-model="formData.warehouseName" label="Warehouse" placeholder="Warehouse"
-            height="h-[35px]" disabled />
+          <div class="flex flex-col gap-y-1">
+            <BaseInput size="sm" v-model="formData.warehouseName" label="Warehouse" placeholder="Warehouse"
+              height="h-[35px]" disabled />
+            <BaseErrorLabel v-if="errorMsg.warehouse" :label="errorMsg.warehouse" />
+          </div>
           <!-- Expired date input -->
           <BaseInput size="sm" v-model="formData.salesDate" label="Sales Date" height="h-[35px]"
             type="datetime-local" />
@@ -587,13 +878,14 @@ function printSlip() {
       <BaseButton label="Select Products" class="w-fit mt-4 mb-4"
         :icon="useSales.loading || usePaymentMethod.loading || useProduct.loading ? 'fa fa-spinner' : ''"
         :isLoading="useSales.loading || usePaymentMethod.loading || useProduct.loading"
-        :disabled="useSales.loading || usePaymentMethod.loading || useProduct.loading" @click="openProductDialog()" />
+        :disabled="!selectedBranch || useSales.loading || usePaymentMethod.loading || useProduct.loading" @click="openProductDialog()" />
     </div>
     <div class="mt-3 max-h-[250px] overflow-y-auto">
       <table class="text-black w-full border-separate border-spacing-0 border border-gray-200">
         <thead class="sticky top-0">
           <tr class="text-left text-black bg-gray-100">
             <th class="p-2">Product Name</th>
+            <th class="p-2">Unit</th>
             <th class="p-2">Barcode</th>
             <th class="p-2 text-right">Unit Price</th>
             <th class="p-2 text-right">Discount</th>
@@ -614,6 +906,18 @@ function printSlip() {
             <td class="p-2 text-left">
               {{ product.name }}
               <span v-if="product.isFoc" class="text-blue-500 bg-blue-100 font-bold px-2 py-1 rounded-md"> FREE GIFT </span>
+            </td>
+            <td class="p-2 text-left">
+              <select
+                v-model="product.product_unit_id"
+                class="border border-gray-300 rounded px-2 py-1 min-w-[120px]"
+                :disabled="product.isFoc"
+                @change="onProductUnitChange(product)"
+              >
+                <option v-if="(product.product_units || []).length === 0" :value="null">{{ product.unit_name || '-' }}</option>
+                <option v-else-if="!productHasSelectedUnit(product)" :value="product.product_unit_id">{{ product.unit_name || '-' }}</option>
+                <option v-for="unit in product.product_units" :key="unit.id" :value="unit.id">{{ unit.unit_id?.name || unit.unit_name }}</option>
+              </select>
             </td>
             <td class="p-2 text-left">{{ product.barcode }}</td>
             <td class="p-2 text-right">
@@ -649,7 +953,7 @@ function printSlip() {
             </td>
           </tr>
           <tr v-if="selectedProducts.length === 0">
-            <td colspan="8" class="py-4 text-center text-gray-500">No products selected</td>
+            <td colspan="9" class="py-4 text-center text-gray-500">No products selected</td>
           </tr>
         </tbody>
         <!-- <tfoot class="sticky bottom-0 z-20 bg-gray-100">

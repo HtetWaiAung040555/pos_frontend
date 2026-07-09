@@ -96,6 +96,16 @@
         }).join('');
     }
 
+    function formatBranchProducts(row) {
+        const branches = [...new Set((row.branch_products || []).map((item) => item.branch?.name).filter(Boolean))];
+        if (!branches.length) return '-';
+        return branches.length > 2 ? `${branches.slice(0, 2).join(', ')} +${branches.length - 2}` : branches.join(', ');
+    }
+
+    function formatBranchUnitPriceCount(row) {
+        return (row.branch_products || []).reduce((total, item) => total + (item.unit_prices || []).length, 0);
+    }
+
     // Table headers
     const columns = [
         { key: 'id', label: 'ID', formatter: (row) => row.id, onClick: (row) => {
@@ -110,6 +120,8 @@
         { key: 'default_product_unit', label: 'Base Unit', formatter: formatDefaultUnit },
         { key: 'product_units', label: 'Product Units', formatter: formatProductUnits },
         { key: 'price_ranges', label: 'Default Ranges', formatter: formatPriceRanges },
+        { key: 'branch_products', label: 'Branches', formatter: formatBranchProducts },
+        { key: 'branch_unit_prices', label: 'Branch Price Rows', formatter: formatBranchUnitPriceCount },
         { key: 'category_id.name', label: 'Category', formatter: (row) => safeName(row.category_id) },
         { key: 'sec_prop', label: 'Property' },
         { key: 'price', label: 'Sales Price', formatter: (row) => Number(row.price).toLocaleString('en-us') },

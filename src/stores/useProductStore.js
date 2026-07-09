@@ -85,11 +85,11 @@ export const useProductStore = defineStore('product', {
                 this.deleteLoading = false;
             }
         },
-        async fetchSalesProduct(data) {
+        async fetchSalesProduct(params = {}) {
             this.loading = true;
             this.error = [];
             try {
-                const response = await axios.get(`/products/saleproducts`, {data: data});
+                const response = await axios.get(`/products/saleproducts`, { params });
                 this.productList = response.data;
             } catch (err) {
                 this.error = normalizeApiError(err);

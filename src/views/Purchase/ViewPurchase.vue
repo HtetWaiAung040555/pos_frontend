@@ -5,6 +5,7 @@ import BaseButton from '@/components/BaseButton.vue';
 import BaseCard from '@/components/BaseCard.vue';
 import SubTitle from '@/components/SubTitle.vue';
 import DetailRow from '@/components/DetailRow.vue';
+import Loading from '@/components/Loading.vue';
 import { statusBadgeHtml } from '@/utils/const';
 import { useRoute, useRouter } from 'vue-router';
 import { onMounted, ref } from 'vue';
@@ -18,6 +19,7 @@ const usePurchase = usePurchaseStore();
 
 const userData = ref({});
 const selectedProducts = ref([]);
+const isInitLoading = ref(true);
 const formData = ref({
     purchaseId: '',
     warehouseId: '',
@@ -38,23 +40,28 @@ function goBack() {
 }
 
 onMounted(async () => {
-    userData.value = JSON.parse(localStorage.getItem('user'));
-    await usePurchase.fetchPurchase(route.query.id);
-    formData.value = {
-        purchaseId: usePurchase.purchaseList.id,
-        warehouseId: usePurchase.purchaseList.warehouse?.id,
-        warehouseName: usePurchase.purchaseList.warehouse?.name,
-        supplierName: usePurchase.purchaseList.supplier?.name,
-        supplierId: usePurchase.purchaseList.supplier?.id,
-        paymentId: usePurchase.purchaseList.payment?.id,
-        paymentMethodName: usePurchase.purchaseList.payment?.name,
-        totalAmount: usePurchase.purchaseList.total_amount,
-        paidAmount: usePurchase.purchaseList.paid_amount,
-        statusId: usePurchase.purchaseList.status?.id,
-        remark: usePurchase.purchaseList.remark,
-        purchaseDate: moment(usePurchase.purchaseList.purchase_date).format('YYYY-MM-DDTHH:mm'),
-    };
-    selectedProducts.value = usePurchase.purchaseList.details || [];
+    isInitLoading.value = true;
+    try {
+        userData.value = JSON.parse(localStorage.getItem('user'));
+        await usePurchase.fetchPurchase(route.query.id);
+        formData.value = {
+            purchaseId: usePurchase.purchaseList.id,
+            warehouseId: usePurchase.purchaseList.warehouse?.id,
+            warehouseName: usePurchase.purchaseList.warehouse?.name,
+            supplierName: usePurchase.purchaseList.supplier?.name,
+            supplierId: usePurchase.purchaseList.supplier?.id,
+            paymentId: usePurchase.purchaseList.payment?.id,
+            paymentMethodName: usePurchase.purchaseList.payment?.name,
+            totalAmount: usePurchase.purchaseList.total_amount,
+            paidAmount: usePurchase.purchaseList.paid_amount,
+            statusId: usePurchase.purchaseList.status?.id,
+            remark: usePurchase.purchaseList.remark,
+            purchaseDate: moment(usePurchase.purchaseList.purchase_date).format('YYYY-MM-DDTHH:mm'),
+        };
+        selectedProducts.value = usePurchase.purchaseList.details || [];
+    } finally {
+        isInitLoading.value = false;
+    }
 });
 
 // Print only the slip section between the markers
@@ -121,98 +128,108 @@ function printSlip() {
 
 <template>
     <div class="p-4">
+        <div v-if="isInitLoading" class="fixed inset-0 z-50 flex items-center justify-center bg-opacity-30">
+            <div class="bg-white rounded-lg shadow-lg p-8 flex flex-col items-center">
+                <Loading variant="page" loadingWidth="w-[56px]" />
+            </div>
+        </div>
+
         <!-- Page Title -->
         <PageTitle title="Purchase Details">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
                     <BaseButton label="Print Slip" :isLoading="usePurchase.loading"
                         :icon="usePurchase.loading ? 'fa fa-spinner' : 'fa fa-print'" severity="primary"
-                        @click="printSlip" :disabled="usePurchase.loading" />
+                        @click="printSlip" :disabled="usePurchase.loading || isInitLoading" />
                     <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary"
                       @click="goBack" />
                 </div>
             </template>
         </PageTitle>
-        <!-- Form Section -->
-        <BaseCard class="mt-3 w-full">
-            <template #cardElements>
-                <!-- Form section subtitle -->
-                <SubTitle label="Basic Info" />
-                <div class="grid lg:grid-cols-3 gap-x-4 mt-6">
-                    <div class="col-span-2 grid grid-cols-2 gap-2 h-fit">
-                        <DetailRow label="Purchase ID:" :value="usePurchase.purchaseList.id" />
-                        <DetailRow label="Supplier Name:" :value="usePurchase.purchaseList.supplier?.name" />
-                        <DetailRow label="Warehouse:" :value="usePurchase.purchaseList.warehouse?.name" />
-                        <DetailRow label="Purchase Date" :value="usePurchase.purchaseList.purchase_date"
-                            :formatter="v => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
-                        <DetailRow label="Payment Method" :value="usePurchase.purchaseList.payment?.name" />
-                        <DetailRow label="Remark" :value="usePurchase.purchaseList.remark" />
+
+        <template v-if="!isInitLoading">
+            <!-- Form Section -->
+            <BaseCard class="mt-3 w-full">
+                <template #cardElements>
+                    <!-- Form section subtitle -->
+                    <SubTitle label="Basic Info" />
+                    <div class="grid lg:grid-cols-3 gap-x-4 mt-6">
+                        <div class="col-span-2 grid grid-cols-2 gap-2 h-fit">
+                            <DetailRow label="Purchase ID:" :value="usePurchase.purchaseList.id" />
+                            <DetailRow label="Supplier Name:" :value="usePurchase.purchaseList.supplier?.name" />
+                            <DetailRow label="Warehouse:" :value="usePurchase.purchaseList.warehouse?.name" />
+                            <DetailRow label="Purchase Date" :value="usePurchase.purchaseList.purchase_date"
+                                :formatter="v => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
+                            <DetailRow label="Payment Method" :value="usePurchase.purchaseList.payment?.name" />
+                            <DetailRow label="Remark" :value="usePurchase.purchaseList.remark" />
+                        </div>
+                        <div class="grid grid-cols-1 gap-2 h-fit">
+                            <DetailRow label="Status:">
+                              <span v-html="statusBadgeHtml(usePurchase.purchaseList.status?.name)"></span>
+                            </DetailRow>
+                            <DetailRow label="Created By" :value="usePurchase.purchaseList.created_by" />
+                            <DetailRow label="Created At" :value="usePurchase.purchaseList.created_at"
+                                :formatter="v => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
+                            <DetailRow label="Updated By" :value="usePurchase.purchaseList.updated_by" />
+                            <DetailRow label="Updated At" :value="usePurchase.purchaseList.updated_at"
+                                :formatter="v => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
+                        </div>
                     </div>
-                    <div class="grid grid-cols-1 gap-2 h-fit">
-                        <DetailRow label="Status:">
-                          <span v-html="statusBadgeHtml(usePurchase.purchaseList.status?.name)"></span>
-                        </DetailRow>
-                        <DetailRow label="Created By" :value="usePurchase.purchaseList.created_by" />
-                        <DetailRow label="Created At" :value="usePurchase.purchaseList.created_at"
-                            :formatter="v => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
-                        <DetailRow label="Updated By" :value="usePurchase.purchaseList.updated_by" />
-                        <DetailRow label="Updated At" :value="usePurchase.purchaseList.updated_at"
-                            :formatter="v => moment(v).format('DD-MM-YYYY hh:mm:ss A')" />
-                    </div>
+                </template>
+            </BaseCard>
+            <div class="mt-3 max-h-[250px] overflow-y-auto">
+                <table class="text-black w-full border-collapse border border-gray-200">
+                    <thead class="sticky top-0">
+                        <tr class="bg-gray-100 text-right">
+                            <th class="p-2 w-[50px]"></th>
+                            <th class="p-2 text-center">Product Name</th>
+                            <th class="p-2 text-center">Unit</th>
+                            <th class="p-2">Expired Date</th>
+                            <th class="p-2">Purchase Price</th>
+                            <th class="p-2">Unit Qty</th>
+                            <th class="p-2">Conversion</th>
+                            <th class="p-2">Base Qty</th>
+                            <th class="p-2">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr
+                            class="hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.id"
+                        >
+                            <td class="border-b border-gray-200 p-2 text-center w-[50px]">{{ index + 1 }}.</td>
+                            <td class="border-b border-gray-200 p-2 text-center">{{ product.product?.name }}</td>
+                            <td class="border-b border-gray-200 p-2 text-center">{{ purchaseDetailUnitName(product) }}</td>
+                            <td class="border-b border-gray-200 p-2">{{ product.inventory?.expired_date ? moment(product.inventory?.expired_date).format('DD-MM-YYYY') : '-' }}</td>
+                            <td class="border-b border-gray-200 p-2">{{ Number(product.price || 0).toLocaleString('en-us') }}</td>
+                            <td class="border-b border-gray-200 p-2">{{ purchaseDetailQuantity(product).toLocaleString('en-us') }}</td>
+                            <td class="border-b border-gray-200 p-2">{{ Number(product.uom?.conversion_to_base || 1).toLocaleString('en-us') }}</td>
+                            <td class="border-b border-gray-200 p-2">{{ Number(product.uom?.base_quantity ?? product.quantity ?? 0).toLocaleString('en-us') }}</td>
+                            <td class="border-b border-gray-200 p-2">{{ Number(product.total || 0).toLocaleString('en-us') }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <!-- Total Amounts -->
+            <div class="mt-3 text-black font-semibold flex justify-end">
+                <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
+                    <span class="whitespace-nowrap">Total Amount</span>
+                    <span class="text-right">:</span>
+                    <span class="font-bold text-right">{{ Number(formData.totalAmount || 0).toLocaleString('en-us') }}</span>
                 </div>
-            </template>
-        </BaseCard>
-        <div class="mt-3 max-h-[250px] overflow-y-auto">
-            <table class="text-black w-full border-collapse border border-gray-200">
-                <thead class="sticky top-0">
-                    <tr class="bg-gray-100 text-right">
-                        <th class="p-2 w-[50px]"></th>
-                        <th class="p-2 text-center">Product Name</th>
-                        <th class="p-2 text-center">Unit</th>
-                        <th class="p-2">Expired Date</th>
-                        <th class="p-2">Purchase Price</th>
-                        <th class="p-2">Unit Qty</th>
-                        <th class="p-2">Conversion</th>
-                        <th class="p-2">Base Qty</th>
-                        <th class="p-2">Subtotal</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr
-                        class="hover:bg-blue-50 text-right" v-for="(product, index) in selectedProducts" :key="product.id"
-                    >
-                        <td class="border-b border-gray-200 p-2 text-center w-[50px]">{{ index + 1 }}.</td>
-                        <td class="border-b border-gray-200 p-2 text-center">{{ product.product?.name }}</td>
-                        <td class="border-b border-gray-200 p-2 text-center">{{ purchaseDetailUnitName(product) }}</td>
-                        <td class="border-b border-gray-200 p-2">{{ product.inventory?.expired_date ? moment(product.inventory?.expired_date).format('DD-MM-YYYY') : '-' }}</td>
-                        <td class="border-b border-gray-200 p-2">{{ Number(product.price || 0).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 p-2">{{ purchaseDetailQuantity(product).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 p-2">{{ Number(product.uom?.conversion_to_base || 1).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 p-2">{{ Number(product.uom?.base_quantity ?? product.quantity ?? 0).toLocaleString('en-us') }}</td>
-                        <td class="border-b border-gray-200 p-2">{{ Number(product.total || 0).toLocaleString('en-us') }}</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        <!-- Total Amounts -->
-        <div class="mt-3 text-black font-semibold flex justify-end">
-            <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
-                <span class="whitespace-nowrap">Total Amount</span>
-                <span class="text-right">:</span>
-                <span class="font-bold text-right">{{ Number(formData.totalAmount || 0).toLocaleString('en-us') }}</span>
             </div>
-        </div>
-        <!-- Paid Amount -->
-        <div class="mt-3 text-black font-semibold flex justify-end">
-            <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
-                <span class="whitespace-nowrap">Paid Amount</span>
-                <span class="text-right">:</span>
-                <span class="font-bold text-right">{{ Number(formData.paidAmount || 0).toLocaleString('en-us') }}</span>
+            <!-- Paid Amount -->
+            <div class="mt-3 text-black font-semibold flex justify-end">
+                <div class="grid items-center gap-x-3" style="grid-template-columns: auto 0.5rem minmax(140px,220px);">
+                    <span class="whitespace-nowrap">Paid Amount</span>
+                    <span class="text-right">:</span>
+                    <span class="font-bold text-right">{{ Number(formData.paidAmount || 0).toLocaleString('en-us') }}</span>
+                </div>
             </div>
-        </div>
+        </template>
     </div>
     <!-- Slip Section -->
     <div
+        v-if="!isInitLoading"
         class="mb-3 flex-[1.8] max-w-md w-full mx-auto p-6 bg-white shadow-lg border border-gray-300 rounded-sm text-sm font-mono text-black hidden"
         id="slip-section">
         <!-- Header -->

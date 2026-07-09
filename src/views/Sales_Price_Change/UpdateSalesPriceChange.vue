@@ -1,421 +1,460 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router';
-import { watch, ref, computed, onMounted } from 'vue';
-import axios from 'axios';
+import { computed, onMounted, ref, watch } from 'vue';
 import moment from 'moment';
+import { Select } from 'primevue';
 import BaseInput from '@/components/BaseInput.vue';
 import BaseLabel from '@/components/BaseLabel.vue';
 import BaseButton from '@/components/BaseButton.vue';
-import { errMsgList } from '@/utils/const';
-import { useToast } from 'primevue';
+import BaseErrorLabel from '@/components/BaseErrorLabel.vue';
 import PageTitle from '@/components/PageTitle.vue';
 import BaseCard from '@/components/BaseCard.vue';
-import BaseSwitch from '@/components/BaseSwitch.vue';
 import SubTitle from '@/components/SubTitle.vue';
+import { errMsgList } from '@/utils/const';
+import { useToast } from 'primevue';
+import { useBranchStore } from '@/stores/useBranchStore';
 import { useProductStore } from '@/stores/useProductStore';
 import { usePriceChangeStore } from '@/stores/usePriceChangeStore';
+import {
+    PRICE_CHANGE_TARGETS,
+    buildTargetRows,
+    isBranchTarget,
+    isRangeTarget,
+    payloadForTargetRow,
+    rowFromPriceChangeItem,
+    targetLabel,
+    toNumber,
+} from '@/utils/priceChangeTargets';
 
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 const usePriceChange = usePriceChangeStore();
 const useProduct = useProductStore();
+const useBranch = useBranchStore();
 
 const priceChangeId = ref(route.query.id || route.params.id || null);
-
 const userData = ref({});
 const formData = ref({
-  description: '',
-  type: 'sale',
-  startDate: moment().format('YYYY-MM-DDTHH:mm'),
-  endDate: moment().add(1, 'days').format('YYYY-MM-DDTHH:mm'),
-  priceValueType: 'INCREASE',
-  priceChangeValue: 0,
+    description: '',
+    type: 'sale',
+    startDate: moment().format('YYYY-MM-DDTHH:mm'),
+    endDate: '',
+    priceValueType: 'INCREASE',
+    priceChangeValue: '',
 });
-
-const selectedProducts = ref([]);
-const priceChangeStatus = ref(true);
-const isProductDialogVisible = ref(false);
+const targetType = ref('GLOBAL_PRODUCT_PRICE');
+const selectedBranch = ref(null);
+const selectedRows = ref([]);
 const productList = ref([]);
 const searchTerm = ref('');
 const selectionBuffer = ref([]);
-const headerCheckboxRef = ref(null);
-const isCheckingAll = ref(false);
-const isSelectAllLoading = ref(false);
-
-
+const isProductDialogVisible = ref(false);
+const isHydrating = ref(false);
 const errorMsg = ref({
-  type: "",
-  priceChangeValue: "",
-  products: "",
+    branch: '',
+    target: '',
+    products: '',
+    priceChangeValue: '',
 });
 
-// Navigation
 function changeRoute(pathname) {
-  router.push(pathname);
+    router.push(pathname);
 }
 
-// Fetch products and price change data
 onMounted(async () => {
-  userData.value = JSON.parse(localStorage.getItem('user'));
+    userData.value = JSON.parse(localStorage.getItem('user'));
+    await Promise.all([
+        useBranch.fetchAllBranch(),
+        useProduct.fetchAllProduct(),
+    ]);
+    productList.value = useProduct.productList || [];
 
-  await useProduct.fetchAllProduct();
-  productList.value = useProduct.productList;
+    if (!priceChangeId.value) return;
 
-  if (priceChangeId.value) {
+    isHydrating.value = true;
     await usePriceChange.fetchPriceChange(priceChangeId.value);
     const priceChange = usePriceChange.priceChangeList || {};
+    const rows = (priceChange.products || []).map(rowFromPriceChangeItem);
+    selectedRows.value = rows;
+    targetType.value = rows[0]?.target_type || 'GLOBAL_PRODUCT_PRICE';
 
-    selectedProducts.value = usePriceChange.priceChangeList.products.map(p => {
-        return {
-        id: p.product.id,
-        name: p.product.name,
-        image_url: p.product.image_url,
-        old_price: Number(p.old_price) || 0,
-        new_price: Number(p.new_price) || 0,
-        individual_new_price: false
-        }
-    });
+    const firstBranchId = rows.find((row) => row.branch_id)?.branch_id;
+    selectedBranch.value = (useBranch.branchList || []).find((branch) => Number(branch.id) === Number(firstBranchId)) || null;
 
     formData.value.description = priceChange.description || '';
-    formData.value.type = priceChange.type || '';
+    formData.value.type = priceChange.type || 'sale';
     formData.value.startDate = priceChange.start_at ? moment(priceChange.start_at).format('YYYY-MM-DDTHH:mm') : formData.value.startDate;
-    formData.value.endDate = priceChange.end_at ? moment(priceChange.end_at).format('YYYY-MM-DDTHH:mm') : formData.value.endDate;
-    priceChangeStatus.value = priceChange.status.id  === 1;
-   
-  }
+    formData.value.endDate = priceChange.end_at ? moment(priceChange.end_at).format('YYYY-MM-DDTHH:mm') : '';
+    isHydrating.value = false;
 });
 
+const branchOptions = computed(() => useBranch.branchList || []);
 
-// Product filtering
 const filteredProducts = computed(() => {
-  const q = (searchTerm.value || '').toLowerCase().trim();
-  if (!q) return productList.value || [];
-  return (productList.value || []).filter(p => {
-    return (p.name || '').toLowerCase().includes(q) || (p.barcode || '').toLowerCase().includes(q);
-  });
+    const q = (searchTerm.value || '').toString().trim().toLowerCase();
+    if (!q) return productList.value || [];
+    return (productList.value || []).filter((product) => (
+        (product.name || '').toString().toLowerCase().includes(q)
+        || (product.barcode || '').toString().toLowerCase().includes(q)
+    ));
 });
 
-// Open product modal
+function branchRequired() {
+    return isBranchTarget(targetType.value);
+}
+
+function onTargetTypeChange() {
+    selectedRows.value = [];
+    selectionBuffer.value = [];
+    errorMsg.value = { branch: '', target: '', products: '', priceChangeValue: '' };
+}
+
 function openProductDialog() {
-  selectionBuffer.value = selectedProducts.value.slice();
-  searchTerm.value = '';
-  isProductDialogVisible.value = true;
-}
-
-// Toggle single product selection
-async function toggleProductInBuffer(event, product) {
-  const idx = selectionBuffer.value.findIndex(p => p.id === product.id);
-  if (idx !== -1) { selectionBuffer.value.splice(idx, 1); return; }
-
-  try {
-    const response = await axios.post(`/promotions/checkprice`, { product_id: product.id });
-    const data = response.data;
-    if (data && data.promotion_id) {
-      try { if (event && event.target) event.target.checked = false; } catch(e){}
-      toast.add({ severity: 'warn', summary: 'Product In Promotion', detail: `${product.name} is already in a promotion (discount ${data.discount_amount}).`, life: 4000 });
-      return;
+    if (branchRequired() && !selectedBranch.value) {
+        errorMsg.value.branch = errMsgList.branch || 'Please select a branch.';
+        return;
     }
-  } catch (err) {
-    try { if (event && event.target) event.target.checked = false; } catch(e){}
-    toast.add({ severity: 'error', summary: 'Check Failed', detail: `Failed to verify promotion for ${product.name}.`, life: 3000 });
-    return;
-  }
 
-  selectionBuffer.value.push(product);
+    const selectedIds = new Set(selectedRows.value.map((row) => Number(row.product_id)));
+    selectionBuffer.value = productList.value.filter((product) => selectedIds.has(Number(product.id)));
+    searchTerm.value = '';
+    isProductDialogVisible.value = true;
 }
 
-function isBufferSelected(product) { return selectionBuffer.value.some(p => p.id === product.id); }
-
-// Select all filtered
-async function selectAllInBuffer() {
-  if (isCheckingAll.value) return;
-  isCheckingAll.value = true;
-  isSelectAllLoading.value = true;
-
-  try {
-    const ids = new Set(selectionBuffer.value.map(p => p.id));
-    const candidates = (filteredProducts.value || []).filter(p => !ids.has(p.id));
-    if (candidates.length === 0) return;
-
-    const checks = await Promise.allSettled(
-      candidates.map(p => axios.post(`/promotions/checkprice`, { product_id: p.id }))
-    );
-
-    const skipped = [];
-    checks.forEach((res, idx) => {
-      const product = candidates[idx];
-      if (res.status === 'fulfilled') {
-        const data = res.value.data;
-        if (data && data.promotion_id) skipped.push(product);
-        else if (!selectionBuffer.value.some(s => s.id === product.id)) selectionBuffer.value.push(product);
-      } else skipped.push(product);
-    });
-
-    if (skipped.length > 0) {
-      const names = skipped.slice(0,5).map(p => p.name).join(', ');
-      const more = skipped.length > 5 ? ` and ${skipped.length - 5} more` : '';
-      toast.add({ severity: 'warn', summary: 'Some products skipped', detail: `Skipped ${skipped.length} product(s) already in promotion: ${names}${more}`, life: 5000 });
+function toggleProductInBuffer(product) {
+    const idx = selectionBuffer.value.findIndex((item) => Number(item.id) === Number(product.id));
+    if (idx >= 0) {
+        selectionBuffer.value.splice(idx, 1);
+        return;
     }
-  } finally {
-    isCheckingAll.value = false;
-    isSelectAllLoading.value = false;
-  }
+    selectionBuffer.value.push(product);
 }
 
-function removeFilteredFromBuffer() {
-  const filteredIds = new Set((filteredProducts.value || []).map(p => p.id));
-  selectionBuffer.value = selectionBuffer.value.filter(p => !filteredIds.has(p.id));
+function isBufferSelected(product) {
+    return selectionBuffer.value.some((item) => Number(item.id) === Number(product.id));
 }
-
-const allFilteredSelected = computed(() => {
-  const list = filteredProducts.value || [];
-  if (list.length === 0) return false;
-  return list.every(p => selectionBuffer.value.some(s => s.id === p.id));
-});
-
-const someFilteredSelected = computed(() => {
-  const list = filteredProducts.value || [];
-  if (list.length === 0) return false;
-  const some = list.some(p => selectionBuffer.value.some(s => s.id === p.id));
-  return some && !allFilteredSelected.value;
-});
-
-async function toggleHeaderSelection(event) {
-  const checked = event.target.checked;
-  if (checked) await selectAllInBuffer();
-  else removeFilteredFromBuffer();
-}
-
-watch([() => selectionBuffer.value, () => productList.value, () => searchTerm.value], () => {
-  if (headerCheckboxRef.value) headerCheckboxRef.value.indeterminate = someFilteredSelected.value;
-});
-
-watch([() => formData.value.priceChangeValue, () => formData.value.priceValueType], () => {
-  if (!selectedProducts.value.length) return;
-  calculateNewPrices();
-});
 
 function confirmProductSelection() {
-  const changeValue = Number(formData.value.priceChangeValue);
-  const isIncrease = formData.value.priceValueType === 'INCREASE';
-  selectedProducts.value = selectionBuffer.value.map(p => ({
-    ...p,
-    //old_price: Number(p.old_price) || 0,
-    new_price: changeValue > 0 ? isIncrease ? Number(p.old_price) + changeValue : Number(p.old_price) - changeValue : p.new_price  || Number(p.old_price),
-  }));
-  isProductDialogVisible.value = false;
+    const existingByKey = new Map(selectedRows.value.map((row) => [row.rowKey, row]));
+    const rows = selectionBuffer.value.flatMap((product) => buildTargetRows(product, targetType.value, selectedBranch.value));
+
+    selectedRows.value = rows.map((row) => {
+        const existing = existingByKey.get(row.rowKey);
+        return existing ? { ...row, new_price: existing.new_price, min_qty: existing.min_qty, max_qty: existing.max_qty } : row;
+    });
+    isProductDialogVisible.value = false;
 }
 
-function cancelProductSelection() { isProductDialogVisible.value = false; }
+function cancelProductSelection() {
+    isProductDialogVisible.value = false;
+}
 
-// Price calculation
+function removeRow(rowKey) {
+    selectedRows.value = selectedRows.value.filter((row) => row.rowKey !== rowKey);
+}
+
+function addCustomRange(row) {
+    if (!isRangeTarget(row.target_type)) return;
+    selectedRows.value.push({
+        ...row,
+        rowKey: `${row.rowKey}:custom:${Date.now()}`,
+        product_unit_price_range_id: null,
+        branch_product_unit_price_range_id: null,
+        min_qty: 0,
+        max_qty: null,
+        old_price: row.old_price,
+        new_price: row.new_price,
+    });
+}
+
+function formatPrice(value) {
+    return Number(value || 0).toLocaleString('en-us');
+}
+
 function calculateNewPrices() {
-  const changeValue = Number(formData.value.priceChangeValue) || 0;
+    const changeValue = Number(formData.value.priceChangeValue);
+    if (!Number.isFinite(changeValue) || changeValue <= 0) return;
 
-   if (!changeValue) return; 
-
-  const isIncrease = formData.value.priceValueType === 'INCREASE';
-  selectedProducts.value.forEach(product => {
-      const base = Number(product.old_price) || 0;
-      product.new_price = isIncrease ? base + changeValue : Math.max(0, base - changeValue);   
-  });
+    selectedRows.value.forEach((row) => {
+        const oldPrice = toNumber(row.old_price);
+        row.new_price = formData.value.priceValueType === 'INCREASE'
+            ? oldPrice + changeValue
+            : Math.max(0, oldPrice - changeValue);
+    });
 }
 
-function formatPrice(value) { return Number(value).toLocaleString(); }
+watch([() => formData.value.priceChangeValue, () => formData.value.priceValueType], calculateNewPrices);
 
-const hasManualPrice = computed(() => selectedProducts.value.some(
-  p => p.new_price && Number(p.new_price) > 0 && Number(p.new_price) !== Number(p.old_price)
-));
+watch(selectedBranch, () => {
+    if (isHydrating.value) return;
+    if (branchRequired()) {
+        selectedRows.value = [];
+        selectionBuffer.value = [];
+    }
+    errorMsg.value.branch = '';
+});
 
-// Submit form
+const hasChangedPrice = computed(() => selectedRows.value.some((row) => Number(row.new_price) !== Number(row.old_price)));
+
+function validateForm() {
+    errorMsg.value = { branch: '', target: '', products: '', priceChangeValue: '' };
+
+    if (!priceChangeId.value) {
+        toast.add({ severity: 'error', summary: 'Missing ID', detail: 'Price change ID is missing.', life: 3000 });
+        return false;
+    }
+    if (!targetType.value) {
+        errorMsg.value.target = 'Please select a price change target.';
+        return false;
+    }
+    if (branchRequired() && !selectedBranch.value) {
+        errorMsg.value.branch = errMsgList.branch || 'Please select a branch.';
+        return false;
+    }
+    if (!selectedRows.value.length) {
+        errorMsg.value.products = errMsgList.product;
+        return false;
+    }
+    if (!hasChangedPrice.value) {
+        errorMsg.value.priceChangeValue = 'New price and old price are same in the selected targets.';
+        return false;
+    }
+
+    const invalidRange = selectedRows.value.some((row) => (
+        isRangeTarget(row.target_type)
+        && (row.min_qty === '' || row.min_qty === null || row.min_qty === undefined)
+    ));
+    if (invalidRange) {
+        errorMsg.value.products = 'Range targets require min qty.';
+        return false;
+    }
+
+    return true;
+}
+
 async function formSubmit() {
-  if (formData.value.type === "") {
-    errorMsg.value = { type: errMsgList.type, priceChangeValue: "", products: "" };
-    return;
-  } else if (!hasManualPrice.value) {
-    errorMsg.value = { type: "", priceChangeValue: "New price and Old price are same in the selected products.", products: "" };
-    return;
-  } else if (selectedProducts.value.length === 0 ) {
-    errorMsg.value = { type: "", priceChangeValue: "", products: errMsgList.product };
-    return;
-  }
+    if (!validateForm()) return;
 
-  const payload = {
-    description: formData.value.description,
-    type: formData.value.type,
-    start_at: formData.value.startDate,
-    //end_at: formData.value.endDate,
-    status_id: priceChangeStatus.value ? 1 : 2,
-    updated_by: userData.value.id,
-    products: selectedProducts.value.map(p => ({
-      product_id: p.id,
-      old_price: p.old_price,   
-      new_price: p.new_price    
-    }))
-  };
+    const payload = {
+        description: formData.value.description,
+        type: formData.value.type,
+        start_at: formData.value.startDate,
+        end_at: formData.value.endDate || null,
+        updated_by: userData.value.id,
+        products: selectedRows.value.map(payloadForTargetRow),
+    };
 
-  if (!priceChangeId.value) {
-    toast.add({ severity: 'error', summary: 'Missing ID', detail: 'Price change ID is missing.', life: 3000 });
-    return;
-  }
+    await usePriceChange.editPriceChange(payload, priceChangeId.value);
 
-  await usePriceChange.editPriceChange(payload, priceChangeId.value);
+    if (usePriceChange.error.length) {
+        usePriceChange.error.forEach((msg) => {
+            toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 });
+        });
+        return;
+    }
 
-  if (usePriceChange.error.length) {
-    usePriceChange.error.forEach(msg => toast.add({ severity: 'error', summary: 'Error Message', detail: msg, life: 3000 }));
-    return;
-  }
-
-  toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales price change updated successfully.', life: 3000 });
-  router.push('/sales_price_change');
+    toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales price change updated successfully.', life: 3000 });
+    router.push('/sales_price_change');
 }
 </script>
 
 <template>
-<div class="p-4">
-  <PageTitle title="Update Sale Price Change">
-    <template #titleButtons>
-      <div class="flex gap-x-2 items-center">
-        <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary" @click="changeRoute('/sales_price_change')" />
-      </div>
-    </template>
-  </PageTitle>
-
-  <BaseCard class="mt-3">
-    <template #cardElements>
-      <!-- Basic Info -->
-      <SubTitle label="Basic Info" />
-      <div class="flex gap-x-4 mt-6">
-        <BaseInput size="sm" v-model="formData.startDate" label="Started Datetime" width="300px" height="h-[35px]" type="datetime-local" />
-        <div class="flex flex-col gap-y-1 w-[200px]">
-          <BaseLabel label="Status" />
-          <BaseSwitch v-model="priceChangeStatus" />
-        </div>
-      </div>
-
-      <!-- Price Value -->
-      <div class="flex flex-col gap-1 mt-6 w-[420px]">
-        <BaseLabel label="Price Change Value" />
-        <div class="flex gap-x-2 items-center">
-          <select class="text-md border border-gray-500 rounded-sm p-2 text-black w-[120px] h-[35px]" v-model="formData.priceValueType">
-            <option value="INCREASE">Increase</option>
-            <option value="DECREASE">Decrease</option>
-          </select>
-          <BaseInput size="sm" v-model="formData.priceChangeValue" width="280px" height="h-[35px]" type="number" />
-        </div>
-      </div>
-
-      <!-- Description -->
-      <div class="flex gap-x-4 mt-4">
-        <BaseInput v-model="formData.description" label="Description" placeholder="Description" />
-      </div>
-
-      <!-- Products -->
-      <div class="flex flex-col">
-        <BaseButton label="Select Products" class="w-fit mt-4 mb-4" @click="openProductDialog()" />
-        <span v-if="errorMsg.products" class="text-red-600 text-sm">{{ errorMsg.products }}</span>
-        <span v-if="errorMsg.priceChangeValue" class="text-red-600 text-sm">{{ errorMsg.priceChangeValue }}</span>
-
-        <div class="mt-4">
-          <div class="max-h-[350px] overflow-y-auto rounded">
-            <table class="w-full text-sm border-collapse">
-              <thead>
-                <tr class="text-left text-gray-600">
-                  <th class="p-2 sticky top-0 bg-white z-10 border-b">Image</th>
-                  <th class="p-2 sticky top-0 bg-white z-10 border-b">Product Name</th>
-                  <th class="p-2 text-right sticky top-0 bg-white z-10 border-b">Sales Old Price</th>
-                  <th class="p-2 text-right sticky top-0 bg-white z-10 border-b">Sales New Price</th>
-                  <th class="p-2 sticky top-0 bg-white z-10 border-b">&nbsp;</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="product in selectedProducts" :key="product.id" class="border-b hover:bg-gray-50">
-                    <td class="p-2">
-                        <div class="w-12 h-12 overflow-hidden rounded">
-                            <img :src="product.image_url" alt="product" class="w-full h-full object-cover" />
-                        </div>
-                    </td>
-                    <td class="p-2">{{ product.name }}</td>
-                    <td class="p-2 text-right">{{ formatPrice(product.old_price) }}</td>
-
-                    
-             
-                    <td class="p-2 text-right">
-                       <input 
-                            type="number"
-                            class="w-24 text-right px-1 py-1 border rounded"
-                            v-model.number="product.new_price"
-                        />
-                    </td>
-
-                    <td class="p-2 text-right"><button class="text-red-600 hover:text-red-800 px-2 py-1" @click="selectedProducts = selectedProducts.filter(p => p.id !== product.id)"><i class="pi pi-trash"></i></button></td>
-                </tr>
-                <tr v-if="selectedProducts.length === 0"><td colspan="5" class="py-4 text-center text-gray-500">No products selected</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- Product Selection Modal -->
-      <div v-if="isProductDialogVisible" class="fixed inset-0 z-50 flex items-center justify-center">
-        <div class="absolute inset-0 bg-black opacity-50" @click="cancelProductSelection"></div>
-        <div class="bg-white rounded shadow-lg w-[90%] max-w-4xl max-h-[80vh] overflow-hidden z-10 p-4">
-          <div class="flex items-center justify-between py-4 border-b">
-            <SubTitle label="Select Products" />
-            <div class="text-sm text-gray-600">{{ selectionBuffer.length }} selected</div>
-          </div>
-          <div class="py-4 flex gap-x-2 items-center">
-            <input v-model="searchTerm" placeholder="Search by name or barcode" class="border p-2 rounded w-full" />
-          </div>
-          <div class="py-4 overflow-auto max-h-[50vh]">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="text-left text-gray-600 border-b">
-                  <th class="py-2">
-                    <div class="flex items-center gap-x-2">
-                      <span v-if="isSelectAllLoading" class="text-sm text-gray-600"><i class="fa fa-spinner fa-spin"></i></span>
-                      <input v-else type="checkbox" :checked="allFilteredSelected" @change="toggleHeaderSelection" ref="headerCheckboxRef" :disabled="isCheckingAll || isSelectAllLoading" />
+    <div class="p-3 sm:p-4 lg:p-6">
+        <div class="mx-auto w-full max-w-screen-2xl">
+            <PageTitle title="Update Sales Price Change">
+                <template #titleButtons>
+                    <div class="flex gap-x-2 items-center">
+                        <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary" @click="changeRoute('/sales_price_change')" />
                     </div>
-                  </th>
-                  <th>Image</th>
-                  <th class="py-2">Name</th>
-                  <th class="py-2">Barcode</th>
-                  <th class="py-2 text-end">Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="product in filteredProducts" :key="product.id" class="hover:bg-gray-50">
-                  <td class="py-2"><input type="checkbox" :checked="isBufferSelected(product)" @change="toggleProductInBuffer($event, product)" /></td>
-                  <td class="py-2"><img class="object-cover w-10 h-10 rounded" :src="product.image_url" /></td>
-                  <td class="py-2">{{ product.name }}</td>
-                  <td class="py-2">{{ product.barcode }}</td>
-                  <td class="py-2 text-end">{{ Number(product.price).toLocaleString() || 0 }}</td>
-                </tr>
-                <tr v-if="(filteredProducts || []).length === 0"><td colspan="5" class="py-4 text-center text-gray-500">No products found</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="flex justify-end gap-x-2 py-4 border-t">
-            <BaseButton severity="secondary" label="Cancel" @click="cancelProductSelection" />
-            <BaseButton label="Add Product" class="px-4 py-2 bg-blue-600 text-white rounded" @click="confirmProductSelection" />
-          </div>
-        </div>
-      </div>
+                </template>
+            </PageTitle>
 
-      <!-- Save Button -->
-      <div class="flex justify-end mt-4">
-        <BaseButton 
-          label="Update" 
-          :isLoading="usePriceChange.loading"
-          :icon="usePriceChange.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'" 
-          severity="primary"
-          @click="formSubmit" 
-          :disabled="usePriceChange.loading" 
-        />
-      </div>
-    </template>
-  </BaseCard>
-</div>
+            <BaseCard class="mt-3">
+                <template #cardElements>
+                    <div class="space-y-8">
+                        <section>
+                            <div class="flex items-center justify-between border-b border-gray-200 pb-3">
+                                <SubTitle label="Price Change Header" />
+                                <span class="rounded bg-red-50 px-2 py-1 text-xs text-red-600">* Required</span>
+                            </div>
+                            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <BaseInput size="sm" v-model="formData.startDate" label="Started Datetime" height="h-[35px]" type="datetime-local" />
+                                <BaseInput size="sm" v-model="formData.endDate" label="Ended Datetime" height="h-[35px]" type="datetime-local" />
+                                <div class="md:col-span-2">
+                                    <BaseInput v-model="formData.description" label="Description" placeholder="Description" height="h-[35px]" />
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="border-t border-gray-200 pt-6">
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <SubTitle label="Target Setup" />
+                                <span class="text-xs text-gray-500">Choose one target type per price change</span>
+                            </div>
+                            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <div class="flex flex-col gap-y-1">
+                                    <BaseLabel label="Price Change Target" :isRequire="true" />
+                                    <select v-model="targetType" class="h-[35px] rounded border border-gray-500 p-2 text-sm text-black" @change="onTargetTypeChange">
+                                        <option v-for="target in PRICE_CHANGE_TARGETS" :key="target.value" :value="target.value">
+                                            {{ target.label }}
+                                        </option>
+                                    </select>
+                                    <BaseErrorLabel v-if="errorMsg.target" :label="errorMsg.target" />
+                                </div>
+
+                                <div v-if="branchRequired()" class="flex flex-col gap-y-1">
+                                    <BaseLabel label="Branch" :isRequire="true" />
+                                    <Select
+                                        v-model="selectedBranch"
+                                        :options="branchOptions"
+                                        showClear
+                                        filter
+                                        optionLabel="name"
+                                        placeholder="Select a branch"
+                                        class="h-[35px] items-center"
+                                    />
+                                    <BaseErrorLabel v-if="errorMsg.branch" :label="errorMsg.branch" />
+                                </div>
+
+                                <div class="flex flex-col gap-1">
+                                    <BaseLabel label="Quick Change Value" />
+                                    <div class="flex gap-x-2">
+                                        <select v-model="formData.priceValueType" class="h-[35px] w-[120px] rounded border border-gray-500 p-2 text-sm text-black">
+                                            <option value="INCREASE">Increase</option>
+                                            <option value="DECREASE">Decrease</option>
+                                        </select>
+                                        <BaseInput size="sm" v-model="formData.priceChangeValue" height="h-[35px]" type="number" />
+                                    </div>
+                                    <BaseErrorLabel v-if="errorMsg.priceChangeValue" :label="errorMsg.priceChangeValue" />
+                                </div>
+
+                                <div class="flex items-end">
+                                    <BaseButton label="Select Products" icon="fa fa-boxes-stacked" class="w-full md:w-fit" @click="openProductDialog" />
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="border-t border-gray-200 pt-6">
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <SubTitle label="Selected Price Targets" />
+                                <span class="text-xs text-gray-500">{{ targetLabel(targetType) }}</span>
+                            </div>
+                            <BaseErrorLabel v-if="errorMsg.products" :label="errorMsg.products" />
+
+                            <div class="mt-4 overflow-x-auto rounded border border-gray-200">
+                                <table class="w-full min-w-[1050px] text-sm">
+                                    <thead>
+                                        <tr class="bg-gray-100 text-left text-gray-700">
+                                            <th class="p-2">Target</th>
+                                            <th class="p-2">Branch</th>
+                                            <th class="p-2">Product</th>
+                                            <th class="p-2">Unit</th>
+                                            <th class="p-2">Range</th>
+                                            <th class="p-2 text-right">Old Price</th>
+                                            <th class="p-2 text-right">New Price</th>
+                                            <th class="p-2 text-center">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="row in selectedRows" :key="row.rowKey" class="border-t hover:bg-gray-50">
+                                            <td class="p-2">{{ targetLabel(row.target_type) }}</td>
+                                            <td class="p-2">{{ row.branch_name }}</td>
+                                            <td class="p-2">
+                                                <div class="font-medium text-black">{{ row.product_name }}</div>
+                                                <div class="text-xs text-gray-500">{{ row.product_barcode || '-' }}</div>
+                                            </td>
+                                            <td class="p-2">{{ row.unit_name }}</td>
+                                            <td class="p-2">
+                                                <div v-if="isRangeTarget(row.target_type)" class="grid grid-cols-2 gap-2">
+                                                    <BaseInput size="sm" v-model="row.min_qty" height="h-[32px]" type="number" />
+                                                    <BaseInput size="sm" v-model="row.max_qty" placeholder="No max" height="h-[32px]" type="number" />
+                                                </div>
+                                                <span v-else>-</span>
+                                            </td>
+                                            <td class="p-2 text-right">{{ formatPrice(row.old_price) }}</td>
+                                            <td class="p-2 text-right">
+                                                <input v-model.number="row.new_price" type="number" class="h-[32px] w-28 rounded border px-2 text-right" />
+                                            </td>
+                                            <td class="p-2 text-center">
+                                                <div class="flex justify-center gap-1">
+                                                    <button v-if="isRangeTarget(row.target_type)" class="px-2 py-1 text-blue-600 hover:text-blue-800" @click="addCustomRange(row)">
+                                                        <i class="fa fa-plus"></i>
+                                                    </button>
+                                                    <button class="px-2 py-1 text-red-600 hover:text-red-800" @click="removeRow(row.rowKey)">
+                                                        <i class="pi pi-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        <tr v-if="!selectedRows.length">
+                                            <td colspan="8" class="p-4 text-center text-gray-500">No price targets selected</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </div>
+
+                    <div class="sticky bottom-0 z-10 mt-8 border-t border-gray-200 bg-white/95 py-4 backdrop-blur">
+                        <div class="flex justify-end">
+                            <BaseButton
+                                label="Update"
+                                :isLoading="usePriceChange.loading"
+                                :icon="usePriceChange.loading ? 'fa fa-spinner' : 'fa fa-floppy-disk'"
+                                severity="primary"
+                                class="w-full sm:w-auto"
+                                :disabled="usePriceChange.loading"
+                                @click="formSubmit"
+                            />
+                        </div>
+                    </div>
+                </template>
+            </BaseCard>
+        </div>
+    </div>
+
+    <div v-if="isProductDialogVisible" class="fixed inset-0 z-50 flex items-center justify-center text-black">
+        <div class="absolute inset-0 bg-black opacity-50" @click="cancelProductSelection"></div>
+        <div class="z-10 max-h-[80vh] w-[94%] max-w-5xl overflow-hidden rounded bg-white p-4 shadow-lg">
+            <div class="flex items-center justify-between border-b py-4">
+                <SubTitle label="Select Products" />
+                <div class="text-sm text-gray-600">{{ selectionBuffer.length }} selected</div>
+            </div>
+            <div class="py-4">
+                <input v-model="searchTerm" placeholder="Search by name or barcode" class="h-[35px] w-full rounded border p-2" />
+            </div>
+            <div class="max-h-[50vh] overflow-auto">
+                <table class="w-full min-w-[650px] text-sm">
+                    <thead>
+                        <tr class="border-b text-left text-gray-600">
+                            <th class="py-2"></th>
+                            <th class="py-2">Image</th>
+                            <th class="py-2">Name</th>
+                            <th class="py-2">Barcode</th>
+                            <th class="py-2 text-right">Global Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="product in filteredProducts" :key="product.id" class="hover:bg-gray-50">
+                            <td class="py-2">
+                                <input type="checkbox" :checked="isBufferSelected(product)" @change="toggleProductInBuffer(product)" />
+                            </td>
+                            <td class="py-2"><img class="h-10 w-10 rounded object-cover" :src="product.image_url" /></td>
+                            <td class="py-2">{{ product.name }}</td>
+                            <td class="py-2">{{ product.barcode || '-' }}</td>
+                            <td class="py-2 text-right">{{ formatPrice(product.price) }}</td>
+                        </tr>
+                        <tr v-if="!filteredProducts.length">
+                            <td colspan="5" class="py-4 text-center text-gray-500">No products found</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="flex justify-end gap-x-2 border-t py-4">
+                <BaseButton severity="secondary" label="Cancel" @click="cancelProductSelection" />
+                <BaseButton label="Add Targets" @click="confirmProductSelection" />
+            </div>
+        </div>
+    </div>
 </template>

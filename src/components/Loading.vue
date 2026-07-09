@@ -1,52 +1,62 @@
 <script setup>
-    defineProps({
-        loadingWidth: {type: String, default: 'w-[25px]'}
-    })
+import logo from '@/assets/images/Logo.png';
+
+defineProps({
+    variant: { type: String, default: 'skeleton' },
+    loadingWidth: { type: String, default: 'w-[95px]' },
+    logoSrc: { type: String, default: logo },
+    skeletonRows: { type: Number, default: 5 }
+});
 </script>
 
 <template>
-    <svg class="loading" :class="loadingWidth" viewBox="25 25 50 50">
-        <circle r="20" cy="50" cx="50"></circle>
-    </svg>
+    <div
+        v-if="variant === 'skeleton'"
+        class="w-full space-y-2"
+        role="status"
+        aria-label="Loading"
+    >
+        <div
+            v-for="row in skeletonRows"
+            :key="row"
+            class="loading-skeleton-row h-9 w-full rounded bg-gray-100"
+        ></div>
+    </div>
+
+    <div 
+        v-else
+        class="relative flex aspect-square items-center justify-center"
+        :class="loadingWidth"
+        role="status"
+        aria-label="Loading"
+    >
+        <div
+            class="absolute inset-0 flex animate-spin items-center justify-center rounded-full border-[4px] border-gray-300 border-t-blue-400 text-4xl text-blue-400">
+        </div>
+        <div class="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-blue-500">
+            <img :src="logoSrc" class="h-[68%] w-[68%] object-contain" alt="Fusion Mart Logo" />
+        </div>
+    </div>
 </template>
 
-<style>
-    From Uiverse.io by barisdogansutcu 
-    .loading {
-        transform-origin: center;
-        animation: rotate4 2s linear infinite;
+<style scoped>
+.loading-skeleton-row {
+    position: relative;
+    overflow: hidden;
+}
+
+.loading-skeleton-row::after {
+    position: absolute;
+    inset: 0;
+    content: "";
+    transform: translateX(-100%);
+    animation: loading-shimmer 1.4s infinite;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+}
+
+@keyframes loading-shimmer {
+    100% {
+        transform: translateX(100%);
     }
-
-    circle {
-        fill: none;
-        stroke: #007fff;
-        stroke-width: 5;
-        stroke-dasharray: 1, 200;
-        stroke-dashoffset: 0;
-        stroke-linecap: round;
-        animation: dash4 1.5s ease-in-out infinite;
-    }
-
-    @keyframes rotate4 {
-        100% {
-            transform: rotate(360deg);
-        }
-    }
-
-    @keyframes dash4 {
-        0% {
-            stroke-dasharray: 1, 200;
-            stroke-dashoffset: 0;
-        }
-
-        50% {
-            stroke-dasharray: 90, 200;
-            stroke-dashoffset: -35px;
-        }
-
-        100% {
-            stroke-dashoffset: -125px;
-        }
-    }
-
+}
 </style>

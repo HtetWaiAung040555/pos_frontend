@@ -13,6 +13,7 @@ import { useProductStore } from '@/stores/useProductStore';
 import BaseButton from '@/components/BaseButton.vue';
 import { formatPrice, getPromotionLifecycleStatusName, statusBadgeHtml } from '@/utils/const';
 import DetailRow from '@/components/DetailRow.vue';
+import Loading from '@/components/Loading.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -55,6 +56,7 @@ const promoMode = ref('TIER');
 const maxDiscountAmount = ref(0);
 const promoStatus = ref(true);
 const productList = ref([]);
+const isInitLoading = ref(true);
 
 const isProductDiscount = computed(() => formData.value.promoType === 'PRODUCT_DISCOUNT');
 const isOrderDiscount = computed(() => formData.value.promoType === 'ORDER_DISCOUNT');
@@ -64,95 +66,100 @@ const hasScopedBranches = computed(() => formData.value.branchScopeType === 'SEL
 const hasScopedWarehouses = computed(() => formData.value.warehouseScopeType === 'SELECTED');
 
 onMounted(async () => {
-    await useProduct.fetchAllProduct();
-    productList.value = useProduct.productList || [];
-    if (promoId.value) {
-        await usePromo.fetchPromo(promoId.value);
-        const promo = usePromo.promoList || {};
-        formData.value.name = promo.name || '';
-        formData.value.description = promo.description || '';
-        formData.value.promoType = promo.promo_type || 'PRODUCT_DISCOUNT';
-        formData.value.discountType = promo.discount_type || 'AMOUNT';
-        formData.value.discountValue = Number(promo.discount_value) || 0;
-        formData.value.overridePrice = Number(promo.override_price) || 0;
-        formData.value.branchScopeType = promo.branch_scope_type || 'ALL';
-        formData.value.warehouseScopeType = promo.warehouse_scope_type || 'ALL';
-        formData.value.startDate = promo.start_at || formData.value.startDate;
-        formData.value.endDate = promo.end_at || formData.value.endDate;
-        formData.value.status = getPromotionLifecycleStatusName(promo.start_at, promo.end_at);
-        formData.value.promoMode = promo.promo_mode || 'TIER';
-        formData.value.maxDiscountAmount = Number(promo.max_reward_value) || 0;
-        formData.value.createdBy = promo.created_by?.name || '';
-        formData.value.createdAt = promo.created_at || null;
-        formData.value.updatedBy = promo.updated_by?.name || '';
-        formData.value.updatedAt = promo.updated_at || null;
-        promoStatus.value = formData.value.status !== 'Inactive';
-        promoMode.value = promo.promo_mode || 'TIER';
-        maxDiscountAmount.value = Number(promo.max_reward_value) || 0;
+    isInitLoading.value = true;
+    try {
+        await useProduct.fetchAllProduct();
+        productList.value = useProduct.productList || [];
+        if (promoId.value) {
+            await usePromo.fetchPromo(promoId.value);
+            const promo = usePromo.promoList || {};
+            formData.value.name = promo.name || '';
+            formData.value.description = promo.description || '';
+            formData.value.promoType = promo.promo_type || 'PRODUCT_DISCOUNT';
+            formData.value.discountType = promo.discount_type || 'AMOUNT';
+            formData.value.discountValue = Number(promo.discount_value) || 0;
+            formData.value.overridePrice = Number(promo.override_price) || 0;
+            formData.value.branchScopeType = promo.branch_scope_type || 'ALL';
+            formData.value.warehouseScopeType = promo.warehouse_scope_type || 'ALL';
+            formData.value.startDate = promo.start_at || formData.value.startDate;
+            formData.value.endDate = promo.end_at || formData.value.endDate;
+            formData.value.status = getPromotionLifecycleStatusName(promo.start_at, promo.end_at);
+            formData.value.promoMode = promo.promo_mode || 'TIER';
+            formData.value.maxDiscountAmount = Number(promo.max_reward_value) || 0;
+            formData.value.createdBy = promo.created_by?.name || '';
+            formData.value.createdAt = promo.created_at || null;
+            formData.value.updatedBy = promo.updated_by?.name || '';
+            formData.value.updatedAt = promo.updated_at || null;
+            promoStatus.value = formData.value.status !== 'Inactive';
+            promoMode.value = promo.promo_mode || 'TIER';
+            maxDiscountAmount.value = Number(promo.max_reward_value) || 0;
 
-        selectedBranches.value = Array.isArray(promo.branches) ? promo.branches.slice() : [];
-        selectedWarehouses.value = Array.isArray(promo.warehouses) ? promo.warehouses.slice() : [];
+            selectedBranches.value = Array.isArray(promo.branches) ? promo.branches.slice() : [];
+            selectedWarehouses.value = Array.isArray(promo.warehouses) ? promo.warehouses.slice() : [];
 
-        // PRODUCT_DISCOUNT / PRICE_OVERRIDE
-        if (['PRODUCT_DISCOUNT', 'PRICE_OVERRIDE'].includes(promo.promo_type)) {
-            if (Array.isArray(promo.products) && promo.products.length > 0) {
-                if (typeof promo.products[0] === 'object') {
-                    selectedProducts.value = promo.products.slice();
-                } else {
-                    selectedProducts.value = promo.products.map(id => productList.value.find(p => p.id === id)).filter(Boolean);
+            // PRODUCT_DISCOUNT / PRICE_OVERRIDE
+            if (['PRODUCT_DISCOUNT', 'PRICE_OVERRIDE'].includes(promo.promo_type)) {
+                if (Array.isArray(promo.products) && promo.products.length > 0) {
+                    if (typeof promo.products[0] === 'object') {
+                        selectedProducts.value = promo.products.slice();
+                    } else {
+                        selectedProducts.value = promo.products.map(id => productList.value.find(p => p.id === id)).filter(Boolean);
+                    }
                 }
             }
-        }
 
-        // PRICE_OVERRIDE
-        if (promo.promo_type === 'PRICE_OVERRIDE' && Array.isArray(promo.conditions)) {
-            const firstCondition = promo.conditions[0] || {};
-            priceOverrideTiers.value = [{
-                condition_type: 'ORDER_QTY',
-                target_value: Number(firstCondition.target_value) || 0,
-            }];
-        }
+            // PRICE_OVERRIDE
+            if (promo.promo_type === 'PRICE_OVERRIDE' && Array.isArray(promo.conditions)) {
+                const firstCondition = promo.conditions[0] || {};
+                priceOverrideTiers.value = [{
+                    condition_type: 'ORDER_QTY',
+                    target_value: Number(firstCondition.target_value) || 0,
+                }];
+            }
 
-        // ORDER_DISCOUNT
-        if (promo.promo_type === 'ORDER_DISCOUNT' && Array.isArray(promo.conditions)) {
-            orderDiscountTiers.value = promo.conditions.map((cond, idx) => {
-                const reward = (promo.rewards || []).find(r => r.tier === cond.tier);
-                return {
-                    condition_type: cond.condition_type,
-                    target_value: Number(cond.target_value),
-                    discount_type: reward?.reward_type === 'PERCENT' ? 'PERCENT' : 'AMOUNT',
-                    discount_value: Number(reward?.reward_value) || 0,
-                };
-            });
-        }
-        // FOC
-        if (promo.promo_type === 'FOC' && Array.isArray(promo.conditions)) {
-            focTiers.value = promo.conditions.map((cond, idx) => {
-                const rewards = (promo.rewards || []).filter(r => r.tier === cond.tier && r.reward_type === 'FREE_PRODUCT');
-                return {
-                    condition_type: cond.condition_type,
-                    target_value: Number(cond.target_value),
-                    conditionProductId: cond.product?.id || '',
-                    rewards: rewards.map(r => ({
-                        ...r.product,
-                        rewardQty: Number(r.reward_qty) || 1,
-                    })),
-                };
-            });
-        }
+            // ORDER_DISCOUNT
+            if (promo.promo_type === 'ORDER_DISCOUNT' && Array.isArray(promo.conditions)) {
+                orderDiscountTiers.value = promo.conditions.map((cond, idx) => {
+                    const reward = (promo.rewards || []).find(r => r.tier === cond.tier);
+                    return {
+                        condition_type: cond.condition_type,
+                        target_value: Number(cond.target_value),
+                        discount_type: reward?.reward_type === 'PERCENT' ? 'PERCENT' : 'AMOUNT',
+                        discount_value: Number(reward?.reward_value) || 0,
+                    };
+                });
+            }
+            // FOC
+            if (promo.promo_type === 'FOC' && Array.isArray(promo.conditions)) {
+                focTiers.value = promo.conditions.map((cond, idx) => {
+                    const rewards = (promo.rewards || []).filter(r => r.tier === cond.tier && r.reward_type === 'FREE_PRODUCT');
+                    return {
+                        condition_type: cond.condition_type,
+                        target_value: Number(cond.target_value),
+                        conditionProductId: cond.product?.id || '',
+                        rewards: rewards.map(r => ({
+                            ...r.product,
+                            rewardQty: Number(r.reward_qty) || 1,
+                        })),
+                    };
+                });
+            }
 
-        if (promo.promo_type === 'FOC' && Array.isArray(promo.foc_allocations)) {
-            focAllocations.value = promo.foc_allocations.map((allocation) => ({
-                id: allocation.id,
-                productId: allocation.product?.id ?? allocation.product_id,
-                name: allocation.product?.name ?? '',
-                image_url: allocation.product?.image_url ?? '',
-                allocatedQty: Number(allocation.allocated_qty) || 0,
-                usedQty: Number(allocation.used_qty) || 0,
-                remainingQty: Number(allocation.remaining_qty) || 0,
-                warehouseId: allocation.allocated_warehouse_id ?? null,
-            }));
+            if (promo.promo_type === 'FOC' && Array.isArray(promo.foc_allocations)) {
+                focAllocations.value = promo.foc_allocations.map((allocation) => ({
+                    id: allocation.id,
+                    productId: allocation.product?.id ?? allocation.product_id,
+                    name: allocation.product?.name ?? '',
+                    image_url: allocation.product?.image_url ?? '',
+                    allocatedQty: Number(allocation.allocated_qty) || 0,
+                    usedQty: Number(allocation.used_qty) || 0,
+                    remainingQty: Number(allocation.remaining_qty) || 0,
+                    warehouseId: allocation.allocated_warehouse_id ?? null,
+                }));
+            }
         }
+    } finally {
+        isInitLoading.value = false;
     }
 });
 
@@ -191,6 +198,12 @@ function goBack() {
 
 <template>
     <div class="p-4 w-full">
+        <div v-if="isInitLoading" class="fixed inset-0 z-50 flex items-center justify-center">
+            <div class="flex flex-col items-center rounded-lg bg-white p-8 shadow-lg">
+                <Loading variant="page" loadingWidth="w-[56px]" />
+            </div>
+        </div>
+
         <PageTitle title="View Promotion">
             <template #titleButtons>
                 <div class="flex gap-x-2 items-center">
@@ -198,7 +211,7 @@ function goBack() {
                 </div>
             </template>
         </PageTitle>
-        <BaseCard class="mt-3 w-full">
+        <BaseCard v-if="!isInitLoading" class="mt-3 w-full">
             <template #cardElements>
                 <SubTitle label="Promotion Details" />
                 <div class="grid lg:grid-cols-3 gap-x-4 mt-6">

@@ -1,7 +1,7 @@
 <script setup>
 const props = defineProps({
   name: { type: String, default: "" },
-  price: { type: String, default: "0" },
+  price: { type: Number, default: 0 },
   imageUrl: { type: String, default: "" },
   qty: { type: [String, Number], default: null }
 });
