@@ -28,6 +28,26 @@ export function toNumber(value, fallback = 0) {
   return Number(value);
 }
 
+function isBlank(value) {
+  return value === '' || value === null || value === undefined;
+}
+
+function isValidNumber(value) {
+  if (isBlank(value)) return false;
+  return Number.isFinite(Number(value));
+}
+
+function rangeValidationKey(row) {
+  return [
+    row.target_type,
+    row.branch_id || 0,
+    row.product_id,
+    row.product_unit_id || 0,
+    row.branch_product_id || 0,
+    row.branch_product_unit_price_id || 0,
+  ].join(':');
+}
+
 export function unitId(unit) {
   return unit?.unit_id?.id || unit?.unit_id || '';
 }
@@ -301,9 +321,65 @@ export function payloadForTargetRow(row) {
 
 export function formatRange(row) {
   if (!isRangeTarget(row.target_type)) return '-';
-  const min = Number(row.min_qty || 0).toLocaleString('en-us');
-  const max = row.max_qty === null || row.max_qty === undefined || row.max_qty === ''
-    ? '+'
-    : Number(row.max_qty).toLocaleString('en-us');
-  return `${min} - ${max}`;
+  const formatQuantity = (value) => Number(value || 0).toLocaleString('en-us', {
+    maximumFractionDigits: 6,
+  });
+  const min = formatQuantity(row.min_qty);
+  const hasNoMaximum = row.max_qty === null || row.max_qty === undefined || row.max_qty === '';
+
+  if (hasNoMaximum) return `${min} and above`;
+  return `${min} to ${formatQuantity(row.max_qty)}`;
+}
+
+export function validatePriceChangeDates(startAt, endAt) {
+  if (!startAt) return 'Start datetime is required.';
+
+  const startTime = new Date(startAt).getTime();
+  if (!Number.isFinite(startTime)) return 'Start datetime is invalid.';
+
+  if (!endAt) return '';
+
+  const endTime = new Date(endAt).getTime();
+  if (!Number.isFinite(endTime)) return 'End datetime is invalid.';
+  if (endTime <= startTime) return 'End datetime must be after start datetime.';
+
+  return '';
+}
+
+export function validatePriceChangeRows(rows) {
+  for (const row of rows || []) {
+    if (!isValidNumber(row.new_price)) return 'New price must be a valid number.';
+    if (Number(row.new_price) < 0) return 'New price cannot be negative.';
+
+    if (!isRangeTarget(row.target_type)) continue;
+
+    if (!isValidNumber(row.min_qty)) return 'Range targets require a valid min qty.';
+    if (Number(row.min_qty) < 0) return 'Range min qty cannot be negative.';
+
+    if (!isBlank(row.max_qty)) {
+      if (!isValidNumber(row.max_qty)) return 'Range max qty must be a valid number.';
+      if (Number(row.max_qty) < Number(row.min_qty)) return 'Range max qty must be greater than or equal to min qty.';
+    }
+  }
+
+  const rangeGroups = new Map();
+  (rows || []).filter((row) => isRangeTarget(row.target_type)).forEach((row) => {
+    const key = rangeValidationKey(row);
+    if (!rangeGroups.has(key)) rangeGroups.set(key, []);
+    rangeGroups.get(key).push(row);
+  });
+
+  for (const groupRows of rangeGroups.values()) {
+    const sortedRows = [...groupRows].sort((left, right) => Number(left.min_qty) - Number(right.min_qty));
+
+    for (let index = 0; index < sortedRows.length - 1; index += 1) {
+      const currentMax = sortedRows[index].max_qty;
+      const nextMin = Number(sortedRows[index + 1].min_qty);
+
+      if (isBlank(currentMax)) return 'Only the last range can have no max qty.';
+      if (Number(currentMax) >= nextMin) return 'Range quantities must not overlap.';
+    }
+  }
+
+  return '';
 }

@@ -62,6 +62,10 @@ const savedSalesData = ref({});
 const defaultCurrency = ref('Ks');
 const oldCustomerBalance = ref(0);
 const initialLoading = ref(false);
+const promotionWarnings = ref([]);
+const promotionRecalculationLoading = ref(false);
+let promotionRequestSequence = 0;
+let displayedPromotionWarningSignature = '';
 
 const sortedHoldList = computed(() => {
   return [...(holdList.value || [])].sort((a, b) => {
@@ -108,6 +112,30 @@ function lineQuantity(product) {
   return Number(product?.qty ?? product?.quantity ?? 0);
 }
 
+function lineFinalPrice(product) {
+  if (product?.is_foc) return 0;
+  if (product?.final_price !== null && product?.final_price !== undefined) {
+    return Number(product.final_price) || 0;
+  }
+  if (linePromotionId(product)) {
+    return Number(product?.discount_price ?? product?.price ?? 0) || 0;
+  }
+  return Number(product?.price ?? product?.original_price ?? 0) || 0;
+}
+
+function sourceCartKey(product) {
+  return product?.source_line_key || `product:${productLineKey(product)}`;
+}
+
+function cartLineRenderKey(product, index = 0) {
+  return product?.line_key
+    || `${sourceCartKey(product)}:${product?.split_type || 'STANDARD'}:${lineFinalPrice(product)}:${linePromotionId(product) || 'none'}:${index}`;
+}
+
+function cartLineIdentifier(product) {
+  return product?.line_key || product?.cart_line_id || null;
+}
+
 function lineConversionToBase(product) {
   const conversion = Number(product?.conversion_to_base || 1);
   return conversion > 0 ? conversion : 1;
@@ -133,19 +161,39 @@ function lineUomSnapshot(product) {
 function saleProductPayload(product) {
   const promotionId = linePromotionId(product);
   const uomSnapshot = lineUomSnapshot(product);
-
-  return {
+  const originalPrice = product.is_foc
+    ? 0
+    : Number(product.original_price ?? product.price ?? 0);
+  const payload = {
     product_id: product.id,
     ...uomSnapshot,
     quantity: lineQuantity(product),
-    price: product.is_foc ? 0 : product.price,
-    original_price: product.is_foc ? 0 : product.price,
-    discount_amount: product.is_foc || !promotionId ? 0 : (Number(product.discount_amount) || 0),
-    discount_price: product.is_foc ? 0 : (promotionId ? (product.discount_price || 0) : product.price),
-    promotion_id: promotionId,
-    is_foc: product.is_foc ? true : false,
+    price: originalPrice,
+    original_price: originalPrice,
+    is_foc: Boolean(product.is_foc),
     reward_id: product.reward_id || null,
   };
+
+  if (product.is_foc) {
+    return {
+      ...payload,
+      discount_amount: 0,
+      discount_price: 0,
+      promotion_id: promotionId,
+    };
+  }
+
+  if (promotionId) {
+    const finalPrice = lineFinalPrice(product);
+    return {
+      ...payload,
+      discount_amount: Math.max(0, originalPrice - finalPrice),
+      discount_price: finalPrice,
+      promotion_id: promotionId,
+    };
+  }
+
+  return payload;
 }
 
 function sameProductUnit(left, right) {
@@ -153,9 +201,132 @@ function sameProductUnit(left, right) {
     && Number(left.product_unit_id || 0) === Number(right.product_unit_id || 0);
 }
 
-function pricedItemFor(product, pricedItems = []) {
-  return pricedItems.find(item => sameProductUnit(item, product))
-    || pricedItems.find(item => Number(item.product_id || item.id) === Number(product.id));
+function buildPriceCheckSources() {
+  const sourceMap = new Map();
+
+  selectedProducts.value
+    .filter(product => !product.is_foc && lineQuantity(product) > 0)
+    .forEach((product) => {
+      const key = sourceCartKey(product);
+      const quantity = lineQuantity(product);
+      const baseQuantity = quantity * lineConversionToBase(product);
+      const existing = sourceMap.get(key);
+
+      if (existing) {
+        existing.qty += quantity;
+        existing.base_qty += baseQuantity;
+        return;
+      }
+
+      sourceMap.set(key, {
+        key,
+        representative: product,
+        qty: quantity,
+        base_qty: baseQuantity,
+      });
+    });
+
+  return Array.from(sourceMap.values()).map((source, index) => {
+    const productId = Number(source.representative.id);
+    const productUnitId = source.representative.product_unit_id || null;
+
+    return {
+      ...source,
+      responseSourceLineKey: `${index}:${productId}:${productUnitId || 0}`,
+      cartItem: {
+        product_id: productId,
+        product_unit_id: productUnitId,
+        unit_id: recordId(source.representative.unit_id),
+        qty: source.qty,
+        base_qty: source.base_qty,
+      },
+    };
+  });
+}
+
+function sourceForPricedItem(pricedItem, sources) {
+  return sources.find(source => source.responseSourceLineKey === pricedItem.source_line_key)
+    || sources.find(source => source.key === pricedItem.source_line_key)
+    || sources.find(source => sameProductUnit(source.cartItem, pricedItem))
+    || null;
+}
+
+function mapPricedItems(pricedItems, sources, promotionItems = []) {
+  return pricedItems
+    .filter(item => Number(item.qty || 0) > 0)
+    .map((pricedItem, index) => {
+      const source = sourceForPricedItem(pricedItem, sources);
+      const sourceProduct = source?.representative || {};
+      const catalogProduct = catalogProducts.value.find(product => sameProductUnit(product, pricedItem))
+        || catalogProducts.value.find(product => Number(product.id) === Number(pricedItem.product_id))
+        || {};
+      const promotionItem = promotionItems.find(item => item.line_key === pricedItem.line_key)
+        || promotionItems.find(item => (
+          Number(item.product_id) === Number(pricedItem.product_id)
+          && Number(item.product_unit_id || 0) === Number(pricedItem.product_unit_id || 0)
+          && Number(item.promotion_id || 0) === Number(pricedItem.promotion_id || 0)
+        ));
+      const originalPrice = Number(pricedItem.original_price ?? pricedItem.price ?? sourceProduct.price ?? catalogProduct.price ?? 0);
+      const finalPrice = Number(pricedItem.final_price ?? pricedItem.discount_price ?? originalPrice);
+      const promotionId = linePromotionId(pricedItem);
+      const splitType = pricedItem.split_type
+        || (promotionId ? 'PROMOTION' : 'STANDARD');
+
+      return {
+        ...catalogProduct,
+        ...sourceProduct,
+        id: Number(pricedItem.product_id),
+        product_unit_id: pricedItem.product_unit_id ?? sourceProduct.product_unit_id ?? null,
+        unit_id: pricedItem.unit_id ?? recordId(sourceProduct.unit_id),
+        qty: Number(pricedItem.qty),
+        base_qty: Number(pricedItem.base_qty ?? (Number(pricedItem.qty) * lineConversionToBase(sourceProduct))),
+        price: Number(pricedItem.price ?? originalPrice),
+        original_price: originalPrice,
+        final_price: finalPrice,
+        discount_price: pricedItem.discount_price === null || pricedItem.discount_price === undefined
+          ? null
+          : Number(pricedItem.discount_price),
+        discount_amount: Math.max(0, originalPrice - finalPrice),
+        discount_type: pricedItem.discount_type ?? promotionItem?.discount_type ?? null,
+        discount_value: pricedItem.discount_value ?? promotionItem?.discount_value ?? 0,
+        promotion_id: promotionId,
+        promo_type: pricedItem.promo_type ?? promotionItem?.promo_type ?? null,
+        is_promotion_line: Boolean(pricedItem.is_promotion_line ?? promotionId),
+        is_excess_quantity: Boolean(pricedItem.is_excess_quantity),
+        split_type: splitType,
+        line_key: pricedItem.line_key || `${source?.responseSourceLineKey || index}:priced:${index}`,
+        source_line_key: pricedItem.source_line_key || source?.responseSourceLineKey || source?.key || null,
+        price_source: pricedItem.price_source || sourceProduct.price_source || null,
+        price_range_id: pricedItem.price_range_id || sourceProduct.price_range_id || null,
+        is_foc: false,
+      };
+    });
+}
+
+function updatePromotionWarnings(warnings = []) {
+  promotionWarnings.value = Array.isArray(warnings) ? warnings : [];
+  const signature = JSON.stringify(promotionWarnings.value.map(warning => ({
+    code: warning.code,
+    promotion_id: warning.promotion_id,
+    product_id: warning.product_id,
+    requested_qty: warning.requested_qty,
+    promotion_qty: warning.promotion_qty,
+    excess_qty: warning.excess_qty,
+    message: warning.message,
+  })));
+
+  if (signature !== '[]' && signature !== displayedPromotionWarningSignature) {
+    promotionWarnings.value.forEach((warning) => {
+      toast.add({
+        severity: 'warn',
+        summary: 'Promotion Quantity Limit',
+        detail: warning.message,
+        life: 6000,
+      });
+    });
+  }
+
+  displayedPromotionWarningSignature = signature;
 }
 
 const catalogProducts = computed(() => {
@@ -217,8 +388,7 @@ const filteredProducts = computed(() => {
 // Computed totals for template alignment
 const totalAmount = computed(() => {
   const amount = selectedProducts.value.reduce((sum, item) => {
-    const price = item.promotion_id ? Number(item.discount_price || 0) : Number(item.price || 0);
-    return sum + (Number(item.qty || 0) * price);
+    return sum + (lineQuantity(item) * lineFinalPrice(item));
   }, 0);
   salesData.value.paidAmount = amount - Number(salesData.value.orderDiscountAmount || 0);
   return amount;
@@ -330,14 +500,18 @@ function increaseQty(product) {
 }
 
 function decreaseQty(product) {
-  if (product.qty <= 1) {
+  const sourceQuantity = selectedProducts.value
+    .filter(item => !item.is_foc && sourceCartKey(item) === sourceCartKey(product))
+    .reduce((sum, item) => sum + lineQuantity(item), 0);
+
+  if (sourceQuantity <= 1) {
     nextTick(() => barcodeInput.value?.focus());
     return
-  } else {
-    product.qty -= 1;
-    recalculatePromotions();
-    nextTick(() => barcodeInput.value?.focus());
   }
+
+  product.qty = Math.max(0, lineQuantity(product) - 1);
+  recalculatePromotions();
+  nextTick(() => barcodeInput.value?.focus());
 }
 
 // Barcode Scan Handler
@@ -381,6 +555,9 @@ function onSelectEnter(e) {
 
 async function holdSale() {
   if (!selectedProducts.value || selectedProducts.value.length === 0) return;
+
+  const hasCurrentPrices = await recalculatePromotions();
+  if (!hasCurrentPrices) return;
 
   await useCustomer.fetchCustomer(selectedCustomer.value.id);
   if (useCustomer.singleCustomer.balance < totalAmount.value && salesData.value.paymentId == 3) {
@@ -428,6 +605,7 @@ async function holdSale() {
   if (useSales.salesList) {
     toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales hold successfully.', life: 3000 });
     selectedProducts.value = [];
+    updatePromotionWarnings([]);
     nextTick(() => barcodeInput.value?.focus());
   }
 }
@@ -502,8 +680,13 @@ async function editHold(hold) {
 }
 
 function resetData() {
+  promotionRequestSequence += 1;
+  promotionRecalculationLoading.value = false;
   selectedProducts.value = [];
   selectedHold.value = [];
+  salesData.value.orderDiscountAmount = 0;
+  salesData.value.appliedPromotions = [];
+  updatePromotionWarnings([]);
 }
 
 // Compare current cart to the products stored on the selected hold
@@ -623,6 +806,9 @@ function buildSlipSalesData(sales = {}) {
 }
 
 async function onPayClick() {
+  const hasCurrentPrices = await recalculatePromotions();
+  if (!hasCurrentPrices) return;
+
   await useCustomer.fetchCustomer(selectedCustomer.value.id);
   if (useCustomer.singleCustomer.balance < totalAmount.value && salesData.value.paymentId == 3) {
     toast.add({
@@ -685,6 +871,7 @@ async function onPayClick() {
       }, 100);
 
       selectedProducts.value = [];
+      updatePromotionWarnings([]);
       selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
       salesData.value.paymentId = 1;
       salesData.value.paidAmount = 0;
@@ -744,6 +931,7 @@ async function onPayClick() {
       }, 100);
 
       selectedProducts.value = [];
+      updatePromotionWarnings([]);
       selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
       salesData.value.paymentId = 1;
       salesData.value.paidAmount = 0;
@@ -846,74 +1034,53 @@ function clickCustomerSelect() {
 }
 
 function removeProduct(product) {
-  const lineKey = productLineKey(product);
-  selectedProducts.value = selectedProducts.value.filter(p => productLineKey(p) !== lineKey || p.is_foc !== product.is_foc);
+  const lineIdentifier = cartLineIdentifier(product);
+  selectedProducts.value = selectedProducts.value.filter(item => (
+    lineIdentifier
+      ? cartLineIdentifier(item) !== lineIdentifier
+      : item !== product
+  ));
+
   recalculatePromotions();
   nextTick(() => barcodeInput.value?.focus());
 }
 
 async function recalculatePromotions() {
-  if (!selectedProducts.value.length) return;
+  const requestSequence = ++promotionRequestSequence;
+  const sources = buildPriceCheckSources();
+
+  if (sources.length === 0) {
+    selectedProducts.value = [];
+    salesData.value.orderDiscountAmount = 0;
+    salesData.value.appliedPromotions = [];
+    updatePromotionWarnings([]);
+    promotionRecalculationLoading.value = false;
+    return true;
+  }
+
+  promotionRecalculationLoading.value = true;
 
   try {
     const payload = {
       branch_id: userData.value.branch.id,
       warehouse_id: userData.value.branch.warehouse_id,
-      cart: selectedProducts.value
-        .filter(p => !p.is_foc)
-        .map(p => ({
-          product_id: p.id,
-          product_unit_id: p.product_unit_id || null,
-          unit_id: recordId(p.unit_id),
-          qty: Number(p.qty),
-        }))
+      cart: sources.map(source => source.cartItem),
     };
 
     const res = await axios.post('/promotions/checkprice', payload);
     const data = res.data;
 
+    if (requestSequence !== promotionRequestSequence) return false;
+
     console.log('Promotion recalculation response:', data);
 
-    selectedProducts.value = selectedProducts.value
-      .filter(p => !p.is_foc)
-      .map(p => {
-        const pricedItem = pricedItemFor(p, data.priced_items || []);
-        const price = Number(pricedItem?.price ?? p.price ?? 0);
-
-        return {
-          ...p,
-          price,
-          price_source: pricedItem?.price_source || p.price_source || null,
-          price_range_id: pricedItem?.price_range_id || p.price_range_id || null,
-          promotion_id: null,
-          discount_amount: 0,
-          discount_price: price
-        };
-      });
-
-    if (data.items?.length) {
-      selectedProducts.value = selectedProducts.value.map(p => {
-        const matchingPromotions = data.items.filter(d => (
-          Number(d.product_id) === Number(p.id)
-          && Number(d.product_unit_id || 0) === Number(p.product_unit_id || 0)
-        ));
-        const promo = matchingPromotions[matchingPromotions.length - 1];
-
-        if (!promo) return p;
-
-        const discountPrice = Number(promo.discount_price ?? Math.max(0, Number(p.price || 0) - Number(promo.discount_amount || 0)));
-        const discountAmount = Math.max(0, Number(p.price) - discountPrice);
-
-        return {
-          ...p,
-          promotion_id: linePromotionId(promo),
-          discount_value: promo.discount_value,
-          discount_type: promo.discount_type,
-          discount_amount: discountAmount,
-          discount_price: discountPrice
-        };
-      });
+    const pricedItems = Array.isArray(data.priced_items) ? data.priced_items : [];
+    if (pricedItems.length === 0) {
+      throw new Error('The price-check response did not include priced_items.');
     }
+
+    selectedProducts.value = mapPricedItems(pricedItems, sources, data.items || []);
+    updatePromotionWarnings(data.promotion_warnings || []);
 
     salesData.value.orderDiscountAmount = data.order?.total_discount || 0;
     salesData.value.appliedPromotions = data.order?.applied_promotions || [];
@@ -930,20 +1097,41 @@ async function recalculatePromotions() {
         selectedProducts.value.push({
           ...product,
           qty: free.qty,
+          base_qty: free.base_qty ?? (Number(free.qty || 0) * lineConversionToBase(product)),
           price: 0,
+          original_price: 0,
+          final_price: 0,
           discount_price: 0,
           discount_amount: 0,
           is_foc: true,
           reward_id: free.reward_id,
-          promotion_id: linePromotionId(free)
+          promotion_id: linePromotionId(free),
+          line_key: free.line_key || `foc:${free.reward_id || 'reward'}:${free.product_id}:${free.product_unit_id || 0}`,
+          source_line_key: free.source_line_key || null,
+          split_type: free.split_type || 'FOC',
         });
       });
 
       console.log('Selected products after adding FOC items:', selectedProducts.value);
     }
 
+    return true;
+
   } catch (err) {
     console.error('Promotion calculation failed', err);
+    if (requestSequence === promotionRequestSequence) {
+      toast.add({
+        severity: 'error',
+        summary: 'Price Check Failed',
+        detail: 'Unable to refresh the latest selling prices. Please try again.',
+        life: 4000,
+      });
+    }
+    return false;
+  } finally {
+    if (requestSequence === promotionRequestSequence) {
+      promotionRecalculationLoading.value = false;
+    }
   }
 }
 
@@ -1101,6 +1289,13 @@ function printSlip(isSale = true) {
             placeholder="Scan products by barcode..." @keyup="handleBarcodeInput" />
         </div>
 
+        <div v-if="promotionWarnings.length" class="mb-2 max-h-28 shrink-0 space-y-1 overflow-y-auto rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          <div v-for="(warning, index) in promotionWarnings" :key="`${warning.code || 'promotion-warning'}:${warning.promotion_id || 0}:${warning.product_id || 0}:${index}`" class="flex items-start gap-2">
+            <i class="fa fa-triangle-exclamation mt-0.5 text-amber-600"></i>
+            <span>{{ warning.message }}</span>
+          </div>
+        </div>
+
         <!-- Scrollable Cart Table -->
         <div class="flex-1 overflow-y-auto">
           <table class="table-auto w-full border-collapse">
@@ -1113,17 +1308,22 @@ function printSlip(isSale = true) {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(item, index) in selectedProducts" :key="`${productLineKey(item)}:${item.is_foc ? 'foc' : 'sale'}`">
+              <tr v-for="(item, index) in selectedProducts" :key="cartLineRenderKey(item, index)">
                 <td class="border-b p-2 border-gray-200 text-[12px]">{{ index + 1 }}.</td>
                 <td class="border-b p-2 border-gray-200">
                   <div class="flex flex-col">
                     <span class="leading-tight line-clamp-1">{{ item.name }}</span>
+                    <!-- <div v-if="!item.is_foc && item.split_type !== 'STANDARD'" class="mt-0.5 flex flex-wrap gap-1">
+                      <span v-if="item.split_type === 'PROMOTION'" class="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">PROMOTION</span>
+                      <span v-else-if="item.split_type === 'EXCESS'" class="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">EXCESS · NORMAL PRICE</span>
+                    </div> -->
                     <div v-if="!item.is_foc" class="text-[13px] flex items-center gap-x-2">
                       <i class="fa fa-circle-minus text-xl cursor-pointer text-gray-500" @click="decreaseQty(item)"></i>
                       <span class="font-semibold"> {{ item.qty }} </span>
                       <i class="fa fa-circle-plus text-xl cursor-pointer text-gray-500" @click="increaseQty(item)"></i>
                       <span> x </span>
-                      <span class="font-semibold">{{ Number(item.price).toLocaleString() }}</span>
+                      <span class="font-semibold">{{ Number(lineFinalPrice(item)).toLocaleString() }}</span>
+                      <span v-if="lineFinalPrice(item) !== Number(item.original_price ?? item.price)" class="text-xs text-gray-400 line-through">{{ Number(item.original_price ?? item.price).toLocaleString() }}</span>
                     </div>
                     <div v-else class="text-[13px] flex items-center gap-x-2">
                       <span class="font-semibold"> {{ item.qty }} </span>
@@ -1131,18 +1331,15 @@ function printSlip(isSale = true) {
                       <span class="font-semibold">{{ Number(item.price).toLocaleString() }}</span>
                       <span class="text-blue-500 bg-blue-100 font-bold px-2 rounded-md"> FREE GIFT </span>
                     </div>
-                    <div>
-                      <span v-if="item.promotion_id && !item.is_foc" class="font-semibold">Discount: [ - {{ item.discount_type ===
-                        'AMOUNT' ?
-                        Number(item.discount_value > 0 ? item.discount_value : item.discount_amount).toLocaleString() + " Ks." : item.discount_value + '%' }} ]</span>
-                    </div>
+                    <!-- <div>
+                      <span v-if="item.promotion_id && !item.is_foc" class="font-semibold text-emerald-700">Promotion price applied</span>
+                    </div> -->
                   </div>
                 </td>
                 <td class="border-b p-2 border-gray-200 text-end font-semibold">
                   <div class="flex flex-col justify-between">
-                    <span class="font-semibold">{{ (item.qty * item.price).toLocaleString('en-us') }}</span>
-                    <span v-if="item.promotion_id && !item.is_foc" class="font-semibold">- {{ (item.qty *
-                      item.discount_amount).toLocaleString('en-us') }}</span>
+                    <span class="font-semibold">{{ (lineQuantity(item) * lineFinalPrice(item)).toLocaleString('en-us') }}</span>
+                    <span v-if="!item.is_foc && lineFinalPrice(item) !== Number(item.original_price ?? item.price)" class="text-xs font-normal text-gray-400 line-through">{{ (lineQuantity(item) * Number(item.original_price ?? item.price)).toLocaleString('en-us') }}</span>
                   </div>
                 </td>
                 <td class="border-b p-2 border-gray-200">
@@ -1196,20 +1393,20 @@ function printSlip(isSale = true) {
             label="Reset" severity="danger" 
             :icon="useCustomer.loading || useSales.loading ? 'fa fa-spinner' : 'fa fa-rotate-left'"
             :isLoading="useCustomer.loading || useSales.loading" 
-            :disabled="selectedProducts.length === 0 || useCustomer.loading || useSales.loading" @click="resetData" 
+            :disabled="selectedProducts.length === 0 || useCustomer.loading || useSales.loading || promotionRecalculationLoading" @click="resetData"
           />
           <BaseButton 
             label="Hold" severity="secondary" 
-            :icon="useCustomer.loading || useSales.loading ? 'fa fa-spinner' : 'fa fa-hand'"
-            :isLoading="useCustomer.loading || useSales.loading"
-            :disabled="selectedProducts.length === 0 || selectedHold.length != 0 || useCustomer.loading || useSales.loading || (Number(remainingBalance) < 0 && salesData.paymentId == 3)"
+            :icon="useCustomer.loading || useSales.loading || promotionRecalculationLoading ? 'fa fa-spinner' : 'fa fa-hand'"
+            :isLoading="useCustomer.loading || useSales.loading || promotionRecalculationLoading"
+            :disabled="selectedProducts.length === 0 || selectedHold.length != 0 || useCustomer.loading || useSales.loading || promotionRecalculationLoading || (Number(remainingBalance) < 0 && salesData.paymentId == 3)"
             @click="holdSale" 
           />
           <BaseButton 
             label="Pay" severity="primary" 
-            :icon="useCustomer.loading || useSales.loading ? 'fa fa-spinner' : 'fa fa-credit-card'"
-            :isLoading="useCustomer.loading || useSales.loading"
-            :disabled="selectedProducts.length === 0 || useCustomer.loading || useSales.loading || (Number(remainingBalance) < 0 && salesData.paymentId == 3)"
+            :icon="useCustomer.loading || useSales.loading || promotionRecalculationLoading ? 'fa fa-spinner' : 'fa fa-credit-card'"
+            :isLoading="useCustomer.loading || useSales.loading || promotionRecalculationLoading"
+            :disabled="selectedProducts.length === 0 || useCustomer.loading || useSales.loading || promotionRecalculationLoading || (Number(remainingBalance) < 0 && salesData.paymentId == 3)"
             @click="onPayClick" 
           />
         </div>

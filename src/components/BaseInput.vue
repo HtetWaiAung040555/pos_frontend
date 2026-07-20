@@ -54,6 +54,18 @@ const props = defineProps({
   isRequire: {
     type: Boolean,
     default: false
+  },
+  min: {
+    type: [String, Number],
+    default: undefined,
+  },
+  max: {
+    type: [String, Number],
+    default: undefined,
+  },
+  step: {
+    type: [String, Number],
+    default: undefined,
   }
 });
 
@@ -132,6 +144,9 @@ function togglePassword() {
         :placeholder="placeholder"
         :disabled="disabled"
         :readonly="readonly"
+        :min="min"
+        :max="max"
+        :step="step"
         :style="{ height: styleHeight }"
         :class="`
           border rounded text-[14px] outline-none transition text-black placeholder:text-[13px] placeholder:text-[#7f858b] focus:border-black w-full

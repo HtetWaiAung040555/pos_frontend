@@ -12,6 +12,7 @@ export const usePromotionStore = defineStore('promotion', {
         deleteLoading: false,
         data: null,
         error: [],
+        validationErrors: {},
     }),
 
     actions: {
@@ -42,10 +43,14 @@ export const usePromotionStore = defineStore('promotion', {
         async addPromo(formData) {
             this.loading = true;
             this.error = [];
+            this.validationErrors = {};
             try {
                 const response = await axios.post(`/promotions`, formData);
                 this.promoList = response.data.data;
             } catch (err) {
+                if (err.response?.status === 422 && err.response?.data?.errors) {
+                    this.validationErrors = err.response.data.errors;
+                }
                 this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;
@@ -54,10 +59,14 @@ export const usePromotionStore = defineStore('promotion', {
         async editPromo(formData, id) {
             this.loading = true;
             this.error = [];
+            this.validationErrors = {};
             try {
                 const response = await axios.put(`/promotions/${id}`, formData);
                 this.promoList = response.data.data;
             } catch (err) {
+                if (err.response?.status === 422 && err.response?.data?.errors) {
+                    this.validationErrors = err.response.data.errors;
+                }
                 this.error = normalizeApiError(err);
             } finally {
                 this.loading = false;

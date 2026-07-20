@@ -61,9 +61,20 @@ export function promotionUomPayload(product) {
 }
 
 export function promotionProductPayload(product) {
+  const uom = promotionUomPayload(product);
+
+  if (Object.prototype.hasOwnProperty.call(product || {}, 'productUnitId')) {
+    const productUnitId = Number(product.productUnitId || 0);
+    uom.product_unit_id = productUnitId || null;
+
+    if (!productUnitId) {
+      uom.unit_id = null;
+    }
+  }
+
   return {
     product_id: Number(product.id),
-    ...promotionUomPayload(product),
+    ...uom,
   };
 }
 

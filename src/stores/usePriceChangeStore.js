@@ -10,6 +10,7 @@ export const usePriceChangeStore = defineStore('Price Change', {
         priceChangeList: [],
         loading: false,
         deleteLoading: false,
+        endLoading: false,
         data: [],
         error: [],
     }),
@@ -73,6 +74,20 @@ export const usePriceChangeStore = defineStore('Price Change', {
                 this.error = normalizeApiError(err);
             } finally {
                 this.deleteLoading = false;
+            }
+        },
+        async endPriceChange(id, payload) {
+            this.endLoading = true;
+            this.error = [];
+            try {
+                const response = await axios.post(`/pricechanges/${id}/end`, payload);
+                this.data = response;
+                return response.data.data;
+            } catch (err) {
+                this.error = normalizeApiError(err);
+                return null;
+            } finally {
+                this.endLoading = false;
             }
         }
     }

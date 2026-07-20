@@ -29,7 +29,7 @@ const props = defineProps({
   isLoading: {type: Boolean, default: false},
   defaultSort: {type: Object, default: () => ({key: null, order: 'desc'})},
   isEdit: {type: [Boolean, Function], default: true},
-  isDelete: {type: Boolean, default: true},
+  isDelete: {type: [Boolean, Function], default: true},
   isAdjust: {type: Boolean, default: false},
   filename: {type: String, default: 'export'},
   isSearchable: {type: Boolean, default: false},
@@ -121,6 +121,13 @@ function isEditDisabled(row) {
     return props.isEdit(row);
   }
   return props.isEdit;
+}
+
+function isDeleteDisabled(row) {
+  if (typeof props.isDelete === 'function') {
+    return props.isDelete(row);
+  }
+  return props.isDelete;
 }
 
 function isEmptyGroupValue(val) {
@@ -382,10 +389,10 @@ watch(
 </script>
 
 <template>
-  <div class="bg-white text-black rounded-lg shadow p-4 mt-3">
+  <div class="mt-3 rounded-lg bg-white p-3 text-black shadow sm:p-4">
     <!-- Search -->
     <div class="mb-3">
-      <div class="flex items-center gap-2">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-start">
         <div class="flex-1">
           <slot name="filters">
             <!-- Default fallback: search input -->
@@ -397,7 +404,7 @@ watch(
             />
           </slot>
         </div>
-        <div v-if="isExcelExport" class="">
+        <div v-if="isExcelExport" class="self-end sm:self-auto">
           <BaseButton
             label="Export"
             icon="fa fa-file-excel"
@@ -417,14 +424,14 @@ watch(
     >
 
       <!-- Table -->
-      <div class="flex-1 min-h-0 overflow-y-auto">
-        <table class="w-full">
+      <div class="data-table-scroll flex-1 min-h-0 overflow-auto">
+        <table class="w-full min-w-max">
           <thead class="sticky top-0 z-10">
             <tr class="bg-gray-100">
               <th
                 v-for="col in columns"
                 :key="col.key"
-                :class="['px-4 py-2 cursor-pointer select-none text-black', getAlignClass(col.align)]"
+                :class="['px-4 py-2 cursor-pointer select-none text-black', getAlignClass(col.align), col.class]"
                 @click="changeSort(col.key)"
               >
                 {{ col.label }}
@@ -434,7 +441,7 @@ watch(
               </th>
               <th 
                 v-if="props.isAction"
-                class="px-4 py-2 cursor-pointer select-none text-black"
+                class="data-table-actions px-4 py-2 cursor-pointer select-none text-black"
               >
                 Action
               </th>
@@ -461,7 +468,7 @@ watch(
                 <td
                   v-for="col in columns"
                   :key="col.key"
-                  :class="['p-2', getAlignClass(col.align)]"
+                  :class="['p-2', getAlignClass(col.align), col.class]"
                 >
                   <template v-if="col.key === totalsConfig.labelColumnKey">
                     {{ row.__label }}
@@ -473,38 +480,49 @@ watch(
                     {{ totalsConfig.blankValue }}
                   </template>
                 </td>
-                <td v-if="props.isAction" class="p-2 text-center w-[120px]"></td>
+                <td v-if="props.isAction" class="data-table-actions p-2 text-center w-[120px]"></td>
               </template>
               <template v-else>
                 <td
                   v-for="col in columns"
                   :key="col.key"
-                  :class="['p-2', getAlignClass(col.align)]"
+                  :class="['p-2', getAlignClass(col.align), col.class]"
                 >
-                  <template v-if="col.onClick">
+                  <div :class="col.contentClass">
+                    <template v-if="col.onClick">
+                      <span
+                        class="cursor-pointer text-blue-600 hover:underline"
+                        @click="() => col.onClick(row)"
+                      >
+                        {{ col.formatter ? col.formatter(row) : row[col.key] }}
+                      </span>
+                    </template>
+                    <template v-else-if="col.to">
+                      <router-link
+                        class="cursor-pointer text-blue-600 hover:underline"
+                        :to="typeof col.to === 'function' ? col.to(row) : col.to"
+                      >
+                        {{ col.formatter ? col.formatter(row) : row[col.key] }}
+                      </router-link>
+                    </template>
+                    <span v-else v-html="col.formatter ? col.formatter(row) : row[col.key]"></span>
                     <span
-                      class="cursor-pointer text-blue-600 hover:underline"
-                      @click="() => col.onClick(row)"
+                      v-if="col.secondaryFormatter"
+                      :class="col.secondaryClass || 'mt-0.5 block text-xs text-gray-500'"
                     >
-                      {{ col.formatter ? col.formatter(row) : row[col.key] }}
+                      {{ col.secondaryFormatter(row) }}
                     </span>
-                  </template>
-                  <template v-else-if="col.to">
-                    <router-link
-                      class="cursor-pointer text-blue-600 hover:underline"
-                      :to="typeof col.to === 'function' ? col.to(row) : col.to"
-                    >
-                      {{ col.formatter ? col.formatter(row) : row[col.key] }}
-                    </router-link>
-                  </template>
-                  <span v-else v-html="col.formatter ? col.formatter(row) : row[col.key]"></span>
+                  </div>
                 </td>
-                <td class="p-2 text-center w-[120px]" v-if="props.isAction">
+                <td class="data-table-actions p-2 text-center w-[120px]" v-if="props.isAction">
+                  <slot name="row-actions" :row="row"></slot>
                   <router-link v-if="isAdjust" :to="{name: props.adjustPath, query: {id: row.id}}">
                     <BaseButton 
                       icon="pi pi-sliders-h" 
                       variant="text" 
-                      size="sm" 
+                      size="sm"
+                      title="Adjust"
+                      aria-label="Adjust"
                     />
                   </router-link>
                   <router-link :to="{name: props.editPath, query: {id: row.id}}">
@@ -513,6 +531,8 @@ watch(
                       variant="text" 
                       severity="info" 
                       size="sm" 
+                      title="Edit"
+                      aria-label="Edit"
                       :disabled="isEditDisabled(row)"
                     />
                   </router-link>
@@ -522,6 +542,8 @@ watch(
                     variant="text" 
                     severity="success" 
                     size="sm" 
+                    title="Copy"
+                    aria-label="Copy"
                     @click="$emit('copy', row)"
                   />
                   <BaseButton 
@@ -529,8 +551,10 @@ watch(
                     variant="text" 
                     severity="danger" 
                     size="sm" 
+                    title="Delete"
+                    aria-label="Delete"
                     @click="openModal(row.id)" 
-                    :disabled="isDelete"
+                    :disabled="isDeleteDisabled(row)"
                   />
                 </td>
               </template>

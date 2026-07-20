@@ -15,6 +15,14 @@ export function normalizeApiError(err) {
         return [res.data?.message || 'Email or password incorrect.']
     }
 
+    if (res.status === 403) {
+        return [res.data?.message || 'You do not have permission to perform this action.'];
+    }
+
+    if (res.status === 409) {
+        return [res.data?.message || 'The record changed and this action can no longer be completed.'];
+    }
+
     // 500 → server error
     if (res.status === 500) {
         return [res.data?.error || 'Server error'];
