@@ -3,6 +3,7 @@ import { useRouter } from 'vue-router';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import moment from 'moment';
 import axios from 'axios';
+import * as XLSX from 'xlsx';
 import BaseInput from '@/components/BaseInput.vue';
 import BaseLabel from '@/components/BaseLabel.vue';
 import BaseButton from '@/components/BaseButton.vue';
@@ -17,12 +18,22 @@ import { useBranchStore } from '@/stores/useBranchStore';
 import { useProductStore } from '@/stores/useProductStore';
 import { usePriceChangeStore } from '@/stores/usePriceChangeStore';
 import {
+    normalizeCell,
+    readNormalizedSheetRows,
+    readWorkbookFromFile,
+} from '@/utils/excelImport';
+import {
+    PRICE_CHANGE_TARGETS,
     buildAllTargetRows,
     formatRange,
+    isBranchTarget,
     isRangeTarget,
+    isUomTarget,
     payloadForTargetRow,
+    productUnits,
     targetLabel,
     toNumber,
+    unitName,
     validatePriceChangeDates,
     validatePriceChangeRows,
 } from '@/utils/priceChangeTargets';
@@ -50,6 +61,13 @@ const selectionBuffer = ref([]);
 const isProductDialogVisible = ref(false);
 const productSearchInput = ref(null);
 const productPage = ref(1);
+const importInputRef = ref(null);
+const isImporting = ref(false);
+const importPreview = ref({
+    visible: false,
+    fileName: '',
+    rows: [],
+});
 const changedOnly = ref(false);
 const expandedProductIds = ref([]);
 const productEditorState = ref({});
@@ -57,6 +75,11 @@ const rangeModal = ref({
     visible: false,
     title: '',
     rows: [],
+});
+const branchPicker = ref({
+    visible: false,
+    productId: null,
+    search: '',
 });
 const errorMsg = ref({
     date: '',
@@ -82,6 +105,18 @@ const PRICE_EDITOR_TABS = [
     { value: 'RANGE', label: 'Ranges' },
 ];
 const PRODUCT_PAGE_SIZE = 50;
+const IMPORT_SHEET_NAMES = ['Price Changes', 'Price_Changes', 'Sales Price Changes'];
+const IMPORT_COLUMNS = [
+    'barcode',
+    'unit_name',
+    'target_type',
+    'branch_name',
+    'min_qty',
+    'max_qty',
+    'new_price',
+];
+const CREATE_PRICE_CHANGE_TARGETS = PRICE_CHANGE_TARGETS.filter((target) => target.value !== 'GLOBAL_PRODUCT_PRICE');
+const SUPPORTED_TARGET_TYPES = new Set(CREATE_PRICE_CHANGE_TARGETS.map((target) => target.value));
 
 function changeRoute(pathname) {
     router.push(pathname);
@@ -101,8 +136,77 @@ onMounted(async () => {
 });
 
 const branchOptions = computed(() => useBranch.branchList || []);
+const importValidRows = computed(() => importPreview.value.rows.filter((row) => !row.errors.length));
+const importErrorCount = computed(() => importPreview.value.rows.filter((row) => row.errors.length).length);
+const importWarningCount = computed(() => importPreview.value.rows.filter((row) => row.warnings.length).length);
 
-const changedRows = computed(() => selectedRows.value.filter((row) => Number(row.new_price) !== Number(row.old_price)));
+function buildCreateTargetRows(product) {
+    return buildAllTargetRows(product, branchOptions.value)
+        .filter((row) => row.target_type !== 'GLOBAL_PRODUCT_PRICE');
+}
+
+function primaryProductUnit(product) {
+    const units = productUnits(product);
+    const configuredDefaultId = product?.default_product_unit?.id || product?.default_product_unit_id;
+
+    return units.find((unit) => configuredDefaultId && Number(unit.id || unit.product_unit_id) === Number(configuredDefaultId))
+        || units.find((unit) => unit.is_default_sale_unit)
+        || units.find((unit) => unit.is_base_unit)
+        || units[0]
+        || null;
+}
+
+function syncedGlobalProductRow(globalUomRow) {
+    const product = productList.value.find((item) => Number(item.id) === Number(globalUomRow.product_id));
+    const primaryUnit = primaryProductUnit(product);
+    const primaryUnitId = primaryUnit?.id || primaryUnit?.product_unit_id;
+    if (!product || !primaryUnitId || Number(globalUomRow.product_unit_id) !== Number(primaryUnitId)) return null;
+
+    return {
+        ...globalUomRow,
+        rowKey: `SYNCED_GLOBAL_PRODUCT_PRICE:${product.id}`,
+        target_type: 'GLOBAL_PRODUCT_PRICE',
+        branch_id: null,
+        branch_name: '-',
+        branch_product_id: null,
+        product_unit_id: null,
+        branch_product_unit_price_id: null,
+        product_unit_price_range_id: null,
+        branch_product_unit_price_range_id: null,
+        unit_name: '-',
+        min_qty: null,
+        max_qty: null,
+        old_price: toNumber(product.price),
+        new_price: toNumber(globalUomRow.new_price),
+        old_price_source: 'Synced from primary UOM price',
+        is_synced: true,
+    };
+}
+
+function isPrimaryGlobalUomRow(row) {
+    return row?.target_type === 'GLOBAL_UOM_PRICE' && !!syncedGlobalProductRow(row);
+}
+
+function rowsWithSyncedGlobalProductPrices(rows) {
+    const visibleRows = (rows || []).filter((row) => row.target_type !== 'GLOBAL_PRODUCT_PRICE');
+    const syncedProductIds = new Set();
+    const result = [...visibleRows];
+
+    visibleRows
+        .filter((row) => row.target_type === 'GLOBAL_UOM_PRICE')
+        .forEach((row) => {
+            const syncedRow = syncedGlobalProductRow(row);
+            if (!syncedRow || syncedProductIds.has(Number(syncedRow.product_id))) return;
+            syncedProductIds.add(Number(syncedRow.product_id));
+            result.push(syncedRow);
+        });
+
+    return result;
+}
+
+const changedRows = computed(() => selectedRows.value.filter((row) => (
+    isRowAvailableForEditing(row) && Number(row.new_price) !== Number(row.old_price)
+)));
 
 const selectedProductCount = computed(() => new Set(selectedRows.value.map((row) => Number(row.product_id))).size);
 
@@ -126,8 +230,10 @@ function buildPromotionConflictTargets(rows) {
     }, []);
 }
 
-const promotionConflictSourceRows = computed(() => (
-    changedRows.value.length ? changedRows.value : selectedRows.value
+const promotionConflictSourceRows = computed(() => rowsWithSyncedGlobalProductPrices(
+    changedRows.value.length
+        ? changedRows.value
+        : selectedRows.value.filter(isRowAvailableForEditing),
 ));
 
 const promotionConflictTargets = computed(() => buildPromotionConflictTargets(promotionConflictSourceRows.value));
@@ -180,7 +286,8 @@ const productGroups = computed(() => {
     });
 
     return [...groupMap.values()].map((group) => {
-        const visibleRows = changedOnly.value ? group.rows.filter(isChangedRow) : group.rows;
+        const editableRows = group.rows.filter(isRowAvailableForEditing);
+        const visibleRows = changedOnly.value ? editableRows.filter(isChangedRow) : editableRows;
         const nonRangeRows = visibleRows.filter((row) => !isRangeTarget(row.target_type));
         const rangeRows = visibleRows.filter((row) => isRangeTarget(row.target_type));
         const branchMap = new Map();
@@ -200,10 +307,14 @@ const productGroups = computed(() => {
             ...group,
             visibleRows,
             globalRows: nonRangeRows.filter((row) => !row.branch_id),
-            branchGroups: [...branchMap.values()],
+            branchGroups: [...branchMap.values()].map((branchGroup) => ({
+                ...branchGroup,
+                inheritedCount: branchGroup.rows.filter((row) => row.inherits_global_price).length,
+                createCount: branchGroup.rows.filter((row) => row.will_create_branch_price).length,
+            })),
             rangeGroups: groupRangeRows(rangeRows),
-            changedCount: group.rows.filter(isChangedRow).length,
-            totalCount: group.rows.length,
+            changedCount: editableRows.filter(isChangedRow).length,
+            totalCount: editableRows.length,
         };
     }).filter((group) => group.visibleRows.length);
 });
@@ -319,7 +430,7 @@ function goToNextProductPage() {
 
 function confirmProductSelection() {
     const existingByKey = new Map(selectedRows.value.map((row) => [row.rowKey, row]));
-    const rows = selectionBuffer.value.flatMap((product) => buildAllTargetRows(product, branchOptions.value));
+    const rows = selectionBuffer.value.flatMap(buildCreateTargetRows);
     const selectedProductIds = new Set(selectionBuffer.value.map((product) => Number(product.id)));
     const customRows = selectedRows.value.filter((row) => row.is_custom && selectedProductIds.has(Number(row.product_id)));
 
@@ -335,6 +446,623 @@ function confirmProductSelection() {
 
 function cancelProductSelection() {
     isProductDialogVisible.value = false;
+}
+
+function normalizeImportLookup(value) {
+    return normalizeCell(value).toLowerCase();
+}
+
+function normalizeImportTargetType(value) {
+    return normalizeCell(value).toUpperCase().replace(/[\s-]+/g, '_');
+}
+
+function parseImportNumber(value, label, errors, { required = false } = {}) {
+    const rawValue = normalizeCell(value);
+    if (!rawValue) {
+        if (required) errors.push(`${label} is required.`);
+        return null;
+    }
+
+    const parsed = Number(rawValue.replace(/,/g, ''));
+    if (!Number.isFinite(parsed)) {
+        errors.push(`${label} must be a valid number.`);
+        return null;
+    }
+    if (parsed < 0) {
+        errors.push(`${label} cannot be negative.`);
+        return null;
+    }
+    return parsed;
+}
+
+function importBarcode(row) {
+    return normalizeCell(
+        row.barcode
+        || row.unit_barcode
+        || row.product_unit_barcode
+        || row.product_barcode
+    );
+}
+
+function resolveImportBarcode(row, errors) {
+    const barcode = importBarcode(row);
+    if (!barcode) {
+        errors.push('Barcode is required.');
+        return null;
+    }
+
+    const normalizedBarcode = barcode.toLowerCase();
+    const unitMatches = [];
+    productList.value.forEach((product) => {
+        productUnits(product).forEach((productUnit) => {
+            if (normalizeImportLookup(productUnit.barcode) !== normalizedBarcode) return;
+            unitMatches.push({ product, productUnit });
+        });
+    });
+
+    if (unitMatches.length > 1) {
+        errors.push(`Unit barcode "${barcode}" is not unique.`);
+        return null;
+    }
+
+    const productMatches = productList.value.filter((product) => (
+        normalizeImportLookup(product.barcode) === normalizedBarcode
+    ));
+    if (unitMatches.length === 1) {
+        const matchedProductId = Number(unitMatches[0].product?.id || 0);
+        const conflictingProducts = productMatches.filter((product) => Number(product.id || 0) !== matchedProductId);
+        if (conflictingProducts.length) {
+            errors.push(`Barcode "${barcode}" is used by more than one product or product unit.`);
+            return null;
+        }
+        return unitMatches[0];
+    }
+
+    if (!productMatches.length) {
+        errors.push(`Barcode "${barcode}" was not found in any product or product unit.`);
+        return null;
+    }
+    if (productMatches.length > 1) {
+        errors.push(`Product barcode "${barcode}" is not unique.`);
+        return null;
+    }
+    return {
+        product: productMatches[0],
+        productUnit: null,
+    };
+}
+
+function resolveImportBranch(row, targetType, errors) {
+    if (!isBranchTarget(targetType)) return null;
+
+    const branchName = normalizeCell(row.branch_name || row.branch);
+    if (!branchName) {
+        errors.push('Branch name is required for a branch target.');
+        return null;
+    }
+
+    const matches = branchOptions.value.filter((branch) => (
+        normalizeImportLookup(branch.name) === branchName.toLowerCase()
+    ));
+    if (!matches.length) {
+        errors.push(`Branch "${branchName}" was not found. Download a fresh template if it was renamed.`);
+        return null;
+    }
+    if (matches.length > 1) {
+        errors.push(`Branch name "${branchName}" is not unique.`);
+        return null;
+    }
+    return matches[0];
+}
+
+function resolveImportProductUnit(row, barcodeMatch, targetType, errors, warnings) {
+    if (!isUomTarget(targetType)) return null;
+
+    const product = barcodeMatch?.product;
+    const importedUnitName = normalizeCell(row.unit_name || row.uom);
+    const barcodeProductUnit = barcodeMatch?.productUnit;
+    if (barcodeProductUnit) {
+        const resolvedUnitName = unitName(barcodeProductUnit);
+        if (importedUnitName && normalizeImportLookup(resolvedUnitName) !== importedUnitName.toLowerCase()) {
+            warnings.push(`Unit name "${importedUnitName}" does not match the barcode; current unit "${resolvedUnitName}" will be used.`);
+        }
+
+        const productUnitId = barcodeProductUnit.id || barcodeProductUnit.product_unit_id;
+        if (!productUnitId) {
+            errors.push(`Unit barcode "${importBarcode(row)}" does not have a configured product unit ID.`);
+            return null;
+        }
+        return barcodeProductUnit;
+    }
+
+    if (!importedUnitName) {
+        errors.push('Unit name is required when the barcode does not identify a specific product unit.');
+        return null;
+    }
+
+    const matches = productUnits(product).filter((productUnit) => (
+        normalizeImportLookup(unitName(productUnit)) === importedUnitName.toLowerCase()
+    ));
+    if (!matches.length) {
+        errors.push(`Unit "${importedUnitName}" was not found for this product. Download a fresh template if it was renamed.`);
+        return null;
+    }
+    if (matches.length > 1) {
+        errors.push(`Unit name "${importedUnitName}" is not unique for this product.`);
+        return null;
+    }
+
+    const productUnitId = matches[0].id || matches[0].product_unit_id;
+    if (!productUnitId) {
+        errors.push(`Unit "${importedUnitName}" does not have a configured product unit ID.`);
+        return null;
+    }
+    return matches[0];
+}
+
+function sameOptionalNumber(left, right) {
+    const leftBlank = left === '' || left === null || left === undefined;
+    const rightBlank = right === '' || right === null || right === undefined;
+    if (leftBlank || rightBlank) return leftBlank && rightBlank;
+    return Number(left) === Number(right);
+}
+
+function rowMatchesImportTarget(row, { product, targetType, branch, productUnit, minQty, maxQty }) {
+    if (Number(row.product_id) !== Number(product?.id)) return false;
+    if (row.target_type !== targetType) return false;
+    if (Number(row.branch_id || 0) !== Number(branch?.id || 0)) return false;
+
+    const productUnitId = productUnit?.id || productUnit?.product_unit_id || 0;
+    if (Number(row.product_unit_id || 0) !== Number(productUnitId)) return false;
+    if (!isRangeTarget(targetType)) return true;
+
+    return Number(row.min_qty) === Number(minQty)
+        && sameOptionalNumber(row.max_qty, maxQty);
+}
+
+function resolveImportTargetRow(importContext, errors) {
+    const {
+        product,
+        targetType,
+        branch,
+        productUnit,
+        minQty,
+        maxQty,
+        newPrice,
+        excelRow,
+    } = importContext;
+
+    const existingFormRow = selectedRows.value.find((row) => rowMatchesImportTarget(row, importContext));
+    if (existingFormRow) {
+        return {
+            ...existingFormRow,
+            new_price: newPrice,
+        };
+    }
+
+    const candidates = buildCreateTargetRows(product).filter((row) => (
+        row.target_type === targetType
+        && Number(row.branch_id || 0) === Number(branch?.id || 0)
+        && Number(row.product_unit_id || 0) === Number(productUnit?.id || productUnit?.product_unit_id || 0)
+    ));
+
+    const exactTarget = candidates.find((row) => (
+        !isRangeTarget(targetType)
+        || (Number(row.min_qty) === Number(minQty) && sameOptionalNumber(row.max_qty, maxQty))
+    ));
+    if (exactTarget) {
+        return {
+            ...exactTarget,
+            new_price: newPrice,
+        };
+    }
+
+    if (!isRangeTarget(targetType)) {
+        errors.push('The requested price target could not be resolved for this product.');
+        return null;
+    }
+
+    const baseRange = candidates[0];
+    if (!baseRange) {
+        errors.push('The requested range target could not be resolved for this product and unit.');
+        return null;
+    }
+
+    return {
+        ...baseRange,
+        rowKey: `${baseRange.rowKey}:import:${excelRow}`,
+        is_custom: true,
+        product_unit_price_range_id: null,
+        branch_product_unit_price_range_id: null,
+        will_create_branch_price: !!branch?.id,
+        min_qty: minQty,
+        max_qty: maxQty,
+        new_price: newPrice,
+    };
+}
+
+function importTargetKey(row) {
+    return [
+        row.product?.id || 0,
+        row.targetType,
+        row.branch?.id || 0,
+        row.productUnit?.id || row.productUnit?.product_unit_id || 0,
+        isRangeTarget(row.targetType) ? row.minQty : '-',
+        isRangeTarget(row.targetType) ? (row.maxQty ?? 'open') : '-',
+    ].join(':');
+}
+
+function rangeBoundaryKey(row) {
+    return `${Number(row.min_qty)}:${row.max_qty === null || row.max_qty === undefined || row.max_qty === '' ? 'open' : Number(row.max_qty)}`;
+}
+
+function rangeImportGroupKey(row) {
+    return [
+        row.product?.id || 0,
+        row.targetType,
+        row.branch?.id || 0,
+        row.productUnit?.id || row.productUnit?.product_unit_id || 0,
+    ].join(':');
+}
+
+function appendRangeLayoutErrors(importRows) {
+    const groups = new Map();
+    importRows
+        .filter((row) => !row.errors.length && isRangeTarget(row.targetType))
+        .forEach((row) => {
+            const key = rangeImportGroupKey(row);
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(row);
+        });
+
+    groups.forEach((groupRows) => {
+        const sample = groupRows[0];
+        const importedBoundaries = new Set(groupRows.map((row) => rangeBoundaryKey(row.resolvedRow)));
+        const existingRangeMap = new Map();
+        buildCreateTargetRows(sample.product)
+            .concat(selectedRows.value)
+            .filter((row) => (
+                row.target_type === sample.targetType
+                && Number(row.product_id) === Number(sample.product.id)
+                && Number(row.branch_id || 0) === Number(sample.branch?.id || 0)
+                && Number(row.product_unit_id || 0) === Number(sample.productUnit?.id || sample.productUnit?.product_unit_id || 0)
+                && (row.product_unit_price_range_id || row.branch_product_unit_price_range_id || row.is_custom)
+                && !importedBoundaries.has(rangeBoundaryKey(row))
+            ))
+            .forEach((row) => existingRangeMap.set(rangeBoundaryKey(row), { row, importRow: null }));
+
+        const layout = [...existingRangeMap.values()]
+            .concat(groupRows.map((importRow) => ({ row: importRow.resolvedRow, importRow })))
+            .sort((left, right) => Number(left.row.min_qty) - Number(right.row.min_qty));
+
+        for (let index = 0; index < layout.length - 1; index += 1) {
+            const current = layout[index];
+            const next = layout[index + 1];
+            const currentHasNoMaximum = current.row.max_qty === null
+                || current.row.max_qty === undefined
+                || current.row.max_qty === '';
+            const affectedImportRows = [current.importRow, next.importRow].filter(Boolean);
+
+            if (currentHasNoMaximum) {
+                affectedImportRows.forEach((row) => {
+                    const message = 'Only the final quantity range can have a blank max qty.';
+                    if (!row.errors.includes(message)) row.errors.push(message);
+                });
+                continue;
+            }
+
+            if (Number(current.row.max_qty) >= Number(next.row.min_qty)) {
+                affectedImportRows.forEach((row) => {
+                    const message = 'Quantity ranges overlap an existing or imported range.';
+                    if (!row.errors.includes(message)) row.errors.push(message);
+                });
+            }
+        }
+    });
+}
+
+function buildImportPreviewRow(rawRow, index) {
+    const errors = [];
+    const warnings = [];
+    const excelRow = index + 2;
+    const targetType = normalizeImportTargetType(rawRow.target_type || rawRow.target);
+
+    if (!SUPPORTED_TARGET_TYPES.has(targetType)) {
+        errors.push(`Target type "${normalizeCell(rawRow.target_type || rawRow.target)}" is not supported.`);
+    }
+
+    const barcodeMatch = resolveImportBarcode(rawRow, errors);
+    const product = barcodeMatch?.product || null;
+    const branch = targetType ? resolveImportBranch(rawRow, targetType, errors) : null;
+    const productUnit = barcodeMatch && targetType
+        ? resolveImportProductUnit(rawRow, barcodeMatch, targetType, errors, warnings)
+        : null;
+    const importedNewPrice = normalizeCell(rawRow.new_price) ? rawRow.new_price : rawRow.price;
+    const newPrice = parseImportNumber(importedNewPrice, 'New price', errors, { required: true });
+    const minQty = isRangeTarget(targetType)
+        ? parseImportNumber(rawRow.min_qty, 'Min qty', errors, { required: true })
+        : null;
+    const maxQty = isRangeTarget(targetType)
+        ? parseImportNumber(rawRow.max_qty, 'Max qty', errors)
+        : null;
+
+    if (isRangeTarget(targetType) && minQty !== null && maxQty !== null && maxQty < minQty) {
+        errors.push('Max qty must be greater than or equal to min qty.');
+    }
+    if (!isBranchTarget(targetType) && normalizeCell(rawRow.branch_name || rawRow.branch)) {
+        warnings.push('Branch name is ignored for a global target.');
+    }
+    if (!isUomTarget(targetType) && normalizeCell(rawRow.unit_name || rawRow.uom)) {
+        warnings.push('Unit name is ignored for a product-level target.');
+    }
+    if (!isRangeTarget(targetType) && (normalizeCell(rawRow.min_qty) || normalizeCell(rawRow.max_qty))) {
+        warnings.push('Min qty and max qty are ignored for a non-range target.');
+    }
+
+    const importContext = {
+        product,
+        targetType,
+        branch,
+        productUnit,
+        minQty,
+        maxQty,
+        newPrice,
+        excelRow,
+    };
+    const resolvedRow = errors.length ? null : resolveImportTargetRow(importContext, errors);
+    if (resolvedRow && Number(resolvedRow.old_price) === Number(newPrice)) {
+        warnings.push('New price matches the current price and will not be saved unless it is changed.');
+    }
+    const existingFormRow = resolvedRow
+        ? selectedRows.value.find((row) => rowMatchesImportTarget(row, importContext))
+        : null;
+    if (
+        existingFormRow
+        && Number(existingFormRow.new_price) !== Number(existingFormRow.old_price)
+        && Number(existingFormRow.new_price) !== Number(newPrice)
+    ) {
+        warnings.push(`This import will replace the unsaved form price ${formatPrice(existingFormRow.new_price)}.`);
+    }
+
+    return {
+        excelRow,
+        rawRow,
+        errors,
+        warnings,
+        product,
+        branch,
+        productUnit,
+        targetType,
+        minQty,
+        maxQty,
+        newPrice,
+        resolvedRow,
+    };
+}
+
+function openImportPicker() {
+    if (isProductSetupLoading.value || isImporting.value) return;
+    importInputRef.value?.click();
+}
+
+function closeImportPreview() {
+    importPreview.value = {
+        visible: false,
+        fileName: '',
+        rows: [],
+    };
+}
+
+function worksheetFromRows(rows, widths) {
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet['!cols'] = widths.map((width) => ({ wch: width }));
+    if (rows[0]?.length) {
+        worksheet['!autofilter'] = {
+            ref: `A1:${XLSX.utils.encode_col(rows[0].length - 1)}1`,
+        };
+    }
+    return worksheet;
+}
+
+function downloadImportTemplate() {
+    if (isProductSetupLoading.value) return;
+
+    const workbook = XLSX.utils.book_new();
+    const importSheet = worksheetFromRows([IMPORT_COLUMNS], [20, 18, 25, 22, 12, 12, 16]);
+    XLSX.utils.book_append_sheet(workbook, importSheet, 'Price Changes');
+
+    const instructions = [
+        ['Sales Price Change Import'],
+        ['Enter one price target per row in the Price Changes sheet. Do not rename the column headers.'],
+        ['Download a fresh template when product units or branch names have changed.'],
+        [],
+        ['Column', 'Required when', 'Rule'],
+        ['barcode', 'Every row', 'Use the unit barcode from Product Units. A legacy product barcode is also accepted.'],
+        ['unit_name', 'Optional with unit barcode', 'Used as a check; required only when the barcode does not identify a specific unit.'],
+        ['target_type', 'Every row', 'Use a supported target type from Target Types.'],
+        ['branch_name', 'Branch targets', 'Exact, unique branch name from Branches.'],
+        ['min_qty', 'Range targets', 'Number greater than or equal to zero.'],
+        ['max_qty', 'Optional range field', 'Blank means no maximum; only the final range may be blank.'],
+        ['new_price', 'Every row', 'Number greater than or equal to zero.'],
+    ];
+    XLSX.utils.book_append_sheet(
+        workbook,
+        worksheetFromRows(instructions, [24, 24, 70]),
+        'Instructions',
+    );
+
+    const productUnitRows = [['barcode', 'product_name', 'unit_name', 'current_price']];
+    productList.value.forEach((product) => {
+        productUnits(product).forEach((productUnit) => {
+            productUnitRows.push([
+                normalizeCell(productUnit.barcode || product.barcode),
+                normalizeCell(product.name),
+                unitName(productUnit),
+                toNumber(productUnit.price, product.price || 0),
+            ]);
+        });
+    });
+    XLSX.utils.book_append_sheet(
+        workbook,
+        worksheetFromRows(productUnitRows, [20, 32, 22, 16]),
+        'Product Units',
+    );
+
+    const branchRows = [['branch_name'], ...branchOptions.value.map((branch) => [normalizeCell(branch.name)])];
+    XLSX.utils.book_append_sheet(workbook, worksheetFromRows(branchRows, [30]), 'Branches');
+
+    const targetRows = [
+        ['target_type', 'description'],
+        ...CREATE_PRICE_CHANGE_TARGETS.map((target) => [target.value, target.label]),
+    ];
+    XLSX.utils.book_append_sheet(workbook, worksheetFromRows(targetRows, [28, 42]), 'Target Types');
+
+    XLSX.writeFile(workbook, 'sales_price_change_import_template.xlsx');
+}
+
+async function onImportExcel(event) {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+    if (!/\.xlsx?$/i.test(file.name)) {
+        toast.add({
+            severity: 'error',
+            summary: 'Import Failed',
+            detail: 'Please select an .xlsx or .xls file.',
+            life: 3500,
+        });
+        if (event?.target) event.target.value = '';
+        return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+        toast.add({
+            severity: 'error',
+            summary: 'Import Failed',
+            detail: 'The Excel file must be 5 MB or smaller.',
+            life: 3500,
+        });
+        if (event?.target) event.target.value = '';
+        return;
+    }
+
+    isImporting.value = true;
+    try {
+        const workbook = await readWorkbookFromFile(file);
+        const rows = readNormalizedSheetRows(workbook, IMPORT_SHEET_NAMES).filter((row) => (
+            IMPORT_COLUMNS.some((column) => normalizeCell(row[column]))
+            || importBarcode(row)
+        ));
+        if (!rows.length) {
+            toast.add({
+                severity: 'error',
+                summary: 'Import Failed',
+                detail: 'No price change rows were found in the Price Changes sheet.',
+                life: 4000,
+            });
+            return;
+        }
+
+        const previewRows = rows.map(buildImportPreviewRow);
+        const seenTargets = new Map();
+        previewRows.forEach((row) => {
+            if (!row.resolvedRow) return;
+            const key = importTargetKey(row);
+            if (seenTargets.has(key)) {
+                row.errors.push(`Duplicates Excel row ${seenTargets.get(key)}.`);
+                return;
+            }
+            seenTargets.set(key, row.excelRow);
+        });
+        appendRangeLayoutErrors(previewRows);
+
+        importPreview.value = {
+            visible: true,
+            fileName: file.name,
+            rows: previewRows,
+        };
+    } catch (error) {
+        console.error('Sales price change Excel import failed.', error);
+        toast.add({
+            severity: 'error',
+            summary: 'Import Failed',
+            detail: 'Unable to read this Excel file. Download a fresh template and try again.',
+            life: 4000,
+        });
+    } finally {
+        isImporting.value = false;
+        if (event?.target) event.target.value = '';
+    }
+}
+
+function preferredTabForTarget(targetType) {
+    if (isRangeTarget(targetType)) return 'RANGE';
+    if (isBranchTarget(targetType)) return 'BRANCH';
+    return 'GLOBAL';
+}
+
+function confirmPriceChangeImport() {
+    if (importErrorCount.value || !importValidRows.value.length) return;
+
+    const nextRows = selectedRows.value.map((row) => ({ ...row }));
+    const importedProducts = new Map();
+    importValidRows.value.forEach((row) => importedProducts.set(Number(row.product.id), row.product));
+
+    const rowsByKey = new Map(nextRows.map((row) => [row.rowKey, row]));
+    importedProducts.forEach((product) => {
+        buildCreateTargetRows(product).forEach((row) => {
+            if (rowsByKey.has(row.rowKey)) return;
+            const clonedRow = { ...row };
+            nextRows.push(clonedRow);
+            rowsByKey.set(clonedRow.rowKey, clonedRow);
+        });
+    });
+
+    const initializedProductTabs = new Set();
+    importValidRows.value.forEach((importRow) => {
+        const resolvedRow = { ...importRow.resolvedRow };
+        const existingRow = rowsByKey.get(resolvedRow.rowKey);
+        if (existingRow) {
+            existingRow.new_price = resolvedRow.new_price;
+            existingRow.min_qty = resolvedRow.min_qty;
+            existingRow.max_qty = resolvedRow.max_qty;
+        } else {
+            nextRows.push(resolvedRow);
+            rowsByKey.set(resolvedRow.rowKey, resolvedRow);
+        }
+
+        const state = productState(importRow.product.id);
+        if (importRow.branch?.id && !state.branchIds.some((id) => Number(id) === Number(importRow.branch.id))) {
+            state.branchIds = [...state.branchIds, Number(importRow.branch.id)];
+        }
+        if (!initializedProductTabs.has(Number(importRow.product.id))) {
+            state.tab = preferredTabForTarget(importRow.targetType);
+            initializedProductTabs.add(Number(importRow.product.id));
+        }
+    });
+
+    selectedRows.value = nextRows;
+    expandedProductIds.value = [
+        ...new Set([
+            ...expandedProductIds.value.map(Number),
+            ...importedProducts.keys(),
+        ]),
+    ];
+    errorMsg.value.products = '';
+
+    const appliedCount = importValidRows.value.length;
+    closeImportPreview();
+    toast.add({
+        severity: 'success',
+        summary: 'Import Applied',
+        detail: `${appliedCount} price change row(s) added to the form for review.`,
+        life: 3500,
+    });
+}
+
+function formatImportRange(row) {
+    if (!isRangeTarget(row.targetType)) return '-';
+    return row.maxQty === null || row.maxQty === undefined
+        ? `${row.minQty} and above`
+        : `${row.minQty} to ${row.maxQty}`;
 }
 
 function removeRow(rowKey) {
@@ -360,6 +1088,7 @@ function addCustomRange(row) {
         is_custom: true,
         product_unit_price_range_id: null,
         branch_product_unit_price_range_id: null,
+        will_create_branch_price: !!row.branch_id,
         min_qty: 0,
         max_qty: null,
         old_price: row.old_price,
@@ -399,9 +1128,104 @@ function productState(productId) {
             tab: 'GLOBAL',
             priceValueType: 'INCREASE',
             priceChangeValue: '',
+            branchIds: [],
         };
     }
     return productEditorState.value[key];
+}
+
+function selectedBranchIds(productId) {
+    return productEditorState.value[String(productId)]?.branchIds || [];
+}
+
+function isBranchSelected(productId, branchId) {
+    return selectedBranchIds(productId).some((id) => Number(id) === Number(branchId));
+}
+
+function isRowAvailableForEditing(row) {
+    return !row.branch_id || isBranchSelected(row.product_id, row.branch_id);
+}
+
+const branchPickerOptions = computed(() => {
+    const productId = Number(branchPicker.value.productId);
+    if (!productId) return [];
+
+    const branchesById = new Map();
+    branchOptions.value.forEach((branch) => {
+        if (branch?.id) branchesById.set(String(branch.id), branch);
+    });
+    selectedRows.value
+        .filter((row) => Number(row.product_id) === productId && row.branch_id)
+        .forEach((row) => {
+            if (!branchesById.has(String(row.branch_id))) {
+                branchesById.set(String(row.branch_id), {
+                    id: row.branch_id,
+                    name: row.branch_name,
+                });
+            }
+        });
+
+    const query = branchPicker.value.search.trim().toLowerCase();
+    return [...branchesById.values()].map((branch) => {
+        const branchRows = selectedRows.value.filter((row) => (
+            Number(row.product_id) === productId
+            && Number(row.branch_id) === Number(branch.id)
+        ));
+        return {
+            ...branch,
+            isAdded: isBranchSelected(productId, branch.id),
+            hasExistingPrice: branchRows.some((row) => (
+                row.branch_product_id
+                || row.branch_product_unit_price_id
+                || row.branch_product_unit_price_range_id
+            )),
+        };
+    }).filter((branch) => (
+        !query || (branch.name || '').toString().toLowerCase().includes(query)
+    ));
+});
+
+const branchPickerProductName = computed(() => (
+    selectedRows.value.find((row) => Number(row.product_id) === Number(branchPicker.value.productId))?.product_name || 'Product'
+));
+
+function openBranchPicker(productId) {
+    branchPicker.value = {
+        visible: true,
+        productId,
+        search: '',
+    };
+}
+
+function closeBranchPicker() {
+    branchPicker.value = {
+        visible: false,
+        productId: null,
+        search: '',
+    };
+}
+
+function addBranchToProduct(branchId) {
+    const productId = branchPicker.value.productId;
+    if (!productId || !branchId || isBranchSelected(productId, branchId)) return;
+
+    const state = productState(productId);
+    state.branchIds = [...state.branchIds, Number(branchId)];
+    closeBranchPicker();
+}
+
+function removeBranchFromProduct(productId, branchId) {
+    selectedRows.value = selectedRows.value.filter((row) => {
+        const belongsToBranch = Number(row.product_id) === Number(productId)
+            && Number(row.branch_id) === Number(branchId);
+        if (!belongsToBranch) return true;
+        if (row.is_custom) return false;
+
+        resetRow(row);
+        return true;
+    });
+    const state = productState(productId);
+    state.branchIds = state.branchIds.filter((id) => Number(id) !== Number(branchId));
 }
 
 function activeProductTab(productId) {
@@ -413,7 +1237,7 @@ function setProductTab(productId, tab) {
 }
 
 function productRowsForTab(group, tab = activeProductTab(group.product_id), visibleOnly = true) {
-    const sourceRows = visibleOnly ? group.visibleRows : group.rows;
+    const sourceRows = (visibleOnly ? group.visibleRows : group.rows).filter(isRowAvailableForEditing);
     if (tab === 'GLOBAL') return sourceRows.filter((row) => !row.branch_id && !isRangeTarget(row.target_type));
     if (tab === 'BRANCH') return sourceRows.filter((row) => row.branch_id && !isRangeTarget(row.target_type));
     if (tab === 'RANGE') return sourceRows.filter((row) => isRangeTarget(row.target_type));
@@ -499,6 +1323,7 @@ function groupRangeRows(rows) {
                 key,
                 target_type: row.target_type,
                 product_name: row.product_name,
+                branch_id: row.branch_id,
                 branch_name: row.branch_name,
                 unit_name: row.unit_name,
                 rows: [],
@@ -511,6 +1336,8 @@ function groupRangeRows(rows) {
         ...group,
         changedCount: group.rows.filter(isChangedRow).length,
         rangeCount: group.rows.length,
+        inheritedCount: group.rows.filter((row) => row.inherits_global_price).length,
+        createCount: group.rows.filter((row) => row.will_create_branch_price).length,
     }));
 }
 
@@ -534,7 +1361,7 @@ function calculateNewPrices() {
     const changeValue = Number(formData.value.priceChangeValue);
     if (!Number.isFinite(changeValue) || changeValue <= 0) return;
 
-    selectedRows.value.forEach((row) => {
+    selectedRows.value.filter(isRowAvailableForEditing).forEach((row) => {
         const oldPrice = toNumber(row.old_price);
         row.new_price = formData.value.priceValueType === 'INCREASE'
             ? oldPrice + changeValue
@@ -713,7 +1540,7 @@ function validateForm() {
         return false;
     }
 
-    const rowError = validatePriceChangeRows(changedRows.value);
+    const rowError = validatePriceChangeRows(rowsWithSyncedGlobalProductPrices(changedRows.value));
     if (rowError) {
         errorMsg.value.products = rowError;
         return false;
@@ -729,7 +1556,7 @@ function buildPriceChangePayload() {
         start_at: formData.value.startDate,
         end_at: formData.value.endDate || null,
         created_by: userData.value.id,
-        products: changedRows.value.map(payloadForTargetRow),
+        products: rowsWithSyncedGlobalProductPrices(changedRows.value).map(payloadForTargetRow),
     };
 }
 
@@ -752,7 +1579,7 @@ async function formSubmit() {
 
     cancelPromotionConflictRequest();
     const result = await runPromotionConflictCheck(
-        buildPromotionConflictTargets(changedRows.value),
+        buildPromotionConflictTargets(rowsWithSyncedGlobalProductPrices(changedRows.value)),
         { notifyOnError: true },
     );
     if (!result) return;
@@ -881,7 +1708,7 @@ async function formSubmit() {
                             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                 <SubTitle label="Product Price Setup" />
                                 <div class="flex flex-wrap items-center gap-2 text-sm">
-                                    <span class="text-xs text-gray-500">Select products to show all global and branch price rows</span>
+                                    <span class="text-xs text-gray-500">Select products manually or import product price targets from Excel</span>
                                     <span class="rounded border border-gray-200 bg-gray-50 px-3 py-1 text-gray-600">
                                         Selected: <strong class="text-black">{{ selectedProductCount }}</strong>
                                     </span>
@@ -903,13 +1730,37 @@ async function formSubmit() {
                                     <BaseErrorLabel v-if="errorMsg.priceChangeValue" :label="errorMsg.priceChangeValue" />
                                 </div>
 
-                                <div class="flex items-end">
+                                <div class="flex flex-wrap items-end gap-2">
+                                    <input
+                                        ref="importInputRef"
+                                        type="file"
+                                        accept=".xlsx,.xls"
+                                        class="hidden"
+                                        @change="onImportExcel"
+                                    />
+                                    <BaseButton
+                                        label="Download Template"
+                                        icon="fa fa-download"
+                                        severity="secondary"
+                                        :disabled="isProductSetupLoading"
+                                        class="w-full sm:w-auto"
+                                        @click="downloadImportTemplate"
+                                    />
+                                    <BaseButton
+                                        :label="isImporting ? 'Reading Excel' : 'Import Excel'"
+                                        :icon="isImporting ? 'fa fa-spinner' : 'fa fa-file-excel'"
+                                        severity="success"
+                                        :isLoading="isImporting"
+                                        :disabled="isProductSetupLoading || isImporting"
+                                        class="w-full sm:w-auto"
+                                        @click="openImportPicker"
+                                    />
                                     <BaseButton
                                         :label="isProductSetupLoading ? 'Loading Products' : 'Select Products'"
                                         :icon="isProductSetupLoading ? 'fa fa-spinner' : 'fa fa-boxes-stacked'"
                                         :isLoading="isProductSetupLoading"
                                         :disabled="isProductSetupLoading"
-                                        class="w-full md:w-fit"
+                                        class="w-full sm:w-auto"
                                         @click="openProductDialog"
                                     />
                                 </div>
@@ -1003,7 +1854,12 @@ async function formSubmit() {
                                         </div>
 
                                         <div v-if="globalRowsForActiveTab(group).length" class="space-y-2">
-                                            <div class="text-sm font-semibold text-gray-800">Global Prices</div>
+                                            <div>
+                                                <div class="text-sm font-semibold text-gray-800">Global UOM Prices</div>
+                                                <div class="mt-0.5 text-xs text-gray-500">
+                                                    Changing the primary UOM price also synchronizes the product's global price automatically.
+                                                </div>
+                                            </div>
                                             <div data-price-grid class="overflow-hidden rounded border border-gray-200">
                                                 <div class="hidden grid-cols-[minmax(220px,1fr)_120px_180px_36px] gap-3 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-600 sm:grid">
                                                     <div>Price Target</div>
@@ -1019,7 +1875,12 @@ async function formSubmit() {
                                                 >
                                                     <div class="min-w-0">
                                                         <div class="truncate text-sm font-medium text-black">{{ targetLabel(row.target_type) }}</div>
-                                                        <div class="truncate text-xs text-gray-500">{{ row.unit_name || '-' }}</div>
+                                                        <div class="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                                                            <span>{{ row.unit_name || '-' }}</span>
+                                                            <span v-if="isPrimaryGlobalUomRow(row)" class="rounded bg-violet-50 px-1.5 py-0.5 font-medium text-violet-700">
+                                                                Primary · syncs product price
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                     <div class="text-right" :title="row.old_price_source ? `Source: ${row.old_price_source}` : ''">
                                                         <div class="text-[11px] text-gray-500 sm:hidden">Old Price</div>
@@ -1055,12 +1916,33 @@ async function formSubmit() {
                                             </div>
                                         </div>
 
-                                        <div v-if="branchGroupsForActiveTab(group).length" class="space-y-3">
-                                            <div class="text-sm font-semibold text-gray-800">Branch Prices</div>
+                                        <div v-if="activeProductTab(group.product_id) === 'BRANCH'" class="space-y-3">
+                                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                                <div>
+                                                    <div class="text-sm font-semibold text-gray-800">Branch Prices</div>
+                                                    <div class="mt-0.5 text-xs text-gray-500">Only added branches are included in this price change.</div>
+                                                </div>
+                                                <BaseButton label="Add Branch" icon="fa fa-plus" class="w-full sm:w-auto" @click="openBranchPicker(group.product_id)" />
+                                            </div>
                                             <div v-for="branchGroup in branchGroupsForActiveTab(group)" :key="branchGroup.branch_id" class="overflow-hidden rounded border border-gray-200">
                                                 <div class="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-2">
                                                     <div class="font-medium text-black">{{ branchGroup.branch_name }}</div>
-                                                    <div class="text-xs text-gray-500">{{ branchGroup.rows.length }} prices</div>
+                                                    <div class="flex items-center gap-2">
+                                                        <div class="text-xs text-gray-500">{{ branchGroup.rows.length }} prices</div>
+                                                        <button
+                                                            type="button"
+                                                            class="flex h-8 w-8 items-center justify-center rounded text-gray-500 hover:bg-red-50 hover:text-red-600"
+                                                            :aria-label="`Remove ${branchGroup.branch_name}`"
+                                                            title="Remove branch"
+                                                            @click="removeBranchFromProduct(group.product_id, branchGroup.branch_id)"
+                                                        >
+                                                            <i class="fa fa-xmark"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div v-if="branchGroup.createCount" class="border-b border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800">
+                                                    No branch price configured for {{ branchGroup.createCount === branchGroup.rows.length ? 'this branch' : 'some targets' }}.
+                                                    Current values inherit the global price. A branch price will be created when this price change becomes effective.
                                                 </div>
                                                 <div data-price-grid>
                                                     <div class="hidden grid-cols-[minmax(220px,1fr)_120px_180px_36px] gap-3 border-b border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 sm:grid">
@@ -1082,6 +1964,7 @@ async function formSubmit() {
                                                         <div class="text-right" :title="row.old_price_source ? `Source: ${row.old_price_source}` : ''">
                                                             <div class="text-[11px] text-gray-500 sm:hidden">Old Price</div>
                                                             <div class="font-semibold tabular-nums text-gray-800">{{ formatPrice(row.old_price) }}</div>
+                                                            <div v-if="row.inherits_global_price" class="text-[11px] leading-4 text-blue-700">{{ row.old_price_source }}</div>
                                                         </div>
                                                         <div>
                                                             <label class="mb-1 block text-[11px] text-gray-500 sm:hidden">New Price</label>
@@ -1112,14 +1995,27 @@ async function formSubmit() {
                                                     </div>
                                                 </div>
                                             </div>
+                                            <div v-if="!branchGroupsForActiveTab(group).length" class="rounded border border-dashed border-gray-300 px-4 py-6 text-center">
+                                                <div class="text-sm font-medium text-gray-700">No branch added</div>
+                                                <div class="mt-1 text-xs text-gray-500">Add a branch to configure its product and UOM prices.</div>
+                                            </div>
                                         </div>
 
-                                        <div v-if="rangeGroupsForActiveTab(group).length" class="space-y-2">
-                                            <div class="text-sm font-semibold text-gray-800">Range Prices</div>
+                                        <div v-if="activeProductTab(group.product_id) === 'RANGE'" class="space-y-2">
+                                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                                <div>
+                                                    <div class="text-sm font-semibold text-gray-800">Range Prices</div>
+                                                    <div class="mt-0.5 text-xs text-gray-500">Branch ranges appear after their branch is added.</div>
+                                                </div>
+                                                <BaseButton label="Add Branch" icon="fa fa-plus" severity="secondary" class="w-full sm:w-auto" @click="openBranchPicker(group.product_id)" />
+                                            </div>
                                             <div class="grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-3">
                                                 <div v-for="rangeGroup in rangeGroupsForActiveTab(group)" :key="rangeGroup.key" class="rounded border border-gray-200 p-3">
                                                     <div class="font-medium text-black">{{ targetLabel(rangeGroup.target_type) }}</div>
                                                     <div class="mt-1 text-xs text-gray-500">{{ rangeGroup.branch_name }} / {{ rangeGroup.unit_name }}</div>
+                                                    <div v-if="rangeGroup.createCount" class="mt-2 text-xs leading-4 text-blue-700">
+                                                        Uses the inherited base price. Branch range prices will be created when this change becomes effective.
+                                                    </div>
                                                     <div class="mt-3 flex items-center justify-between text-sm">
                                                         <span>{{ rangeGroup.rangeCount }} ranges</span>
                                                         <span class="rounded bg-blue-50 px-2 py-1 text-xs text-blue-700">{{ rangeGroup.changedCount }} changed</span>
@@ -1129,7 +2025,7 @@ async function formSubmit() {
                                             </div>
                                         </div>
 
-                                        <div v-if="!currentTabRows(group).length" class="rounded border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500">
+                                        <div v-if="activeProductTab(group.product_id) !== 'BRANCH' && !currentTabRows(group).length" class="rounded border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500">
                                             No visible price rows for this product
                                         </div>
                                     </div>
@@ -1157,6 +2053,184 @@ async function formSubmit() {
                     </div>
                 </template>
             </BaseCard>
+        </div>
+    </div>
+
+    <div
+        v-if="branchPicker.visible"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 text-black"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="branch-picker-title"
+        @keydown.esc="closeBranchPicker"
+    >
+        <div class="absolute inset-0 bg-black opacity-50" @click="closeBranchPicker"></div>
+        <div class="z-10 flex max-h-[82vh] w-full max-w-xl flex-col overflow-hidden rounded bg-white p-4 shadow-lg">
+            <div class="flex items-start justify-between gap-3 border-b pb-3">
+                <div class="min-w-0">
+                    <div id="branch-picker-title" class="text-lg font-semibold">Add Branch Price</div>
+                    <div class="mt-1 truncate text-sm text-gray-500">{{ branchPickerProductName }}</div>
+                </div>
+                <button
+                    type="button"
+                    class="flex h-8 w-8 shrink-0 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-black"
+                    aria-label="Close branch picker"
+                    title="Close"
+                    @click="closeBranchPicker"
+                >
+                    <i class="fa fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="relative py-3">
+                <input
+                    v-model="branchPicker.search"
+                    type="search"
+                    placeholder="Search branches"
+                    aria-label="Search branches"
+                    class="h-[38px] w-full rounded border border-gray-300 px-3 pr-10 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-100"
+                />
+                <i class="fa fa-magnifying-glass pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+
+            <div class="min-h-0 space-y-2 overflow-y-auto">
+                <button
+                    v-for="branch in branchPickerOptions"
+                    :key="branch.id"
+                    type="button"
+                    class="flex w-full items-center justify-between gap-3 rounded border border-gray-200 px-3 py-3 text-left disabled:cursor-default disabled:bg-gray-50"
+                    :class="branch.isAdded ? 'text-gray-500' : 'hover:border-blue-300 hover:bg-blue-50'"
+                    :disabled="branch.isAdded"
+                    @click="addBranchToProduct(branch.id)"
+                >
+                    <div class="min-w-0">
+                        <div class="truncate font-medium">{{ branch.name }}</div>
+                        <div class="mt-0.5 text-xs" :class="branch.hasExistingPrice ? 'text-gray-500' : 'text-blue-700'">
+                            {{ branch.hasExistingPrice ? 'Existing branch pricing' : 'Currently inherits global prices' }}
+                        </div>
+                    </div>
+                    <span v-if="branch.isAdded" class="rounded bg-gray-200 px-2 py-1 text-xs">Added</span>
+                    <i v-else class="fa fa-plus text-blue-600"></i>
+                </button>
+                <div v-if="!branchPickerOptions.length" class="rounded border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-500">
+                    No branches found
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div
+        v-if="importPreview.visible"
+        class="fixed inset-0 z-[70] flex items-center justify-center p-4 text-black"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="price-change-import-title"
+        @keydown.esc="closeImportPreview"
+    >
+        <div class="absolute inset-0 bg-black/50" @click="closeImportPreview"></div>
+        <div class="z-10 flex max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
+            <div class="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h2 id="price-change-import-title" class="text-lg font-semibold">Review Excel Import</h2>
+                    <p class="mt-1 text-sm text-gray-500">{{ importPreview.fileName }}</p>
+                </div>
+                <button
+                    type="button"
+                    class="flex h-8 w-8 shrink-0 items-center justify-center self-end rounded text-gray-500 hover:bg-gray-100 hover:text-black sm:self-auto"
+                    aria-label="Close import preview"
+                    title="Close"
+                    @click="closeImportPreview"
+                >
+                    <i class="fa fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 border-b bg-gray-50 p-4 sm:grid-cols-4">
+                <div class="rounded border border-gray-200 bg-white p-3">
+                    <div class="text-xs uppercase tracking-wide text-gray-500">Total rows</div>
+                    <div class="mt-1 text-xl font-semibold">{{ importPreview.rows.length }}</div>
+                </div>
+                <div class="rounded border border-green-200 bg-green-50 p-3 text-green-800">
+                    <div class="text-xs uppercase tracking-wide">Ready</div>
+                    <div class="mt-1 text-xl font-semibold">{{ importValidRows.length }}</div>
+                </div>
+                <div class="rounded border border-red-200 bg-red-50 p-3 text-red-800">
+                    <div class="text-xs uppercase tracking-wide">Invalid</div>
+                    <div class="mt-1 text-xl font-semibold">{{ importErrorCount }}</div>
+                </div>
+                <div class="rounded border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                    <div class="text-xs uppercase tracking-wide">With warnings</div>
+                    <div class="mt-1 text-xl font-semibold">{{ importWarningCount }}</div>
+                </div>
+            </div>
+
+            <div class="min-h-0 flex-1 overflow-auto">
+                <table class="w-full min-w-[1120px] text-sm">
+                    <thead class="sticky top-0 z-[1] bg-white">
+                        <tr class="border-b text-left text-gray-600">
+                            <th class="p-3">Excel row</th>
+                            <th class="p-3">Product</th>
+                            <th class="p-3">Target</th>
+                            <th class="p-3">Branch / Unit</th>
+                            <th class="p-3">Range</th>
+                            <th class="p-3 text-right">Current price</th>
+                            <th class="p-3 text-right">New price</th>
+                            <th class="p-3 text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template v-for="row in importPreview.rows" :key="row.excelRow">
+                            <tr class="border-b border-gray-100 align-top" :class="row.errors.length ? 'bg-red-50/40' : ''">
+                                <td class="p-3 font-medium">{{ row.excelRow }}</td>
+                                <td class="p-3">
+                                    <div class="font-medium">{{ row.product?.name || 'Unresolved product' }}</div>
+                                    <div class="mt-0.5 text-xs text-gray-500">{{ importBarcode(row.rawRow) || '-' }}</div>
+                                </td>
+                                <td class="p-3">{{ row.targetType ? targetLabel(row.targetType) : '-' }}</td>
+                                <td class="p-3">
+                                    <div>{{ row.branch?.name || (isBranchTarget(row.targetType) ? '-' : 'All branches') }}</div>
+                                    <div class="mt-0.5 text-xs text-gray-500">{{ row.productUnit ? unitName(row.productUnit) : (isUomTarget(row.targetType) ? '-' : 'Product level') }}</div>
+                                </td>
+                                <td class="p-3">{{ formatImportRange(row) }}</td>
+                                <td class="p-3 text-right tabular-nums">{{ row.resolvedRow ? formatPrice(row.resolvedRow.old_price) : '-' }}</td>
+                                <td class="p-3 text-right font-medium tabular-nums">{{ row.newPrice === null ? '-' : formatPrice(row.newPrice) }}</td>
+                                <td class="p-3 text-center">
+                                    <span v-if="row.errors.length" class="rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-700">Invalid</span>
+                                    <span v-else-if="row.warnings.length" class="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">Warning</span>
+                                    <span v-else class="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-700">Ready</span>
+                                </td>
+                            </tr>
+                            <tr v-if="row.errors.length || row.warnings.length" class="border-b border-gray-200">
+                                <td colspan="8" class="px-3 pb-3 pt-1">
+                                    <div v-for="message in row.errors" :key="`error:${message}`" class="mt-1 text-sm text-red-700">
+                                        <i class="fa fa-circle-xmark mr-1"></i>{{ message }}
+                                    </div>
+                                    <div v-for="message in row.warnings" :key="`warning:${message}`" class="mt-1 text-sm text-amber-700">
+                                        <i class="fa fa-triangle-exclamation mr-1"></i>{{ message }}
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex flex-col gap-3 border-t p-4 sm:flex-row sm:items-center sm:justify-between">
+                <p class="text-sm" :class="importErrorCount ? 'text-red-700' : 'text-gray-500'">
+                    {{ importErrorCount
+                        ? 'Fix every invalid row and import the file again. No rows have been added to the form.'
+                        : 'Ready rows will be added to the form for review. Saving still runs the normal validation and promotion checks.' }}
+                </p>
+                <div class="flex shrink-0 justify-end gap-2">
+                    <BaseButton severity="secondary" label="Close" @click="closeImportPreview" />
+                    <BaseButton
+                        :label="`Apply ${importValidRows.length} Row${importValidRows.length === 1 ? '' : 's'}`"
+                        icon="fa fa-check"
+                        :disabled="importErrorCount > 0 || !importValidRows.length"
+                        @click="confirmPriceChangeImport"
+                    />
+                </div>
+            </div>
         </div>
     </div>
 

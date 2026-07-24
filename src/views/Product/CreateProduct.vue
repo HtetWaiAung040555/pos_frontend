@@ -94,15 +94,7 @@ function createProductUnit(unit = '') {
     is_default_sale_unit: true,
     status_id: 1,
     sort_order: 0,
-    price_ranges: [
-      {
-        id: null,
-        min_qty: 0,
-        max_qty: '',
-        price: formData.value.price || 0,
-        status_id: 1,
-      },
-    ],
+    price_ranges: [],
   };
 }
 
@@ -204,6 +196,16 @@ function validateForm() {
     const invalidUnit = productUnits.value.find((unit) => !unit.unit_id || toNumber(unit.conversion_to_base, 0) <= 0 || toNumber(unit.price, -1) < 0);
     if (invalidUnit) {
       errorMsg.value.unit = 'Each product unit needs a unit, conversion, and valid price.';
+      isValid = false;
+    }
+
+    const invalidPriceRange = productUnits.value.some((unit) => (
+      (unit.price_ranges || []).some((range) => (
+        toNumber(range.min_qty, 0) <= 0 || toNumber(range.price, 0) <= 0
+      ))
+    ));
+    if (invalidPriceRange) {
+      errorMsg.value.unit = 'Each price range needs a minimum quantity and price greater than 0.';
       isValid = false;
     }
 

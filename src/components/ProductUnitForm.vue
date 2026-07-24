@@ -74,7 +74,7 @@ function blankUnit() {
     is_default_sale_unit: rows.value.length === 0,
     status_id: 1,
     sort_order: rows.value.length,
-    price_ranges: [blankRange()],
+    price_ranges: [],
   };
 }
 
@@ -208,6 +208,10 @@ function generateBarcode(index) {
         <div class="flex items-center justify-between">
           <BaseLabel label="Price Ranges" />
           <BaseButton icon="fa fa-circle-plus" label="Add Range" size="sm" severity="secondary" @click="addRange(unitIndex)" />
+        </div>
+
+        <div v-if="!row.price_ranges.length" class="mt-2 text-xs text-gray-500">
+          No price ranges added.
         </div>
 
         <div v-for="(range, rangeIndex) in row.price_ranges" :key="rangeIndex" class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-5">

@@ -97,16 +97,6 @@ onMounted(async () => {
   }
 });
 
-function blankPriceRange(price = 0) {
-  return {
-    id: null,
-    min_qty: 0,
-    max_qty: '',
-    price,
-    status_id: 1,
-  };
-}
-
 function buildFallbackProductUnit(product) {
   return {
     id: null,
@@ -119,7 +109,7 @@ function buildFallbackProductUnit(product) {
     is_default_sale_unit: true,
     status_id: product.status?.id || 1,
     sort_order: 0,
-    price_ranges: [blankPriceRange(product.price || 0)],
+    price_ranges: [],
   };
 }
 
@@ -139,15 +129,13 @@ function buildProductUnits(product) {
     is_default_sale_unit: !!productUnit.is_default_sale_unit,
     status_id: productUnit.status?.id || 1,
     sort_order: productUnit.sort_order ?? index,
-    price_ranges: productUnit.price_ranges?.length
-      ? productUnit.price_ranges.map((range) => ({
-          id: range.id,
-          min_qty: range.min_qty,
-          max_qty: range.max_qty ?? '',
-          price: range.price,
-          status_id: range.status?.id || 1,
-        }))
-      : [blankPriceRange(productUnit.price || 0)],
+    price_ranges: (productUnit.price_ranges || []).map((range) => ({
+      id: range.id,
+      min_qty: range.min_qty,
+      max_qty: range.max_qty ?? '',
+      price: range.price,
+      status_id: range.status?.id || 1,
+    })),
   }));
 }
 
@@ -256,6 +244,16 @@ function validateForm() {
     const invalidUnit = productUnits.value.find((unit) => !unit.unit_id || toNumber(unit.conversion_to_base, 0) <= 0 || toNumber(unit.price, -1) < 0);
     if (invalidUnit) {
       errorMsg.value.unit = 'Each product unit needs a unit, conversion, and valid price.';
+      isValid = false;
+    }
+
+    const invalidPriceRange = productUnits.value.some((unit) => (
+      (unit.price_ranges || []).some((range) => (
+        toNumber(range.min_qty, 0) <= 0 || toNumber(range.price, 0) <= 0
+      ))
+    ));
+    if (invalidPriceRange) {
+      errorMsg.value.unit = 'Each price range needs a minimum quantity and price greater than 0.';
       isValid = false;
     }
 

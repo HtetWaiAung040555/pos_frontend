@@ -446,8 +446,6 @@ async function addProduct(product) {
       selectedPId.value = lineKey;
     }
 
-    console.log('Selected products after adding:', selectedProducts.value);
-
     await nextTick();
     await recalculatePromotions();
 
@@ -735,6 +733,67 @@ async function updateProductQty(ProductId, qty) {
   }
 }
 
+function salesDetailUnitName(detail = {}) {
+  return detail.uom?.unit_name
+    || detail.unit_name
+    || detail.unit?.name
+    || detail.product_unit?.unit_name
+    || detail.product_unit?.unit_id?.name
+    || detail.product?.unit_id?.name
+    || null;
+}
+
+function salesDetailQuantity(detail = {}) {
+  return Number(detail.uom?.unit_quantity ?? detail.unit_quantity ?? detail.quantity ?? 0);
+}
+
+function salesDetailBaseQuantity(detail = {}) {
+  const unitQuantity = salesDetailQuantity(detail);
+  const conversionToBase = salesDetailConversion(detail);
+
+  return Number(
+    detail.uom?.base_quantity
+      ?? detail.base_quantity
+      ?? (unitQuantity * conversionToBase)
+  );
+}
+
+function salesDetailConversion(detail = {}) {
+  const conversion = Number(
+    detail.uom?.conversion_to_base
+      ?? detail.conversion_to_base
+      ?? detail.product_unit?.conversion_to_base
+      ?? 1
+  );
+
+  return conversion > 0 ? conversion : 1;
+}
+
+function salesDetailProductUnitId(detail = {}) {
+  return detail.uom?.product_unit_id
+    || detail.product_unit_id
+    || detail.product_unit?.product_unit_id
+    || detail.product_unit?.id
+    || null;
+}
+
+function salesDetailUnitId(detail = {}) {
+  return detail.uom?.unit_id
+    || detail.unit_id
+    || detail.unit?.id
+    || detail.product_unit?.unit_id?.id
+    || detail.product_unit?.unit_id
+    || null;
+}
+
+function slipLineSubtotal(item = {}) {
+  return salesDetailQuantity(item) * Number(item.price ?? item.product?.price ?? 0);
+}
+
+function slipLineDiscountTotal(item = {}) {
+  return salesDetailQuantity(item) * Number(item.discount_amount || 0);
+}
+
 function mergeSelectedProducts(details = []) {
   const mergedProducts = new Map();
 
@@ -743,21 +802,29 @@ function mergeSelectedProducts(details = []) {
     const productId = item.product_id ?? product.id;
     if (!productId) return;
 
-    const quantity = Number(item.quantity || 0);
+    const quantity = salesDetailQuantity(item);
     if (quantity <= 0) return;
 
     const promotionId = item.promotion?.id ?? item.promotion_id ?? null;
     const discountType = item.promotion?.discount_type ?? item.discount_type ?? null;
     const discountValue = Number(item.promotion?.discount_value ?? item.discount_value ?? 0);
+    const productUnitId = salesDetailProductUnitId(item);
+    const unitId = salesDetailUnitId(item);
+    const unitName = salesDetailUnitName(item);
+    const conversionToBase = salesDetailConversion(item);
+    const baseQuantity = salesDetailBaseQuantity(item);
     const unitPrice = Number(item.price ?? product.price ?? 0);
     const unitDiscountAmount = Number(item.discount_amount ?? 0);
     const unitDiscountPrice = Number(item.discount_price ?? (unitPrice - unitDiscountAmount));
     const isFree = Boolean(item.is_foc ?? false);
 
-    // Merge by product + pricing/discount context so inventory splits collapse,
-    // but different discount groups remain separate lines.
+    // Collapse inventory splits while keeping different sale units and discounts
+    // on separate receipt lines.
     const mergeKey = [
       productId,
+      productUnitId ?? 'base-unit',
+      unitId ?? 'no-unit',
+      unitName ?? 'unnamed-unit',
       promotionId ?? 'no-promo',
       discountType ?? 'NO_DISCOUNT',
       discountValue,
@@ -770,6 +837,8 @@ function mergeSelectedProducts(details = []) {
     const existing = mergedProducts.get(mergeKey);
     if (existing) {
       existing.quantity += quantity;
+      existing.uom.unit_quantity += quantity;
+      existing.uom.base_quantity += baseQuantity;
       return;
     }
 
@@ -783,8 +852,22 @@ function mergeSelectedProducts(details = []) {
       },
       quantity,
       price: unitPrice,
+      uom: {
+        product_unit_id: productUnitId,
+        unit_id: unitId,
+        unit_name: unitName,
+        unit_quantity: quantity,
+        base_quantity: baseQuantity,
+        conversion_to_base: conversionToBase,
+        unit_barcode: item.uom?.unit_barcode || item.unit_barcode || item.product_unit?.barcode || null,
+      },
+      product_unit_id: productUnitId,
+      unit_id: unitId,
+      unit_name: unitName,
+      conversion_to_base: conversionToBase,
       discount_amount: unitDiscountAmount,
       discount_price: unitDiscountPrice,
+      discount_value: discountValue,
       promotion: {
         ...(item.promotion || {}),
         id: promotionId,
@@ -910,6 +993,7 @@ async function onPayClick() {
     }
     if (useSales.salesList) {
       toast.add({ severity: 'success', summary: 'Success Message', detail: 'Sales created successfully.', life: 3000 });
+      console.log(useSales.salesList);
       savedSalesData.value = buildSlipSalesData(useSales.salesList);
 
       if (useSales.salesList.customer) {
@@ -1003,11 +1087,23 @@ async function createWallet() {
   }
 }
 
+function numericAmount(value) {
+  const normalizedValue = typeof value === 'string'
+    ? value.replace(/,/g, '').trim()
+    : value;
+  const amount = Number(normalizedValue);
+
+  return Number.isFinite(amount) ? amount : 0;
+}
+
 const changeAmount = computed(() => {
-  const paid = Number(salesData.value.paidAmount || 0);
-  const total = Number(totalAmount.value || 0);
-  const diff = paid - total;
-  return (diff >= 0 ? diff : 0).toLocaleString('en-us');
+  const paid = numericAmount(salesData.value.paidAmount);
+  const payableTotal = Math.max(
+    0,
+    numericAmount(totalAmount.value) - numericAmount(salesData.value.orderDiscountAmount)
+  );
+
+  return Math.max(0, paid - payableTotal);
 });
 
 function changePaymentMethod() {
@@ -1373,7 +1469,7 @@ function printSlip(isSale = true) {
             <!-- Change Amount -->
             <div class="text-right font-semibold" v-if="salesData.paymentId == 1">Change Amount :</div>
             <div class="text-right font-semibold" v-if="salesData.paymentId == 1">
-              {{ `${defaultCurrency} ${Number(changeAmount).toLocaleString('en-us')}` }}
+              {{ `${defaultCurrency} ${changeAmount.toLocaleString('en-us')}` }}
             </div>
             <!-- Customer Balance Info -->
             <div class="text-right font-semibold" v-if="!selectedCustomer?.is_default">Current Balance :</div>
@@ -1597,6 +1693,9 @@ function printSlip(isSale = true) {
                   ">
                   {{ item.product.name }}
                 </span>
+                <span v-if="salesDetailUnitName(item)" style="font-size: 11px;">
+                  Unit: {{ salesDetailUnitName(item) }}
+                </span>
                 <span v-if="item.promotion.id && !item.is_foc" style="font-size: 12px;">
                   Dis[-{{ item.promotion.discount_type === 'AMOUNT' ?
                     Number(item.discount_amount).toLocaleString() + " Ks." : item.discount_value+'%' }}]
@@ -1607,7 +1706,7 @@ function printSlip(isSale = true) {
                 > [FREE GIFT] </span>
               </div>
             </td>
-            <td style="padding: 2px 0; text-align: center;">{{ item.quantity }}</td>
+            <td style="padding: 2px 0; text-align: center;">{{ salesDetailQuantity(item) }}</td>
             <td style="padding: 2px 0; text-align: right;">
               <div class="flex flex-col">
                 <span>{{ Number(item.product.price).toLocaleString() }}</span>
@@ -1618,8 +1717,8 @@ function printSlip(isSale = true) {
                   display: flex;
                   flex-direction: column;
                 ">
-                <span>{{ (item.quantity * item.product.price).toLocaleString() }}</span>
-                <span v-if="item.promotion.id && !item.is_foc">- {{ (item.quantity * item.discount_amount).toLocaleString() }}</span>
+                <span>{{ slipLineSubtotal(item).toLocaleString() }}</span>
+                <span v-if="item.promotion.id && !item.is_foc">- {{ slipLineDiscountTotal(item).toLocaleString() }}</span>
               </div>
             </td>
           </tr>

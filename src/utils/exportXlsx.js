@@ -1,7 +1,18 @@
 import * as XLSX from 'xlsx';
 import moment from 'moment';
 
-export function exportToXlsx({ columns = [], rows = [], filename = 'export', detailHeaders = [], detailField = 'details', detailKeys = [] }) {
+export function exportToXlsx({
+  columns = [],
+  rows = [],
+  filename = 'export',
+  detailHeaders = [],
+  detailField = 'details',
+  detailKeys = [],
+  sheetName = 'Sheet1',
+  columnWidths = [],
+  preserveTypes = false,
+  autoFilter = false,
+}) {
   try {
     const parentHeaders = columns.map(c => (c.label || c.key));
     const configuredDetailHeaders = Array.isArray(detailHeaders) ? detailHeaders : [];
@@ -20,12 +31,17 @@ export function exportToXlsx({ columns = [], rows = [], filename = 'export', det
 
     const data = [headers];
 
+    const formatCellValue = (value) => {
+      if (value instanceof Date) return moment(value).format('DD-MM-YYYY HH:mm');
+      if (value === undefined || value === null) return '';
+      if (preserveTypes && (typeof value === 'number' || typeof value === 'boolean')) return value;
+      return String(value);
+    };
+
     const formatParentValues = (row) => {
       return columns.map(col => {
         const val = getByPath(row, col.key);
-        // format dates nicely
-        if (val instanceof Date) return moment(val).format('DD-MM-YYYY HH:mm');
-        return val === undefined || val === null ? '' : String(val);
+        return formatCellValue(val);
       });
     };
 
@@ -33,7 +49,7 @@ export function exportToXlsx({ columns = [], rows = [], filename = 'export', det
       if (!includeDetails) return [];
       return configuredDetailKeys.map(k => {
         const v = getByPath(d, k);
-        return v === undefined || v === null ? '' : String(v);
+        return formatCellValue(v);
       });
     };
 
@@ -60,13 +76,30 @@ export function exportToXlsx({ columns = [], rows = [], filename = 'export', det
     });
 
     const ws = XLSX.utils.aoa_to_sheet(data);
+    if (Array.isArray(columnWidths) && columnWidths.length) {
+      ws['!cols'] = columnWidths.map(width => (
+        typeof width === 'number' ? { wch: width } : width
+      ));
+    }
+    if (autoFilter && headers.length) {
+      ws['!autofilter'] = {
+        ref: `A1:${XLSX.utils.encode_col(headers.length - 1)}${Math.max(1, data.length)}`,
+      };
+    }
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const safeSheetName = String(sheetName || 'Sheet1')
+      .replace(/[\\/?*[\]:]/g, ' ')
+      .trim()
+      .slice(0, 31) || 'Sheet1';
+    XLSX.utils.book_append_sheet(wb, ws, safeSheetName);
 
     const outName = `${filename}_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'_')}.xlsx`;
     XLSX.writeFile(wb, outName);
+    return outName;
   } catch (err) {
     console.error('Export to excel failed', err);
+    return null;
   }
 }
 

@@ -132,6 +132,8 @@ function baseRow(product, targetType, branch = null) {
     old_price: 0,
     new_price: 0,
     old_price_source: '',
+    inherits_global_price: false,
+    will_create_branch_price: false,
   };
 }
 
@@ -166,11 +168,14 @@ export function buildTargetRows(product, targetType, branch = null) {
 
   if (targetType === 'BRANCH_PRODUCT_PRICE') {
     const row = baseRow(product, targetType, branch);
+    const hasBranchPrice = !isBlank(branchProduct?.price);
     row.branch_product_id = branchProduct?.id || null;
     row.old_price = toNumber(branchProduct?.price, product.price || 0);
-    row.old_price_source = branchProduct?.price !== null && branchProduct?.price !== undefined
+    row.old_price_source = hasBranchPrice
       ? 'Branch product price'
-      : 'Global product fallback';
+      : 'Inherited from global product price';
+    row.inherits_global_price = !hasBranchPrice;
+    row.will_create_branch_price = !branchProduct?.id;
     row.new_price = row.old_price;
     rows.push(finalizeRow(row));
   }
@@ -180,6 +185,7 @@ export function buildTargetRows(product, targetType, branch = null) {
       const branchUnitPrice = targetType === 'BRANCH_UOM_PRICE'
         ? branchUnitPriceFor(branchProduct, productUnit)
         : null;
+      const hasBranchUnitPrice = !isBlank(branchUnitPrice?.price);
       const row = baseRow(product, targetType, targetType === 'BRANCH_UOM_PRICE' ? branch : null);
       row.branch_product_id = branchProduct?.id || null;
       row.product_unit_id = productUnit.id || productUnit.product_unit_id || null;
@@ -187,8 +193,10 @@ export function buildTargetRows(product, targetType, branch = null) {
       row.unit_name = unitName(productUnit);
       row.old_price = toNumber(branchUnitPrice?.price, productUnit.price || 0);
       row.old_price_source = targetType === 'BRANCH_UOM_PRICE'
-        ? (branchUnitPrice?.price !== null && branchUnitPrice?.price !== undefined ? 'Branch UOM price' : 'Global UOM fallback')
+        ? (hasBranchUnitPrice ? 'Branch UOM price' : 'Inherited from global UOM price')
         : 'Global UOM price';
+      row.inherits_global_price = targetType === 'BRANCH_UOM_PRICE' && !hasBranchUnitPrice;
+      row.will_create_branch_price = targetType === 'BRANCH_UOM_PRICE' && !branchUnitPrice?.id;
       row.new_price = row.old_price;
       rows.push(finalizeRow(row));
     });
@@ -219,12 +227,17 @@ export function buildTargetRows(product, targetType, branch = null) {
         } else if (range.source === 'branch') {
           row.old_price_source = 'Branch UOM range';
         } else if (range.source === 'global') {
-          row.old_price_source = 'Global range fallback';
+          row.old_price_source = 'Inherited from global UOM range';
         } else {
           row.old_price_source = branchUnitPrice?.price !== null && branchUnitPrice?.price !== undefined
-            ? 'Branch UOM fallback'
-            : 'Global UOM fallback';
+            ? 'Inherited from branch UOM price'
+            : 'Inherited from global UOM price';
         }
+        row.inherits_global_price = targetType === 'BRANCH_UOM_RANGE'
+          && (range.source === 'global'
+            || (range.source === 'new' && isBlank(branchUnitPrice?.price)));
+        row.will_create_branch_price = targetType === 'BRANCH_UOM_RANGE'
+          && !row.branch_product_unit_price_range_id;
         row.new_price = row.old_price;
         rows.push(finalizeRow(row));
       });
@@ -242,12 +255,24 @@ export function buildAllTargetRows(product, branchList = []) {
   ];
 
   const branchProducts = Array.isArray(product?.branch_products) ? product.branch_products : [];
+  const branchesById = new Map();
+
+  (Array.isArray(branchList) ? branchList : []).forEach((branch) => {
+    if (!branch?.id) return;
+    branchesById.set(String(branch.id), branch);
+  });
+
   branchProducts.forEach((branchProduct) => {
     const branchId = branchProduct.branch_id || branchProduct.branch?.id;
-    const branch = branchProduct.branch
-      || branchList.find((item) => Number(item.id) === Number(branchId))
-      || { id: branchId, name: branchProduct.branch_name || `Branch ${branchId}` };
+    if (!branchId || branchesById.has(String(branchId))) return;
 
+    branchesById.set(String(branchId), branchProduct.branch || {
+      id: branchId,
+      name: branchProduct.branch_name || `Branch ${branchId}`,
+    });
+  });
+
+  branchesById.forEach((branch) => {
     if (!branch?.id) return;
 
     rows.push(...buildTargetRows(product, 'BRANCH_PRODUCT_PRICE', branch));
@@ -348,6 +373,10 @@ export function validatePriceChangeDates(startAt, endAt) {
 
 export function validatePriceChangeRows(rows) {
   for (const row of rows || []) {
+    if (isBranchTarget(row.target_type) && !row.branch_id) {
+      return 'Branch price targets require a branch.';
+    }
+
     if (!isValidNumber(row.new_price)) return 'New price must be a valid number.';
     if (Number(row.new_price) < 0) return 'New price cannot be negative.';
 

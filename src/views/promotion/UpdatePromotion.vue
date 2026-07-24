@@ -113,6 +113,8 @@ const isCheckingAll = ref(false);
 const isSelectAllLoading = ref(false);
 const focTierEditIndex = ref(null);
 const selectedBranch = ref([]);
+const persistedBranchIds = ref([]);
+const persistedWarehouseIds = ref([]);
 const branchSearchTerm = ref('');
 const isInitLoading = ref(true);
 
@@ -128,6 +130,8 @@ const errorMsg = ref({
     discountType: "",
     discountValue: "",
     products: "",
+    startDate: "",
+    endDate: "",
 });
 
 const promotionTypeOptions = [
@@ -218,6 +222,8 @@ function clearErrors() {
         discountType: "",
         discountValue: "",
         products: "",
+        startDate: "",
+        endDate: "",
     };
 }
 
@@ -252,9 +258,15 @@ onMounted(async () => {
             loadedPromotionStatusName.value = getPromotionLifecycleStatusName(promo.start_at, promo.end_at);
             promoMode.value = promo.promo_mode || 'TIER';
             maxDiscountAmount.value = Number(promo.max_reward_value) || 0;
+            const promotionBranches = Array.isArray(promo.branches) ? promo.branches : [];
+            persistedBranchIds.value = promotionBranches
+                .map(branch => Number(branch.id))
+                .filter(Boolean);
+            persistedWarehouseIds.value = (Array.isArray(promo.warehouses) ? promo.warehouses : [])
+                .map(warehouse => Number(warehouse.id))
+                .filter(Boolean);
 
             if (formData.value.branchScopeType === 'SELECTED') {
-                const promotionBranches = Array.isArray(promo.branches) ? promo.branches : [];
                 const allocationBranches = promo.promo_type === 'FOC' && Array.isArray(promo.foc_allocations)
                     ? promo.foc_allocations.map(allocation => allocation.branch).filter(Boolean)
                     : [];
@@ -265,9 +277,9 @@ onMounted(async () => {
                         : []),
                 ].map(Number).filter(Boolean));
                 const branchesById = new Map([
-                    ...branchOptions.value,
                     ...promotionBranches,
                     ...allocationBranches,
+                    ...branchOptions.value,
                 ].map(branch => [Number(branch.id), branch]));
                 selectedBranch.value = Array.from(branchIds)
                     .map(branchId => branchesById.get(branchId))
@@ -1006,8 +1018,27 @@ async function formSubmit() {
         return;
     }
 
-    if (formData.value.name === "") {
+    if (formData.value.name.trim() === "") {
         errorMsg.value.name = errMsgList.name;
+        scrollToSection('promotion-details');
+        return;
+    }
+
+    if (!formData.value.startDate) {
+        errorMsg.value.startDate = 'Start date and time is required.';
+        scrollToSection('promotion-details');
+        return;
+    }
+
+    if (!formData.value.endDate) {
+        errorMsg.value.endDate = 'End date and time is required.';
+        scrollToSection('promotion-details');
+        return;
+    }
+
+    if (!moment(formData.value.endDate).isAfter(moment(formData.value.startDate))) {
+        errorMsg.value.endDate = 'End date must be later than the start date.';
+        scrollToSection('promotion-details');
         return;
     }
 
@@ -1018,11 +1049,55 @@ async function formSubmit() {
         }
 
         const appliedPayload = {
-            name: formData.value.name,
+            name: formData.value.name.trim(),
             end_at: formData.value.endDate,
             status_id: autoPromoStatusId.value,
             updated_by: userData.value.id,
         };
+
+        const needsBranchAssignmentRepair = formData.value.branchScopeType === 'SELECTED'
+            && persistedBranchIds.value.length === 0;
+        const needsWarehouseAssignmentRepair = !isFOC.value
+            && formData.value.warehouseScopeType === 'SELECTED'
+            && persistedWarehouseIds.value.length === 0;
+
+        if (needsBranchAssignmentRepair && selectedBranchIds.value.length === 0) {
+            errorMsg.value.branch = 'The existing selected branches could not be loaded.';
+            scrollToSection('promotion-scope');
+            return;
+        }
+
+        if (
+            ((needsBranchAssignmentRepair && !isFOC.value) || needsWarehouseAssignmentRepair)
+            && selectedWarehouseIds.value.length === 0
+        ) {
+            errorMsg.value.branch = 'The warehouses for the existing selected branches could not be loaded.';
+            scrollToSection('promotion-scope');
+            return;
+        }
+
+        if (needsBranchAssignmentRepair) {
+            appliedPayload.branch_scope_type = 'SELECTED';
+            appliedPayload.branch_ids = selectedBranchIds.value.map(Number);
+
+            if (isFOC.value) {
+                if (focAllocations.value.length === 0) {
+                    focAllocationGeneralErrors.value = ['The existing FOC allocations could not be loaded.'];
+                    scrollToSection('foc-allocation-matrix');
+                    return;
+                }
+
+                appliedPayload.foc_allocations = focAllocations.value.map(
+                    allocation => focAllocationPayload(allocation, true),
+                );
+            }
+        }
+
+        if ((needsBranchAssignmentRepair && !isFOC.value) || needsWarehouseAssignmentRepair) {
+            appliedPayload.warehouse_scope_type = 'SELECTED';
+            appliedPayload.warehouse_ids = selectedWarehouseIds.value;
+            appliedPayload.warehouse_id = selectedWarehouseIds.value[0];
+        }
 
         await usePromo.editPromo(appliedPayload, promoId.value);
 
@@ -1061,8 +1136,8 @@ async function formSubmit() {
     }
 
     const commonPayload = {
-        name: formData.value.name,
-        description: formData.value.description,
+        name: formData.value.name.trim(),
+        description: formData.value.description.trim(),
         promo_type: formData.value.promoType,
         branch_scope_type: formData.value.branchScopeType,
         branch_ids: selectedBranchIds.value,
@@ -1461,6 +1536,7 @@ async function formSubmit() {
                                         height="h-10"
                                         type="datetime-local"
                                         :isRequire="true"
+                                        :error="errorMsg.startDate"
                                         :disabled="locksPromotionRules"
                                     />
 
@@ -1472,6 +1548,7 @@ async function formSubmit() {
                                         type="datetime-local"
                                         :min="formData.startDate"
                                         :isRequire="true"
+                                        :error="errorMsg.endDate"
                                         :disabled="isInactivePromotion"
                                     />
                                 </div>

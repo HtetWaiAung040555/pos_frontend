@@ -404,15 +404,22 @@ watch(
             />
           </slot>
         </div>
-        <div v-if="isExcelExport" class="self-end sm:self-auto">
-          <BaseButton
-            label="Export"
-            icon="fa fa-file-excel"
-            size="sm"
-            variant="solid"
-            severity="success"
-            @click="exportToExcel"
-          />
+        <div v-if="isExcelExport || $slots['export-actions']" class="self-end sm:self-auto">
+          <slot
+            name="export-actions"
+            :columns="columns"
+            :rows="rows"
+            :export-default="exportToExcel"
+          >
+            <BaseButton
+              label="Export"
+              icon="fa fa-file-excel"
+              size="sm"
+              variant="solid"
+              severity="success"
+              @click="exportToExcel"
+            />
+          </slot>
         </div>
       </div>
     </div>
