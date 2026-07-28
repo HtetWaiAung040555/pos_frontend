@@ -78,6 +78,23 @@ onMounted(async () => {
     saveFilters();
 });
 
+function getPurchaseFilterPayload() {
+    return {
+        start_date: filteredData.value.startedDate
+            ? moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss')
+            : '',
+        end_date: filteredData.value.endedDate
+            ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss')
+            : '',
+        supplier: supplierSearchValue.value || null,
+        statusId: selectedStatus.value || null,
+        paymentId: selectedPayment.value || null,
+        warehouseId: null,
+        product: productSearch.value || null,
+        invoice: invoiceSearchValue.value || null,
+    };
+}
+
 async function fetchPurchaseByDate(pagePayload = 1) {
     const payloadIsObject = pagePayload && typeof pagePayload === 'object';
     const page = payloadIsObject ? Number(pagePayload.page || 1) : Number(pagePayload || 1);
@@ -90,23 +107,7 @@ async function fetchPurchaseByDate(pagePayload = 1) {
     }
     isDateLoading.value = true;
     try {
-        // convert local datetime-local strings to backend friendly format (YYYY-MM-DD HH:mm:ss)
-        const start = filteredData.value.startedDate
-            ? moment(filteredData.value.startedDate).format('YYYY-MM-DD HH:mm:ss')
-            : "";
-        const end = filteredData.value.endedDate
-            ? moment(filteredData.value.endedDate).format('YYYY-MM-DD HH:mm:ss')
-            : "";
-        const payload = {
-            start_date: start,
-            end_date: end,
-            supplier: supplierSearchValue.value || null,
-            statusId: selectedStatus.value || null,
-            paymentId: selectedPayment.value || null,
-            warehouseId: null,
-            product: productSearch.value || null,
-            invoice: invoiceSearchValue.value || null,
-        };
+        const payload = getPurchaseFilterPayload();
         await usePurchase.fetchAllPurchase(payload, page, perPage);
         purchaseList.value = usePurchase.purchaseList || [];
         pagination.value = usePurchase.pagination || {};
@@ -579,22 +580,9 @@ async function onImportExcel(event) {
 // End of Excel import helpers
 
 async function exportToExcel() {
-    await usePurchase.exportPurchases({
-        start_date: filteredData.value.startDateTimeLocal
-            ? moment(filteredData.value.startDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
-            : '',
-        end_date: filteredData.value.endDateTimeLocal
-            ? moment(filteredData.value.endDateTimeLocal).format('YYYY-MM-DD HH:mm:ss')
-            : '',
-        supplier: supplierSearchValue.value || null,
-        statusId: selectedStatus.value || null,
-        paymentId: selectedPayment.value || null,
-        warehouseId: null, // currently not used in UI but can be added as a filter later
-        product: productSearch.value || null,
-        invoice: invoiceSearchValue.value || null,
-    });
+    await usePurchase.exportPurchases(getPurchaseFilterPayload());
     exportToXlsx({
-        columns: columns,
+        columns: columns.filter(({ key }) => key !== 'details'),
         rows: usePurchase.exportData,
         filename: 'Purchase',
         detailHeaders: ['Product ID', 'Product Name', 'Product Unit ID', 'Unit', 'Unit Qty', 'Base Qty', 'Conversion', 'Price', 'Total'],

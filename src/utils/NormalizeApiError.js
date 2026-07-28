@@ -25,7 +25,14 @@ export function normalizeApiError(err) {
 
     // 500 → server error
     if (res.status === 500) {
-        return [res.data?.error || 'Server error'];
+        const error = res.data?.error;
+        const details = res.data?.details;
+
+        return [
+            details
+                ? `${error || 'Server error'}: ${details}`
+                : error || 'Server error'
+        ];
     }
 
     // fallback

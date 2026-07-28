@@ -11,6 +11,7 @@ import { formatPrice } from '@/utils/const';
 import { useFilterStore } from '@/stores/filterStore';
 import { usePermissionStore } from '@/stores/usePermissionStore';
 import { useProductStore } from '@/stores/useProductStore';
+import { exportToXlsx } from '@/utils/exportXlsx';
 
 const router = useRouter();
 const toast = useToast();
@@ -25,6 +26,46 @@ const startDate = ref('');
 const endDate = ref('');
 const showDateFilters = ref(false);
 const dataList = ref([]);
+const exportMenuVisible = ref(false);
+
+const SUMMARY_EXPORT_COLUMNS = [
+  { key: 'product_id', label: 'Product ID' },
+  { key: 'product_name', label: 'Product Name' },
+  { key: 'secondary_property', label: 'Secondary Property' },
+  { key: 'barcode', label: 'Barcode' },
+  { key: 'category', label: 'Category' },
+  { key: 'default_unit', label: 'Default Unit' },
+  { key: 'sales_price', label: 'Sales Price' },
+  { key: 'purchase_price', label: 'Purchase Price' },
+  { key: 'unit_count', label: 'Units' },
+  { key: 'branch_count', label: 'Branches' },
+  { key: 'status', label: 'Status' },
+  { key: 'created_by', label: 'Created By' },
+  { key: 'created_at', label: 'Created At' },
+  { key: 'updated_by', label: 'Updated By' },
+  { key: 'updated_at', label: 'Updated At' },
+];
+
+const DETAIL_EXPORT_COLUMNS = [
+  { key: 'product_id', label: 'Product ID' },
+  { key: 'product_name', label: 'Product Name' },
+  { key: 'secondary_property', label: 'Secondary Property' },
+  { key: 'category', label: 'Category' },
+  { key: 'product_status', label: 'Product Status' },
+  { key: 'price_type', label: 'Price Type' },
+  { key: 'branch', label: 'Branch' },
+  { key: 'unit', label: 'Unit' },
+  { key: 'barcode', label: 'Barcode' },
+  { key: 'conversion_to_base', label: 'Conversion To Base' },
+  { key: 'min_qty', label: 'Minimum Qty' },
+  { key: 'max_qty', label: 'Maximum Qty' },
+  { key: 'product_unit_price', label: 'Product Unit Price' },
+  { key: 'range_price', label: 'Range Price' },
+  { key: 'product_branches', label: 'Product Branches' },
+  { key: 'product_branches_range', label: 'Product Branches Range' },
+  { key: 'price_status', label: 'Price Status' },
+  { key: 'updated_at', label: 'Updated At' },
+];
 
 const totalProducts = computed(() => dataList.value.length);
 const activeProducts = computed(() => dataList.value.filter((row) => row.status?.name === 'Active').length);
@@ -136,6 +177,222 @@ function formatUpdatedAt(row) {
   return row.updated_at ? moment(row.updated_at).format('DD MMM YY, HH:mm') : '-';
 }
 
+function exportDate(value) {
+  if (!value) return '';
+  const date = moment(value);
+  return date.isValid() ? date.format('YYYY-MM-DD HH:mm') : String(value);
+}
+
+function numericExportValue(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : '';
+}
+
+function exportStatus(item) {
+  if (item?.status?.name) return item.status.name;
+  if (item?.status_id === '' || item?.status_id === null || item?.status_id === undefined) return '';
+  return Number(item.status_id) === 2 ? 'Inactive' : 'Active';
+}
+
+function findBranchProductUnit(row, unitPrice) {
+  if (unitPrice?.product_unit) return unitPrice.product_unit;
+
+  const productUnits = Array.isArray(row?.product_units) ? row.product_units : [];
+  return productUnits.find((unit) => (
+    unitPrice?.product_unit_id
+    && Number(unit.id) === Number(unitPrice.product_unit_id)
+  )) || productUnits.find((unit) => (
+    unitPrice?.unit_id
+    && Number(unit.unit_id?.id || unit.unit_id) === Number(unitPrice.unit_id)
+  )) || null;
+}
+
+function priceDetailBase(row) {
+  return {
+    product_id: row.id,
+    product_name: row.name || '',
+    secondary_property: row.sec_prop || '',
+    category: row.category_id?.name || '',
+    product_status: row.status?.name || '',
+    branch: '',
+    unit: '',
+    barcode: '',
+    conversion_to_base: '',
+    min_qty: '',
+    max_qty: '',
+    product_unit_price: '',
+    range_price: '',
+    product_branches: '',
+    product_branches_range: '',
+    price_status: '',
+    updated_at: exportDate(row.updated_at),
+  };
+}
+
+function summaryExportRows() {
+  return filteredRows.value.map((row) => {
+    const defaultUnit = defaultProductUnit(row);
+    return {
+      product_id: row.id,
+      product_name: row.name || '',
+      secondary_property: row.sec_prop || '',
+      barcode: defaultUnit?.barcode || row.barcode || '',
+      category: row.category_id?.name || '',
+      default_unit: defaultUnit ? productUnitName(defaultUnit) : row.unit_id?.name || '',
+      sales_price: numericExportValue(defaultUnit?.price ?? row.price),
+      purchase_price: numericExportValue(defaultUnit?.purchase_price ?? row.purchase_price),
+      unit_count: Array.isArray(row.product_units) ? row.product_units.length : 0,
+      branch_count: Array.isArray(row.branch_products) ? row.branch_products.length : 0,
+      status: row.status?.name || '',
+      created_by: row.created_by?.name || '',
+      created_at: exportDate(row.created_at),
+      updated_by: row.updated_by?.name || '',
+      updated_at: exportDate(row.updated_at),
+    };
+  });
+}
+
+function detailExportRows() {
+  return filteredRows.value.flatMap((row) => {
+    const details = [];
+    const productUnits = Array.isArray(row.product_units) ? row.product_units : [];
+
+    if (!productUnits.length) {
+      details.push({
+        ...priceDetailBase(row),
+        price_type: 'product_unit_price',
+        unit: row.unit_id?.name || '',
+        barcode: row.barcode || '',
+        conversion_to_base: 1,
+        product_unit_price: numericExportValue(row.price),
+        price_status: row.status?.name || '',
+      });
+    }
+
+    productUnits.forEach((unit) => {
+      const unitBase = {
+        ...priceDetailBase(row),
+        unit: productUnitName(unit),
+        barcode: unit.barcode || row.barcode || '',
+        conversion_to_base: numericExportValue(unit.conversion_to_base),
+      };
+
+      details.push({
+        ...unitBase,
+        price_type: 'product_unit_price',
+        product_unit_price: numericExportValue(unit.price),
+        price_status: exportStatus(unit),
+      });
+
+      (unit.price_ranges || []).forEach((range) => {
+        details.push({
+          ...unitBase,
+          price_type: 'range_price',
+          min_qty: numericExportValue(range.min_qty),
+          max_qty: numericExportValue(range.max_qty),
+          range_price: numericExportValue(range.price),
+          price_status: exportStatus(range),
+        });
+      });
+    });
+
+    (row.branch_products || []).forEach((branchProduct) => {
+      const branch = branchProduct.branch?.name || '';
+      const unitPrices = Array.isArray(branchProduct.unit_prices) ? branchProduct.unit_prices : [];
+
+      if (!unitPrices.length && branchProduct.price !== null && branchProduct.price !== undefined) {
+        const defaultUnit = defaultProductUnit(row);
+        details.push({
+          ...priceDetailBase(row),
+          price_type: 'product_branches',
+          branch,
+          unit: defaultUnit ? productUnitName(defaultUnit) : row.unit_id?.name || '',
+          barcode: defaultUnit?.barcode || row.barcode || '',
+          conversion_to_base: numericExportValue(defaultUnit?.conversion_to_base ?? 1),
+          product_branches: numericExportValue(branchProduct.price),
+          price_status: exportStatus(branchProduct),
+        });
+      }
+
+      unitPrices.forEach((unitPrice) => {
+        const productUnit = findBranchProductUnit(row, unitPrice);
+        const branchUnitBase = {
+          ...priceDetailBase(row),
+          branch,
+          unit: unitPrice.unit_name || productUnitName(productUnit),
+          barcode: productUnit?.barcode || row.barcode || '',
+          conversion_to_base: numericExportValue(productUnit?.conversion_to_base),
+        };
+
+        details.push({
+          ...branchUnitBase,
+          price_type: 'product_branches',
+          product_branches: numericExportValue(unitPrice.price),
+          price_status: exportStatus(unitPrice),
+        });
+
+        (unitPrice.price_ranges || []).forEach((range) => {
+          details.push({
+            ...branchUnitBase,
+            price_type: 'product_branches_range',
+            min_qty: numericExportValue(range.min_qty),
+            max_qty: numericExportValue(range.max_qty),
+            product_branches_range: numericExportValue(range.price),
+            price_status: exportStatus(range),
+          });
+        });
+      });
+    });
+
+    return details;
+  });
+}
+
+function exportSummary() {
+  exportMenuVisible.value = false;
+  const rows = summaryExportRows();
+  if (!rows.length) {
+    toast.add({ severity: 'warn', summary: 'Nothing to Export', detail: 'No products match the current filters.', life: 3000 });
+    return;
+  }
+
+  const filename = exportToXlsx({
+    columns: SUMMARY_EXPORT_COLUMNS,
+    rows,
+    filename: 'Products_Summary',
+    sheetName: 'Product Summary',
+    columnWidths: [12, 32, 24, 22, 24, 18, 16, 16, 10, 10, 14, 22, 20, 22, 20],
+    preserveTypes: true,
+    autoFilter: true,
+  });
+  if (!filename) {
+    toast.add({ severity: 'error', summary: 'Export Failed', detail: 'The product summary workbook could not be created.', life: 3500 });
+  }
+}
+
+function exportDetails() {
+  exportMenuVisible.value = false;
+  const rows = detailExportRows();
+  if (!rows.length) {
+    toast.add({ severity: 'warn', summary: 'Nothing to Export', detail: 'No product price details match the current filters.', life: 3000 });
+    return;
+  }
+
+  const filename = exportToXlsx({
+    columns: DETAIL_EXPORT_COLUMNS,
+    rows,
+    filename: 'Products_Details',
+    sheetName: 'Product Price Details',
+    columnWidths: [12, 32, 24, 24, 16, 28, 24, 18, 22, 20, 14, 14, 18, 16, 18, 24, 16, 20],
+    preserveTypes: true,
+    autoFilter: true,
+  });
+  if (!filename) {
+    toast.add({ severity: 'error', summary: 'Export Failed', detail: 'The product details workbook could not be created.', life: 3500 });
+  }
+}
+
 function formatStatus(row) {
   const active = row.status?.name === 'Active';
   const classes = active
@@ -191,6 +448,8 @@ const filteredRows = computed(() => {
 
   return rows;
 });
+
+const filteredDetailCount = computed(() => detailExportRows().length);
 
 function clearFilters() {
   searchValue.value = '';
@@ -256,6 +515,65 @@ async function deleteHandle(id) {
         filename="Products"
         @delete="deleteHandle"
       >
+        <template #export-actions>
+          <div class="relative">
+            <BaseButton
+              label="Export"
+              icon="fa fa-file-excel"
+              size="sm"
+              variant="solid"
+              severity="success"
+              aria-haspopup="menu"
+              :aria-expanded="exportMenuVisible"
+              @click="exportMenuVisible = !exportMenuVisible"
+            />
+            <button
+              v-if="exportMenuVisible"
+              type="button"
+              class="fixed inset-0 z-20 cursor-default bg-transparent"
+              aria-label="Close export options"
+              @click="exportMenuVisible = false"
+            ></button>
+            <div
+              v-if="exportMenuVisible"
+              class="absolute right-0 z-30 mt-2 w-72 overflow-hidden rounded-lg border border-gray-200 bg-white text-left shadow-xl"
+              role="menu"
+            >
+              <div class="border-b border-gray-100 px-4 py-3">
+                <div class="text-sm font-semibold text-gray-900">Export products</div>
+                <div class="mt-0.5 text-xs text-gray-500">Uses the current search and filters</div>
+              </div>
+              <button
+                type="button"
+                class="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-gray-50"
+                role="menuitem"
+                @click="exportSummary"
+              >
+                <i class="fa fa-table-list mt-0.5 text-green-600"></i>
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium text-gray-900">Export Summary</span>
+                  <span class="mt-0.5 block text-xs text-gray-500">
+                    {{ filteredRows.length }} {{ filteredRows.length === 1 ? 'product' : 'products' }}, one row each
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                class="flex w-full items-start gap-3 border-t border-gray-100 px-4 py-3 text-left hover:bg-gray-50"
+                role="menuitem"
+                @click="exportDetails"
+              >
+                <i class="fa fa-list-check mt-0.5 text-blue-600"></i>
+                <span class="min-w-0">
+                  <span class="block text-sm font-medium text-gray-900">Export Details</span>
+                  <span class="mt-0.5 block text-xs text-gray-500">
+                    {{ filteredDetailCount }} {{ filteredDetailCount === 1 ? 'price row' : 'price rows' }}
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </template>
         <template #filters>
           <div class="flex min-w-0 flex-col gap-3">
             <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_200px_170px_auto_auto]">
