@@ -6,6 +6,7 @@ import PageTitle from '@/components/PageTitle.vue';
 import BaseButton from '@/components/BaseButton.vue';
 import Loading from '@/components/Loading.vue';
 import { formatPrice } from '@/utils/const';
+import { categoryLabel } from '@/utils/categories';
 import { useProductStore } from '@/stores/useProductStore';
 import { usePermissionStore } from '@/stores/usePermissionStore';
 
@@ -168,7 +169,7 @@ function hasValue(value) {
                 <div class="min-w-0">
                   <div class="mb-2 flex flex-wrap items-center gap-2">
                     <span class="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                      {{ product.category_id?.name || 'Uncategorized' }}
+                      {{ categoryLabel(product.category_id) || 'Uncategorized' }}
                     </span>
                     <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset" :class="statusClasses(product.status?.name)">
                       <span class="mr-1.5 h-1.5 w-1.5 rounded-full bg-current"></span>

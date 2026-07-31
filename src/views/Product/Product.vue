@@ -11,13 +11,16 @@ import { formatPrice } from '@/utils/const';
 import { useFilterStore } from '@/stores/filterStore';
 import { usePermissionStore } from '@/stores/usePermissionStore';
 import { useProductStore } from '@/stores/useProductStore';
+import { useCategoryStore } from '@/stores/useCategoryStore';
 import { exportToXlsx } from '@/utils/exportXlsx';
+import { categoryLabel, getCategoryFilterOptions } from '@/utils/categories';
 
 const router = useRouter();
 const toast = useToast();
 const filter = useFilterStore();
 const usePermission = usePermissionStore();
 const useProduct = useProductStore();
+const useCategory = useCategoryStore();
 
 const searchValue = ref('');
 const categoryFilter = ref('');
@@ -73,14 +76,10 @@ const totalProductUnits = computed(() => dataList.value.reduce((total, row) => t
 const productsWithBranchPricing = computed(() => dataList.value.filter((row) => (row.branch_products || []).length > 0).length);
 
 const categories = computed(() => {
-  const categoryMap = new Map();
-  dataList.value.forEach((row) => {
-    if (!row.category_id?.name) return;
-    categoryMap.set(categoryKey(row.category_id), row.category_id.name);
-  });
-  return [...categoryMap.entries()]
-    .map(([value, label]) => ({ value, label }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+  return getCategoryFilterOptions(useCategory.categoryList).map((category) => ({
+    value: String(category.id),
+    label: category.label,
+  }));
 });
 
 const statuses = computed(() => {
@@ -106,7 +105,10 @@ onMounted(async () => {
     showDateFilters.value = !!(startDate.value || endDate.value);
   }
 
-  await loadProducts();
+  await Promise.all([
+    useCategory.fetchAllCategory(),
+    loadProducts(),
+  ]);
   saveFilters();
 });
 
@@ -126,16 +128,15 @@ function saveFilters() {
 }
 
 async function loadProducts() {
-  await useProduct.fetchAllProduct();
+  const params = categoryFilter.value
+    ? { category_id: Number(categoryFilter.value) }
+    : {};
+  await useProduct.fetchAllProduct(params);
   dataList.value = Array.isArray(useProduct.productList) ? useProduct.productList : [];
 }
 
 function safeName(value) {
   return value?.name || '-';
-}
-
-function categoryKey(category) {
-  return String(category?.id ?? category?.name ?? '');
 }
 
 function productUnitName(productUnit) {
@@ -213,7 +214,7 @@ function priceDetailBase(row) {
     product_id: row.id,
     product_name: row.name || '',
     secondary_property: row.sec_prop || '',
-    category: row.category_id?.name || '',
+    category: categoryLabel(row.category_id),
     product_status: row.status?.name || '',
     branch: '',
     unit: '',
@@ -238,7 +239,7 @@ function summaryExportRows() {
       product_name: row.name || '',
       secondary_property: row.sec_prop || '',
       barcode: defaultUnit?.barcode || row.barcode || '',
-      category: row.category_id?.name || '',
+      category: categoryLabel(row.category_id),
       default_unit: defaultUnit ? productUnitName(defaultUnit) : row.unit_id?.name || '',
       sales_price: numericExportValue(defaultUnit?.price ?? row.price),
       purchase_price: numericExportValue(defaultUnit?.purchase_price ?? row.purchase_price),
@@ -410,7 +411,12 @@ const columns = [
     onClick: (row) => router.push({ name: 'View Product', query: { id: row.id } }),
   },
   { key: 'barcode', label: 'Barcode', align: 'left', formatter: formatDefaultBarcode },
-  { key: 'category_id.name', label: 'Category', align: 'left', formatter: (row) => safeName(row.category_id) },
+  {
+    key: 'category_id.name',
+    label: 'Category',
+    align: 'left',
+    formatter: (row) => categoryLabel(row.category_id) || 'Uncategorized',
+  },
   { key: 'default_product_unit', label: 'Default unit', align: 'left', formatter: formatDefaultUnit },
   { key: 'price', label: 'Sales price', align: 'right', formatter: formatDefaultPrice },
   { key: 'product_units', label: 'Units', formatter: (row) => row.product_units?.length || 0 },
@@ -428,16 +434,15 @@ const filteredRows = computed(() => {
       row.sec_prop,
       row.barcode,
       defaultUnit?.barcode,
-      row.category_id?.name,
+      categoryLabel(row.category_id),
       productUnitName(defaultUnit),
       ...(row.product_units || []).map(productUnitName),
       ...(row.branch_products || []).map((item) => item.branch?.name),
     ].filter(Boolean).join(' ').toLowerCase();
 
     const matchesSearch = !query || searchText.includes(query);
-    const matchesCategory = !categoryFilter.value || categoryKey(row.category_id) === categoryFilter.value;
     const matchesStatus = !statusFilter.value || row.status?.name === statusFilter.value;
-    return matchesSearch && matchesCategory && matchesStatus;
+    return matchesSearch && matchesStatus;
   });
 
   rows = filter.dateRangeFilter(rows, {
@@ -451,13 +456,15 @@ const filteredRows = computed(() => {
 
 const filteredDetailCount = computed(() => detailExportRows().length);
 
-function clearFilters() {
+async function clearFilters() {
+  const hadCategoryFilter = Boolean(categoryFilter.value);
   searchValue.value = '';
   categoryFilter.value = '';
   statusFilter.value = '';
   startDate.value = '';
   endDate.value = '';
   showDateFilters.value = false;
+  if (hadCategoryFilter) await loadProducts();
 }
 
 async function deleteHandle(id) {
@@ -585,7 +592,7 @@ async function deleteHandle(id) {
                 icon="pi pi-search"
               />
 
-              <select v-model="categoryFilter" class="h-[40px] min-w-0 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none focus:border-gray-900">
+              <select v-model="categoryFilter" class="h-[40px] min-w-0 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none focus:border-gray-900" @change="loadProducts">
                 <option value="">All categories</option>
                 <option v-for="category in categories" :key="category.value" :value="category.value">{{ category.label }}</option>
               </select>

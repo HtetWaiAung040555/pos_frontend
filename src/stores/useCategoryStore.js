@@ -1,17 +1,17 @@
 import { defineStore } from "pinia";
 import axios from "axios";
-import { API_URL } from "@/utils/config";
 import { normalizeApiError } from "@/utils/NormalizeApiError";
-
-const api_url = API_URL;
+import { normalizeCategory } from "@/utils/categories";
 
 export const useCategoryStore = defineStore('category', {
     state: () => ({
         categoryList: [],
+        category: null,
         loading: false,
         deleteLoading: false,
         data: null,
         error: [],
+        deleteBlockers: [],
     }),
 
     actions: {
@@ -20,7 +20,9 @@ export const useCategoryStore = defineStore('category', {
             this.error = [];
             try {
                 const response = await axios.get(`/categories`);
-                this.categoryList = response.data.data;
+                this.categoryList = Array.isArray(response.data.data)
+                    ? response.data.data.map(normalizeCategory)
+                    : [];
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {
@@ -30,9 +32,10 @@ export const useCategoryStore = defineStore('category', {
         async fetchCategory(categoryId) {
             this.loading = true;
             this.error = [];
+            this.category = null;
             try {
                 const response = await axios.get(`/categories/${categoryId}`);
-                this.categoryList = response.data.data;
+                this.category = normalizeCategory(response.data.data);
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {
@@ -44,7 +47,8 @@ export const useCategoryStore = defineStore('category', {
             this.error = [];
             try {
                 const response = await axios.post(`/categories`, formData);
-                this.categoryList = response.data.data;
+                this.category = normalizeCategory(response.data.data);
+                this.data = response;
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {
@@ -56,7 +60,8 @@ export const useCategoryStore = defineStore('category', {
             this.error = [];
             try {
                 const response = await axios.put(`/categories/${categoryId}`, formData);
-                this.categoryList = response.data.data;
+                this.category = normalizeCategory(response.data.data);
+                this.data = response;
             } catch (err) {
                 this.error = normalizeApiError(err);
             } finally {
@@ -66,10 +71,14 @@ export const useCategoryStore = defineStore('category', {
         async deleteCategory(categoryId) {
             this.deleteLoading = true;
             this.error = [];
+            this.deleteBlockers = [];
             try {
                 const response = await axios.delete(`/categories/${categoryId}`);
                 this.data = response;
             } catch (err) {
+                this.deleteBlockers = Array.isArray(err.response?.data?.blockers)
+                    ? err.response.data.blockers
+                    : [];
                 this.error = normalizeApiError(err);
             } finally {
                 this.deleteLoading = false;

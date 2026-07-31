@@ -13,11 +13,11 @@ export const useProductStore = defineStore('product', {
         data: null,
     }),
     actions: {
-        async fetchAllProduct() {
+        async fetchAllProduct(params = {}) {
             this.loading = true;
             this.error = [];
             try {
-                const response = await axios.get(`/products`);
+                const response = await axios.get(`/products`, { params });
                 this.productList = response.data.data;
             } catch (err) {
                 this.error = normalizeApiError(err);

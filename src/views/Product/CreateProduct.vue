@@ -17,8 +17,9 @@ import { useBranchStore } from '@/stores/useBranchStore';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useToast } from 'primevue/usetoast';
-import { Select } from 'primevue';
+import CategoryPicker from '@/components/CategoryPicker.vue';
 import { normalizeBranchProducts } from '@/utils/branchProductPricing';
+import { getProductCategoryOptions } from '@/utils/categories';
 
 const router = useRouter();
 const toast = useToast();
@@ -26,6 +27,12 @@ const useProduct = useProductStore();
 const useCategory = useCategoryStore();
 const useUnit = useUnitStore();
 const useBranch = useBranchStore();
+const uncategorizedOption = Object.freeze({
+  id: null,
+  name: 'Uncategorized',
+  label: 'Uncategorized',
+  code: null,
+});
 
 const formData = ref({
   name: '',
@@ -47,7 +54,7 @@ const errorMsg = ref({
   branchProducts: '',
 });
 const uploadImage = ref('');
-const selectedCategory = ref('');
+const selectedCategory = ref(null);
 const selectedUnit = ref('');
 const nameInput = ref(null);
 const unitSection = ref(null);
@@ -56,6 +63,7 @@ const imageInput = ref(null);
 const branchPricingOpen = ref(false);
 
 const selectedBranchCount = computed(() => branchProducts.value.length);
+const productCategoryOptions = computed(() => getProductCategoryOptions(useCategory.categoryList));
 
 const branchPricingProductUnits = computed(() => productUnits.value);
 
@@ -264,7 +272,7 @@ function resetForm() {
     barcode: '',
     image: '',
   };
-  selectedCategory.value = '';
+  selectedCategory.value = null;
   selectedUnit.value = useUnit.unitList?.find((el) => el.id === 1) || '';
   productUnits.value = [createProductUnit(selectedUnit.value)];
   branchProducts.value = [];
@@ -346,8 +354,8 @@ async function formSubmit(isNew) {
       <BaseCard v-if="!isInitLoading" class="mt-3">
         <template #cardElements>
           <div class="space-y-5" @keydown="handleKeyboardSave">
-            <section class="overflow-hidden rounded-xl border border-gray-200 bg-white">
-              <div class="flex flex-col gap-2 border-b border-gray-100 bg-gray-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <section class="relative rounded-xl border border-gray-200 bg-white">
+              <div class="flex flex-col gap-2 rounded-t-xl border-b border-gray-100 bg-gray-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div class="flex items-center gap-3">
                   <span class="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-xs font-semibold text-blue-700">1</span>
                   <div>
@@ -364,12 +372,16 @@ async function formSubmit(isNew) {
                     <BaseInput ref="nameInput" size="sm" v-model="formData.name" label="Product name" placeholder="e.g. Premium Arabica Coffee" height="h-[40px]" :isRequire="true" :error="errorMsg.name" />
                   </div>
 
-                  <div class="flex flex-col gap-y-1">
-                    <BaseLabel label="Category" />
-                    <Select v-model="selectedCategory" :options="useCategory.categoryList" showClear filter optionLabel="name" placeholder="Choose a category" class="h-[40px] items-center" />
-                  </div>
+                  <CategoryPicker
+                    class="min-w-0 md:col-span-2"
+                    v-model="selectedCategory"
+                    :options="productCategoryOptions"
+                    :root-option="uncategorizedOption"
+                    :loading="useCategory.loading"
+                    mode="product"
+                  />
 
-                  <BaseInput size="sm" v-model="formData.sec_prop" label="Variant / secondary name" placeholder="e.g. Red, Large, 500 ml" height="h-[40px]" />
+                  <BaseInput class="md:col-span-2" size="sm" v-model="formData.sec_prop" label="Variant / secondary name" placeholder="e.g. Red, Large, 500 ml" height="h-[40px]" />
 
                   <div class="md:col-span-2">
                     <BaseLabel label="Product status" />

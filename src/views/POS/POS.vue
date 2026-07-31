@@ -1,6 +1,7 @@
 <script setup>
 import BaseButton from '@/components/BaseButton.vue';
 import BaseInput from '@/components/BaseInput.vue';
+import CategoryPicker from '@/components/CategoryPicker.vue';
 import ProductCard from '@/components/ProductCard.vue';
 import { useCustomerStore } from '@/stores/useCustomerStore';
 import { Dialog, Select, useToast } from 'primevue';
@@ -11,11 +12,13 @@ import { useRouter } from 'vue-router';
 import moment from 'moment';
 import axios from 'axios';
 import { useProductStore } from '@/stores/useProductStore';
+import { useCategoryStore } from '@/stores/useCategoryStore';
 import { usePromotionStore } from '@/stores/usePromotionStore';
 import BaseLabel from '@/components/BaseLabel.vue';
 import BaseTextarea from '@/components/BaseTextarea.vue';
 import SubTitle from '@/components/SubTitle.vue';
 import { useWalletStore } from '@/stores/useWalletStore';
+import { getCategoryFilterOptions } from '@/utils/categories';
 
 const toast = useToast();
 const router = useRouter();
@@ -23,8 +26,15 @@ const useCustomer = useCustomerStore();
 const useStatus = useStatusStore();
 const useSales = useSaleStore();
 const useProduct = useProductStore();
+const useCategory = useCategoryStore();
 const usePromo = usePromotionStore();
 const useWallet = useWalletStore();
+const allCategoriesOption = Object.freeze({
+  id: null,
+  name: 'All categories',
+  label: 'All categories',
+  code: null,
+});
 
 const productList = ref([]);
 const userData = ref({});
@@ -41,6 +51,7 @@ const qtyInputRef = ref(null);
 const selectedPId = ref("");
 const selectedCustomer = ref({});
 const searchQuery = ref("");
+const categoryFilter = ref(null);
 const barcodeInput = ref(null); // Hidden barcode input reference
 const pendingAddIds = ref(new Set());
 // Hold sales UI
@@ -75,6 +86,8 @@ const sortedHoldList = computed(() => {
   });
 });
 
+const categoryFilterOptions = computed(() => getCategoryFilterOptions(useCategory.categoryList));
+
 onMounted(async () => {
   initialLoading.value = true;
   const currentUser = JSON.parse(localStorage.getItem('user'));
@@ -83,12 +96,30 @@ onMounted(async () => {
     useCustomer.fetchAllCustomer(),
     usePromo.fetchAllPromo(),
     useProduct.fetchSalesProduct({ branch_id: currentUser.branch.id }),
+    useCategory.fetchAllCategory(),
     useStatus.fetchAllStatus(),
   ]);
   selectedCustomer.value = useCustomer.customerList.find(c => c.is_default);
   productList.value = useProduct.productList;
   initialLoading.value = false;
 });
+
+async function loadSaleProducts() {
+  const params = {
+    branch_id: userData.value.branch?.id,
+  };
+  if (categoryFilter.value?.id !== null && categoryFilter.value?.id !== undefined) {
+    params.category_id = Number(categoryFilter.value.id);
+  }
+
+  await useProduct.fetchSalesProduct(params);
+  productList.value = useProduct.productList;
+}
+
+async function selectCategoryFilter(category) {
+  categoryFilter.value = category;
+  await loadSaleProducts();
+}
 
 function productLineKey(product) {
   return `${product?.id || ''}:${product?.product_unit_id || 'base'}`;
@@ -1309,8 +1340,20 @@ function printSlip(isSale = true) {
       <div class="flex flex-col w-2/3 px-4 py-3 overflow-hidden">
         <!-- Fixed Search Bar -->
         <div class="shrink-0 flex gap-x-2 justify-between items-center">
-          <BaseInput v-model="searchQuery" height="h-[33px]" placeholder="Search products by name, id, or barcode..."
-            width="350px" icon="pi pi-search" @keyup.escape="searchQuery = ' '" />
+          <div class="flex min-w-0 gap-2">
+            <BaseInput v-model="searchQuery" height="h-[33px]" placeholder="Search products by name, id, or barcode..."
+              width="350px" icon="pi pi-search" @keyup.escape="searchQuery = ''" />
+            <CategoryPicker
+              class="w-[190px] shrink-0"
+              :model-value="categoryFilter"
+              :options="categoryFilterOptions"
+              :root-option="allCategoriesOption"
+              :loading="initialLoading"
+              mode="filter"
+              compact
+              @update:model-value="selectCategoryFilter"
+            />
+          </div>
           <div class="flex gap-x-2">
             <BaseButton label="Holds" severity="info" icon="fa fa-folder-open" @click="openHoldDialog" />
             <BaseButton label="Top-up" severity="secondary" icon="fa fa-plus" @click="openWalletModal = true"
