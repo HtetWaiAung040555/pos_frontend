@@ -121,8 +121,7 @@ function hydrateSelectedProductsFromCatalog() {
 const productTotalAmount = computed(() => {
     return selectedProducts.value.reduce((sum, p) => {
         if (p.is_foc) return sum;
-        const price = p.promotion_id ? Number(p.discount_price || 0) : Number(p.price || 0);
-        return sum + (price * Number(p.quantity || 0));
+        return sum + (saleLinePrice(p) * Number(p.quantity || 0));
     }, 0);
 });
 
@@ -201,6 +200,44 @@ function sameProductUnit(left, right) {
 function pricedItemFor(product, pricedItems = []) {
     return pricedItems.find(item => sameProductUnit(item, product))
         || pricedItems.find(item => Number(item.product_id || item.id) === Number(product.id));
+}
+
+function promotionIdFor(value) {
+    return value?.promotion_id ?? value?.promotion?.id ?? null;
+}
+
+function promotionDetailsFor(pricedItem, promotionItems = []) {
+    const promotionId = promotionIdFor(pricedItem);
+    if (!promotionId) return null;
+
+    return promotionItems.find(item => (
+        sameProductUnit(item, pricedItem)
+        && Number(promotionIdFor(item)) === Number(promotionId)
+    )) || null;
+}
+
+function saleLinePrice(product) {
+    if (product?.is_foc) return 0;
+    if (product?.final_price !== null && product?.final_price !== undefined) {
+        return Number(product.final_price) || 0;
+    }
+    return Number(product?.price || 0);
+}
+
+function promotionTypeLabel(type) {
+    const labels = {
+        PRODUCT_DISCOUNT: 'Product discount',
+        PRICE_OVERRIDE: 'Price override',
+        ORDER_DISCOUNT: 'Order discount',
+        FOC: 'Free item',
+    };
+    return labels[type] || 'Promotion';
+}
+
+function promotionDisplayLabel(product) {
+    if (!product?.promotion_id) return '';
+    const suffix = product.promotion_name || `#${product.promotion_id}`;
+    return `${promotionTypeLabel(product.promo_type)} · ${suffix}`;
 }
 
 watch(grandTotalAmount, (amount) => {
@@ -318,7 +355,11 @@ async function confirmProductSelection() {
             unit_barcode: existing?.unit_barcode || productUnitBarcode(p),
             conversion_to_base: existing?.conversion_to_base || productConversionToBase(p),
             price: basePrice,
+            original_price: Number(existing?.original_price ?? basePrice),
+            final_price: existing?.final_price ?? null,
             promotion_id: existing?.promotion_id || null,
+            promo_type: existing?.promo_type || null,
+            promotion_name: existing?.promotion_name || null,
             discount_amount: Number(existing?.discount_amount) || 0,
             discount_price: Number(existing?.discount_price ?? basePrice),
             discount_value: Number(existing?.discount_value) || 0,
@@ -361,9 +402,13 @@ function onProductUnitChange(product) {
     product.conversion_to_base = Number(unit?.conversion_to_base || 1);
     product.barcode = unit?.barcode || product.base_barcode || product.barcode || '';
     product.price = 0;
+    product.original_price = 0;
+    product.final_price = null;
     product.discount_amount = 0;
     product.discount_price = 0;
     product.promotion_id = null;
+    product.promo_type = null;
+    product.promotion_name = null;
     product.price_source = null;
     product.price_range_id = null;
     recalculatePromotions();
@@ -402,42 +447,43 @@ async function recalculatePromotions() {
 
         selectedProducts.value = normalProducts.map(p => {
             const pricedItem = pricedItemFor(p, data.priced_items || []);
-            const price = Number(pricedItem?.price ?? 0);
+            if (!pricedItem) {
+                throw new Error(`Missing priced item for product ${p.id}.`);
+            }
+
+            const promotionId = promotionIdFor(pricedItem);
+            const promotionDetails = promotionDetailsFor(pricedItem, data.items || []);
+            const originalPrice = Number(pricedItem.original_price ?? pricedItem.price ?? p.price ?? 0);
+            const finalPrice = Number(pricedItem.final_price ?? originalPrice);
 
             return {
                 ...p,
-                price,
+                price: originalPrice,
+                original_price: originalPrice,
+                final_price: finalPrice,
                 price_source: pricedItem?.price_source || null,
                 price_range_id: pricedItem?.price_range_id || null,
-                promotion_id: null,
-                discount_amount: 0,
-                discount_price: price,
-                discount_value: 0,
-                discount_type: '',
+                promotion_id: promotionId,
+                promo_type: pricedItem.promo_type ?? promotionDetails?.promo_type ?? null,
+                promotion_name: pricedItem.promotion_name
+                    ?? pricedItem.promotion?.name
+                    ?? promotionDetails?.promotion_name
+                    ?? promotionDetails?.promotion?.name
+                    ?? null,
+                discount_amount: promotionId
+                    ? Number(pricedItem.discount_amount ?? Math.max(0, originalPrice - finalPrice))
+                    : 0,
+                discount_price: finalPrice,
+                discount_value: promotionId
+                    ? Number(pricedItem.discount_value ?? promotionDetails?.discount_value ?? 0)
+                    : 0,
+                discount_type: promotionId
+                    ? (pricedItem.discount_type ?? promotionDetails?.discount_type ?? '')
+                    : '',
                 is_foc: false,
                 reward_id: null,
             };
         });
-
-        if (Array.isArray(data.items) && data.items.length > 0) {
-            selectedProducts.value = selectedProducts.value.map(p => {
-                const promo = data.items.find(item => sameProductUnit(item, p))
-                    || data.items.find(item => Number(item.product_id) === Number(p.id));
-                if (!promo) return p;
-
-                const discountPrice = Number(promo.discount_price ?? Math.max(0, Number(p.price || 0) - Number(promo.discount_amount || 0)));
-                const discountAmount = Math.max(0, Number(p.price || 0) - discountPrice);
-
-                return {
-                    ...p,
-                    promotion_id: promo.promotion_id || null,
-                    discount_value: Number(promo.discount_value) || 0,
-                    discount_type: promo.discount_type || '',
-                    discount_amount: discountAmount,
-                    discount_price: discountPrice,
-                };
-            });
-        }
 
         orderDiscountAmount.value = Number(data.order?.total_discount) || 0;
         appliedPromotions.value = data.order?.applied_promotions || [];
@@ -461,7 +507,11 @@ async function recalculatePromotions() {
                     unit_barcode: free.unit_barcode || productUnitBarcode(product),
                     conversion_to_base: free.conversion_to_base || productConversionToBase(product),
                     price: 0,
+                    original_price: 0,
+                    final_price: 0,
                     promotion_id: free.promotion_id || null,
+                    promo_type: free.promo_type || 'FOC',
+                    promotion_name: free.promotion_name || free.promotion?.name || null,
                     discount_amount: 0,
                     discount_price: 0,
                     discount_value: 0,
@@ -476,7 +526,11 @@ async function recalculatePromotions() {
     } catch (err) {
         selectedProducts.value = normalProducts.map(p => ({
             ...p,
+            original_price: Number(p.price || 0),
+            final_price: Number(p.price || 0),
             promotion_id: null,
+            promo_type: null,
+            promotion_name: null,
             discount_amount: 0,
             discount_price: Number(p.price || 0),
             discount_value: 0,
@@ -562,11 +616,11 @@ async function formSubmit(isPrint = false) {
             product_id: p.id,
             ...productLineUomSnapshot(p, p.quantity),
             quantity: p.quantity,
-            price: p.is_foc ? 0 : p.price,
-            original_price: p.is_foc ? 0 : p.price,
+            price: p.is_foc ? 0 : Number(p.original_price ?? p.price),
+            original_price: p.is_foc ? 0 : Number(p.original_price ?? p.price),
             promotion_id: p.promotion_id || null,
             discount_amount: p.is_foc ? 0 : (p.discount_amount || 0),
-            discount_price: p.is_foc ? 0 : (p.discount_price || 0),
+            discount_price: p.is_foc ? 0 : saleLinePrice(p),
             is_foc: p.is_foc ? true : false,
             reward_id: p.reward_id || null,
         }))
@@ -806,7 +860,7 @@ function printSlip() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <tr v-for="product in selectedProducts" :key="`${product.id}-${product.is_foc ? 'foc' : 'sale'}-${product.reward_id || 'none'}`"
+                                    <tr v-for="product in selectedProducts" :key="`${product.id}-${product.is_foc ? 'foc' : 'sale'}-${product.promotion_id || 'none'}-${product.reward_id || 'none'}`"
                                         class="border-b border-gray-200 hover:bg-blue-50">
                                         <td class="p-2">
                                             <div class="w-12 h-12 overflow-hidden rounded">
@@ -833,18 +887,21 @@ function printSlip() {
                                         </td>
                                         <td class="p-2 text-right">
                                             <span v-if="product.is_foc">FOC</span>
-                                            <span v-else-if="product.promotion_id">
-                                                {{ product.discount_type === 'AMOUNT' ? Number(product.discount_amount || 0).toLocaleString() : product.discount_value + '%' }}
-                                            </span>
+                                            <div v-else-if="product.promotion_id" class="flex flex-col items-end">
+                                                <span class="font-medium text-emerald-700">{{ promotionDisplayLabel(product) }}</span>
+                                                <span v-if="product.promo_type === 'PRODUCT_DISCOUNT'" class="text-xs text-gray-500">
+                                                    {{ product.discount_type === 'AMOUNT' ? Number(product.discount_amount || 0).toLocaleString() : product.discount_value + '%' }}
+                                                </span>
+                                            </div>
                                             <span v-else>0</span>
                                         </td>
                                         <td class="p-2 text-right">
-                                            {{ product.promotion_id ? Number(product.discount_price).toLocaleString() : Number(product.price).toLocaleString() }}
+                                            {{ saleLinePrice(product).toLocaleString() }}
                                         </td>
                                         <td class="p-2 text-right">
                                             <input type="number" min="0" class="w-20 text-right px-1 py-1 border rounded" :class="{ 'bg-gray-100': product.is_foc }" v-model.number="product.quantity" @input="onChangeQty(product)" :readonly="product.is_foc" />
                                         </td>
-                                        <td class="p-2 text-right">{{ product.promotion_id ? Number(product.discount_price) * product.quantity : Number(product.price) * product.quantity }}</td>
+                                        <td class="p-2 text-right">{{ (saleLinePrice(product) * product.quantity).toLocaleString() }}</td>
                                         <td class="p-2 text-right">
                                             <button v-if="!product.is_foc" class="text-red-600 hover:text-red-800 px-2 py-1"
                                                 @click="removeSelectedProduct(product)"><i

@@ -139,6 +139,31 @@ function linePromotionId(value) {
   return value?.promotion_id || value?.promotion?.id || value?.promotion?.promotion_id || null;
 }
 
+function linePromotionType(value) {
+  return value?.promo_type || value?.promotion?.promo_type || null;
+}
+
+function linePromotionName(value) {
+  return value?.promotion_name || value?.promotion?.name || null;
+}
+
+function promotionTypeLabel(type) {
+  const labels = {
+    PRODUCT_DISCOUNT: 'Product discount',
+    PRICE_OVERRIDE: 'Price override',
+    ORDER_DISCOUNT: 'Order discount',
+    FOC: 'Free item',
+  };
+  return labels[type] || 'Promotion';
+}
+
+function promotionDisplayLabel(value) {
+  const promotionId = linePromotionId(value);
+  if (!promotionId) return '';
+  const suffix = linePromotionName(value) || `#${promotionId}`;
+  return `${promotionTypeLabel(linePromotionType(value))} · ${suffix}`;
+}
+
 function lineQuantity(product) {
   return Number(product?.qty ?? product?.quantity ?? 0);
 }
@@ -216,11 +241,11 @@ function saleProductPayload(product) {
 
   if (promotionId) {
     const finalPrice = lineFinalPrice(product);
-    return {
-      ...payload,
-      discount_amount: Math.max(0, originalPrice - finalPrice),
-      discount_price: finalPrice,
-      promotion_id: promotionId,
+      return {
+        ...payload,
+        discount_amount: Number(product.discount_amount ?? Math.max(0, originalPrice - finalPrice)),
+        discount_price: finalPrice,
+        promotion_id: promotionId,
     };
   }
 
@@ -291,15 +316,16 @@ function mapPricedItems(pricedItems, sources, promotionItems = []) {
       const catalogProduct = catalogProducts.value.find(product => sameProductUnit(product, pricedItem))
         || catalogProducts.value.find(product => Number(product.id) === Number(pricedItem.product_id))
         || {};
-      const promotionItem = promotionItems.find(item => item.line_key === pricedItem.line_key)
-        || promotionItems.find(item => (
+      const promotionId = linePromotionId(pricedItem);
+      const promotionItem = promotionId
+        ? promotionItems.find(item => (
           Number(item.product_id) === Number(pricedItem.product_id)
           && Number(item.product_unit_id || 0) === Number(pricedItem.product_unit_id || 0)
-          && Number(item.promotion_id || 0) === Number(pricedItem.promotion_id || 0)
-        ));
+          && Number(linePromotionId(item) || 0) === Number(promotionId)
+        ))
+        : null;
       const originalPrice = Number(pricedItem.original_price ?? pricedItem.price ?? sourceProduct.price ?? catalogProduct.price ?? 0);
       const finalPrice = Number(pricedItem.final_price ?? pricedItem.discount_price ?? originalPrice);
-      const promotionId = linePromotionId(pricedItem);
       const splitType = pricedItem.split_type
         || (promotionId ? 'PROMOTION' : 'STANDARD');
 
@@ -317,11 +343,18 @@ function mapPricedItems(pricedItems, sources, promotionItems = []) {
         discount_price: pricedItem.discount_price === null || pricedItem.discount_price === undefined
           ? null
           : Number(pricedItem.discount_price),
-        discount_amount: Math.max(0, originalPrice - finalPrice),
+        discount_amount: promotionId
+          ? Number(pricedItem.discount_amount ?? Math.max(0, originalPrice - finalPrice))
+          : 0,
         discount_type: pricedItem.discount_type ?? promotionItem?.discount_type ?? null,
         discount_value: pricedItem.discount_value ?? promotionItem?.discount_value ?? 0,
         promotion_id: promotionId,
         promo_type: pricedItem.promo_type ?? promotionItem?.promo_type ?? null,
+        promotion_name: pricedItem.promotion_name
+          ?? pricedItem.promotion?.name
+          ?? promotionItem?.promotion_name
+          ?? promotionItem?.promotion?.name
+          ?? null,
         is_promotion_line: Boolean(pricedItem.is_promotion_line ?? promotionId),
         is_excess_quantity: Boolean(pricedItem.is_excess_quantity),
         split_type: splitType,
@@ -1470,9 +1503,9 @@ function printSlip(isSale = true) {
                       <span class="font-semibold">{{ Number(item.price).toLocaleString() }}</span>
                       <span class="text-blue-500 bg-blue-100 font-bold px-2 rounded-md"> FREE GIFT </span>
                     </div>
-                    <!-- <div>
-                      <span v-if="item.promotion_id && !item.is_foc" class="font-semibold text-emerald-700">Promotion price applied</span>
-                    </div> -->
+                    <div v-if="item.promotion_id && !item.is_foc" class="mt-0.5 text-xs font-semibold text-emerald-700">
+                      {{ promotionDisplayLabel(item) }}
+                    </div>
                   </div>
                 </td>
                 <td class="border-b p-2 border-gray-200 text-end font-semibold">
@@ -1739,9 +1772,8 @@ function printSlip(isSale = true) {
                 <span v-if="salesDetailUnitName(item)" style="font-size: 11px;">
                   Unit: {{ salesDetailUnitName(item) }}
                 </span>
-                <span v-if="item.promotion.id && !item.is_foc" style="font-size: 12px;">
-                  Dis[-{{ item.promotion.discount_type === 'AMOUNT' ?
-                    Number(item.discount_amount).toLocaleString() + " Ks." : item.discount_value+'%' }}]
+                <span v-if="linePromotionId(item) && !item.is_foc" style="font-size: 12px;">
+                  {{ promotionDisplayLabel(item) }}
                 </span>
                 <span 
                   v-if="item.is_foc" 
@@ -1761,7 +1793,7 @@ function printSlip(isSale = true) {
                   flex-direction: column;
                 ">
                 <span>{{ slipLineSubtotal(item).toLocaleString() }}</span>
-                <span v-if="item.promotion.id && !item.is_foc">- {{ slipLineDiscountTotal(item).toLocaleString() }}</span>
+                <span v-if="linePromotionId(item) && !item.is_foc">- {{ slipLineDiscountTotal(item).toLocaleString() }}</span>
               </div>
             </td>
           </tr>

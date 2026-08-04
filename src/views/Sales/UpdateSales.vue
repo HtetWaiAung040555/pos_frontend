@@ -87,8 +87,7 @@ const someFilteredSelected = computed(() => {
 const totalAmount = computed(() => {
   return selectedProducts.value.reduce((sum, p) => {
     if (p.isFoc) return sum;
-    const salePrice = p.promotionId ? Number(p.discountPrice) : Number(p.price);
-    return sum + (salePrice * Number(p.quantity || 0));
+    return sum + (saleLinePrice(p) * Number(p.quantity || 0));
   }, 0);
 });
 
@@ -181,6 +180,44 @@ function sameProductUnit(left, right) {
 function pricedItemFor(product, pricedItems = []) {
   return pricedItems.find(item => sameProductUnit(item, product))
     || pricedItems.find(item => Number(item.product_id || item.id) === Number(product.id));
+}
+
+function promotionIdFor(value) {
+  return value?.promotion_id ?? value?.promotion?.id ?? null;
+}
+
+function promotionDetailsFor(pricedItem, promotionItems = []) {
+  const promotionId = promotionIdFor(pricedItem);
+  if (!promotionId) return null;
+
+  return promotionItems.find(item => (
+    sameProductUnit(item, pricedItem)
+    && Number(promotionIdFor(item)) === Number(promotionId)
+  )) || null;
+}
+
+function saleLinePrice(product) {
+  if (product?.isFoc) return 0;
+  if (product?.finalPrice !== null && product?.finalPrice !== undefined) {
+    return Number(product.finalPrice) || 0;
+  }
+  return Number(product?.price || 0);
+}
+
+function promotionTypeLabel(type) {
+  const labels = {
+    PRODUCT_DISCOUNT: 'Product discount',
+    PRICE_OVERRIDE: 'Price override',
+    ORDER_DISCOUNT: 'Order discount',
+    FOC: 'Free item',
+  };
+  return labels[type] || 'Promotion';
+}
+
+function promotionDisplayLabel(product) {
+  if (!product?.promotionId) return '';
+  const suffix = product.promotionName || `#${product.promotionId}`;
+  return `${promotionTypeLabel(product.promoType)} · ${suffix}`;
 }
 
 // Change route function
@@ -305,6 +342,8 @@ function mergeSelectedProducts(details = []) {
     if (quantity <= 0) return;
 
     const promotionId = item.promotion?.id ?? item.promotion_id ?? null;
+    const promoType = item.promo_type ?? item.promotion?.promo_type ?? null;
+    const promotionName = item.promotion_name ?? item.promotion?.name ?? null;
     const discountType = item.promotion?.discount_type ?? item.discount_type ?? null;
     const discountValue = Number(item.promotion?.discount_value ?? item.discount_value ?? 0);
     const unitPrice = Number(item.price ?? product.price ?? 0);
@@ -347,10 +386,14 @@ function mergeSelectedProducts(details = []) {
       unit_barcode: item.unit_barcode || item.product_unit?.barcode || productUnitBarcode(product),
       conversion_to_base: item.conversion_to_base || item.product_unit?.conversion_to_base || productConversionToBase(product),
       price: unitPrice,
+      originalPrice: Number(item.original_price ?? unitPrice),
+      finalPrice: Number(item.final_price ?? unitDiscountPrice),
       discountAmount: unitDiscountAmount,
       discountPrice: unitDiscountPrice,
       total: totalPrice,
       promotionId: promotionId,
+      promoType: promoType,
+      promotionName: promotionName,
       discountType: discountType,
       discountValue: discountValue,
       isFoc: isFree,
@@ -448,7 +491,11 @@ async function confirmProductSelection() {
       unit_barcode: existing?.unit_barcode || productUnitBarcode(p),
       conversion_to_base: existing?.conversion_to_base || productConversionToBase(p),
       price: basePrice,
+      originalPrice: Number(existing?.originalPrice ?? basePrice),
+      finalPrice: existing?.finalPrice ?? null,
       promotionId: existing?.promotionId || null,
+      promoType: existing?.promoType || null,
+      promotionName: existing?.promotionName || null,
       discountAmount: Number(existing?.discountAmount) || 0,
       discountPrice: Number(existing?.discountPrice ?? basePrice),
       discountValue: Number(existing?.discountValue) || 0,
@@ -491,9 +538,13 @@ function onProductUnitChange(product) {
   product.conversion_to_base = Number(unit?.conversion_to_base || 1);
   product.barcode = unit?.barcode || product.base_barcode || product.barcode || '';
   product.price = 0;
+  product.originalPrice = 0;
+  product.finalPrice = null;
   product.discountAmount = 0;
   product.discountPrice = 0;
   product.promotionId = null;
+  product.promoType = null;
+  product.promotionName = null;
   product.priceSource = null;
   product.priceRangeId = null;
   recalculatePromotions();
@@ -532,42 +583,43 @@ async function recalculatePromotions() {
 
     selectedProducts.value = normalProducts.map(p => {
       const pricedItem = pricedItemFor(p, data.priced_items || []);
-      const price = Number(pricedItem?.price ?? 0);
+      if (!pricedItem) {
+        throw new Error(`Missing priced item for product ${p.id}.`);
+      }
+
+      const promotionId = promotionIdFor(pricedItem);
+      const promotionDetails = promotionDetailsFor(pricedItem, data.items || []);
+      const originalPrice = Number(pricedItem.original_price ?? pricedItem.price ?? p.price ?? 0);
+      const finalPrice = Number(pricedItem.final_price ?? originalPrice);
 
       return {
         ...p,
-        price,
+        price: originalPrice,
+        originalPrice,
+        finalPrice,
         priceSource: pricedItem?.price_source || null,
         priceRangeId: pricedItem?.price_range_id || null,
-        promotionId: null,
-        discountAmount: 0,
-        discountPrice: price,
-        discountValue: 0,
-        discountType: '',
+        promotionId,
+        promoType: pricedItem.promo_type ?? promotionDetails?.promo_type ?? null,
+        promotionName: pricedItem.promotion_name
+          ?? pricedItem.promotion?.name
+          ?? promotionDetails?.promotion_name
+          ?? promotionDetails?.promotion?.name
+          ?? null,
+        discountAmount: promotionId
+          ? Number(pricedItem.discount_amount ?? Math.max(0, originalPrice - finalPrice))
+          : 0,
+        discountPrice: finalPrice,
+        discountValue: promotionId
+          ? Number(pricedItem.discount_value ?? promotionDetails?.discount_value ?? 0)
+          : 0,
+        discountType: promotionId
+          ? (pricedItem.discount_type ?? promotionDetails?.discount_type ?? '')
+          : '',
         isFoc: false,
         rewardId: null,
       };
     });
-
-    if (Array.isArray(data.items) && data.items.length > 0) {
-      selectedProducts.value = selectedProducts.value.map(p => {
-        const promo = data.items.find(item => sameProductUnit(item, p))
-          || data.items.find(item => Number(item.product_id) === Number(p.id));
-        if (!promo) return p;
-
-        const discountPrice = Number(promo.discount_price ?? Math.max(0, Number(p.price || 0) - Number(promo.discount_amount || 0)));
-        const discountAmount = Math.max(0, Number(p.price || 0) - discountPrice);
-
-        return {
-          ...p,
-          promotionId: promo.promotion_id || null,
-          discountValue: Number(promo.discount_value) || 0,
-          discountType: promo.discount_type || '',
-          discountAmount: discountAmount,
-          discountPrice: discountPrice,
-        };
-      });
-    }
 
     formData.value.orderDiscountAmount = Number(data.order?.total_discount) || 0;
     appliedPromotions.value = data.order?.applied_promotions || [];
@@ -591,7 +643,11 @@ async function recalculatePromotions() {
           unit_barcode: free.unit_barcode || productUnitBarcode(product),
           conversion_to_base: free.conversion_to_base || productConversionToBase(product),
           price: 0,
+          originalPrice: 0,
+          finalPrice: 0,
           promotionId: free.promotion_id || null,
+          promoType: free.promo_type || 'FOC',
+          promotionName: free.promotion_name || free.promotion?.name || null,
           discountAmount: 0,
           discountPrice: 0,
           discountValue: 0,
@@ -606,7 +662,11 @@ async function recalculatePromotions() {
   } catch (err) {
     selectedProducts.value = normalProducts.map(p => ({
       ...p,
+      originalPrice: Number(p.price || 0),
+      finalPrice: Number(p.price || 0),
       promotionId: null,
+      promoType: null,
+      promotionName: null,
       discountAmount: 0,
       discountPrice: Number(p.price || 0),
       discountValue: 0,
@@ -667,6 +727,8 @@ function areSelectedProdsEqual() {
       promotionId: p.promotionId || null,
       discountAmount: Number(p.discountAmount) || 0,
       discountPrice: Number(p.discountPrice) || 0,
+      finalPrice: Number(p.finalPrice ?? p.price) || 0,
+      promoType: p.promoType || null,
       isFoc: p.isFoc ? true : false,
       rewardId: p.rewardId || null,
     }))
@@ -715,11 +777,11 @@ async function formSubmit(isPrint = false) {
       product_id: p.id,
       ...productLineUomSnapshot(p, p.quantity),
       quantity: p.quantity,
-      price: p.isFoc ? 0 : p.price,
-      original_price: p.isFoc ? 0 : p.price,
+      price: p.isFoc ? 0 : Number(p.originalPrice ?? p.price),
+      original_price: p.isFoc ? 0 : Number(p.originalPrice ?? p.price),
       promotion_id: p.promotionId || null,
       discount_amount: p.isFoc ? 0 : (Number(p.discountAmount) || 0),
-      discount_price: p.isFoc ? 0 : (Number(p.discountPrice) || 0),
+      discount_price: p.isFoc ? 0 : saleLinePrice(p),
       is_foc: p.isFoc ? true : false,
       reward_id: p.rewardId || null,
     }));
@@ -896,7 +958,7 @@ function printSlip() {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="product in selectedProducts" :key="`${product.id}-${product.isFoc ? 'foc' : 'sale'}-${product.rewardId || 'none'}`"
+          <tr v-for="product in selectedProducts" :key="`${product.id}-${product.isFoc ? 'foc' : 'sale'}-${product.promotionId || 'none'}-${product.rewardId || 'none'}`"
             class="border-b border-gray-200 hover:bg-blue-50 text-right">
             <!-- <td class="p-2 text-left">
                       <div class="w-10 h-10 overflow-hidden rounded">
@@ -927,14 +989,16 @@ function printSlip() {
             </td>
             <td class="p-2 text-right">
               <span v-if="product.isFoc">FOC</span>
-              <span v-else-if="product.promotionId">
-                {{ product.discountType === 'AMOUNT' ? Number(product.discountAmount || 0).toLocaleString() : product.discountValue + '%' }}
-              </span>
+              <div v-else-if="product.promotionId" class="flex flex-col items-end">
+                <span class="font-medium text-emerald-700">{{ promotionDisplayLabel(product) }}</span>
+                <span v-if="product.promoType === 'PRODUCT_DISCOUNT'" class="text-xs text-gray-500">
+                  {{ product.discountType === 'AMOUNT' ? Number(product.discountAmount || 0).toLocaleString() : product.discountValue + '%' }}
+                </span>
+              </div>
               <span v-else>0</span>
             </td>
             <td class="p-2 text-right">
-              {{ product.promotionId ? Number(product.discountPrice).toLocaleString() :
-                Number(product.price).toLocaleString() }}
+              {{ saleLinePrice(product).toLocaleString() }}
             </td>
             <td class="p-2 text-right">
               <input type="number" min="0" class="w-20 text-right px-1 py-1 border rounded"
@@ -942,9 +1006,7 @@ function printSlip() {
                 @input="onChangeQty(product)" :readonly="product.isFoc" />
             </td>
             <td class="p-2 text-right">
-              {{ (product.promotionId ? Number(product.discountPrice) : Number(product.price)) *
-                Number(product.quantity)
-              }}
+              {{ (saleLinePrice(product) * Number(product.quantity)).toLocaleString() }}
             </td>
             <td class="p-2 text-right">
               <button v-if="!product.isFoc" class="text-red-600 hover:text-red-800 px-2 py-1" @click="removeProduct(product)">
@@ -1143,7 +1205,7 @@ function printSlip() {
             <i class="fa fa-spinner animate-spin"></i>
           </td>
         </tr>
-        <tr v-for="item in selectedProducts" :key="`${item.id}-${item.isFoc ? 'foc' : 'sale'}-${item.rewardId || 'none'}`" style="border-top: 1px solid #dee2e6;">
+        <tr v-for="item in selectedProducts" :key="`${item.id}-${item.isFoc ? 'foc' : 'sale'}-${item.promotionId || 'none'}-${item.rewardId || 'none'}`" style="border-top: 1px solid #dee2e6;">
           <td style="padding: 2px 0; width: 150px;">
             <div style="
                   display: flex;
@@ -1158,15 +1220,14 @@ function printSlip() {
                 {{ item.name }}
               </span>
               <span v-if="item.promotionId && !item.isFoc" style="font-size: 12px;">
-                Dis[-{{ item.discountType === 'AMOUNT' ? Number(item.discountValue).toLocaleString() + " Ks." :
-                  item.discountValue+'%' }}]
+                {{ promotionDisplayLabel(item) }}
               </span>
             </div>
           </td>
           <td style="padding: 2px 0; text-align: center;">{{ item.quantity }}</td>
           <td style="padding: 2px 0; text-align: right;">
             <div class="flex flex-col">
-              <span>{{ Number(item.price || 0).toLocaleString() }}</span>
+              <span>{{ saleLinePrice(item).toLocaleString() }}</span>
             </div>
           </td>
           <td style="padding: 2px 0; text-align: right;">
@@ -1174,8 +1235,7 @@ function printSlip() {
                   display: flex;
                   flex-direction: column;
                 ">
-              <span>{{ (Number(item.quantity || 0) * Number(item.price || 0)).toLocaleString() }}</span>
-              <span v-if="item.promotionId && !item.isFoc">- {{ (item.quantity * item.discountAmount).toLocaleString() }}</span>
+              <span>{{ (Number(item.quantity || 0) * saleLinePrice(item)).toLocaleString() }}</span>
             </div>
           </td>
         </tr>

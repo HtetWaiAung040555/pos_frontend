@@ -1,7 +1,6 @@
 <script setup>
 import { useRouter } from 'vue-router';
 import { watch, ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import axios from 'axios';
 import moment from 'moment';
 import BaseInput from '@/components/BaseInput.vue';
 import BaseLabel from '@/components/BaseLabel.vue';
@@ -431,6 +430,19 @@ function applyFocAllocationServerErrors() {
     focAllocationGeneralErrors.value = mapped.general;
 }
 
+function validationErrorText(value) {
+    if (Array.isArray(value)) return value.map(validationErrorText).filter(Boolean).join(' ');
+    if (value && typeof value === 'object') {
+        return Object.values(value).map(validationErrorText).filter(Boolean).join(' ');
+    }
+    return value == null ? '' : String(value);
+}
+
+function applyPromotionServerErrors() {
+    errorMsg.value.products = validationErrorText(usePromo.validationErrors?.products);
+    applyFocAllocationServerErrors();
+}
+
 function isBranchSelected(branch) {
     return selectedBranch.value.some(selected => selected.id === branch.id);
 }
@@ -486,7 +498,7 @@ function openProductDialog(mode = 'PRODUCT_DISCOUNT') {
     isProductDialogVisible.value = true;
 }
 
-async function toggleProductInBuffer(event, product) {
+function toggleProductInBuffer(event, product) {
     if (isSingleSelectionDialog.value) {
         selectionBuffer.value = [product];
         return;
@@ -504,25 +516,8 @@ async function toggleProductInBuffer(event, product) {
         return;
     }
 
-    // Check remote API whether product is already in a promotion
-    try {
-        const response = await axios.post(`/promotions/checkprice`, {product_id: product.id});
-        const data = response.data;
-        // If promotion_id is present and not null -> product already in promotion
-        if (data && data.promotion_id) {
-            // force-uncheck the checkbox visually
-            try { if (event && event.target) event.target.checked = false; } catch(e) {}
-            toast.add({ severity: 'warn', summary: 'Product In Promotion', detail: `${product.name} is already in a promotion (discount ${data.discount_amount}).`, life: 4000 });
-            return;
-        }
-    } catch (err) {
-        // On error, force-uncheck and show a toast and prevent selection to avoid inconsistent state
-        try { if (event && event.target) event.target.checked = false; } catch(e) {}
-        toast.add({ severity: 'error', summary: 'Check Failed', detail: `Failed to verify promotion for ${product.name}.`, life: 3000 });
-        return;
-    }
-
-    // If not in promotion, add to buffer
+    // Products may participate in different promotion types. The backend remains
+    // authoritative for overlapping PRODUCT_DISCOUNT date ranges on save.
     selectionBuffer.value.push(product);
 }
 
@@ -542,7 +537,6 @@ async function selectAllInBuffer() {
         return;
     }
 
-    // add only products that are not already in a promotion
     if (isCheckingAll.value) return;
     isCheckingAll.value = true;
     isSelectAllLoading.value = true;
@@ -550,33 +544,7 @@ async function selectAllInBuffer() {
         const ids = new Set(selectionBuffer.value.map(p => p.id));
         const candidates = (filteredProducts.value || []).filter(p => !ids.has(p.id));
         if (candidates.length === 0) return;
-
-        // API checks 
-        const checks = await Promise.allSettled(
-            candidates.map(p => axios.post(`/promotions/checkprice`, {product_id: p.id}))
-        );
-
-        const skipped = [];
-        checks.forEach((res, idx) => {
-            const product = candidates[idx];
-            if (res.status === 'fulfilled') {
-                const data = res.value.data;
-                if (data && data.promotion_id) {
-                    skipped.push(product);
-                } else {
-                    // add to buffer if not already present
-                    if (!selectionBuffer.value.some(s => s.id === product.id)) selectionBuffer.value.push(product);
-                }
-            } else {
-                skipped.push(product);
-            }
-        });
-
-        if (skipped.length > 0) {
-            const names = skipped.slice(0,5).map(p => p.name).join(', ');
-            const more = skipped.length > 5 ? ` and ${skipped.length - 5} more` : '';
-            toast.add({ severity: 'warn', summary: 'Some products skipped', detail: `Skipped ${skipped.length} product(s) already in promotion: ${names}${more}`, life: 5000 });
-        }
+        selectionBuffer.value = [...selectionBuffer.value, ...candidates];
     } finally {
         isCheckingAll.value = false;
         isSelectAllLoading.value = false;
@@ -1266,7 +1234,7 @@ async function formSubmit() {
     await usePromo.addPromo(payload);
 
     if (usePromo.error.length) {
-        applyFocAllocationServerErrors();
+        applyPromotionServerErrors();
         usePromo.error.forEach((msg) => {
             toast.add({
                 severity: 'error',
@@ -1275,7 +1243,9 @@ async function formSubmit() {
                 life: 3000
             });
         });
-        if (focAllocationGeneralErrors.value.length || Object.keys(focAllocationErrors.value).length) {
+        if (errorMsg.value.products) {
+            scrollToSection('promotion-rules');
+        } else if (focAllocationGeneralErrors.value.length || Object.keys(focAllocationErrors.value).length) {
             scrollToSection('foc-allocation-matrix');
         }
         return;
