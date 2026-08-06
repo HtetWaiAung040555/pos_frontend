@@ -1,6 +1,6 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router';
-import { watch, ref, computed, onMounted } from 'vue';
+import { watch, ref, computed, onMounted, nextTick } from 'vue';
 import moment from 'moment';
 import BaseInput from '@/components/BaseInput.vue';
 import BaseLabel from '@/components/BaseLabel.vue';
@@ -26,9 +26,11 @@ const usePermission = usePermissionStore();
 const userData = ref({});
 const selectedCustomer = ref(null);
 const selectedPaymentMethod = ref(null);
+const customerSelect = ref(null);
 
 const data = ref({
   customer_id: "",
+  type: "deposit",
   amount: 0,
   payment_id: "",
   remark: "",
@@ -68,9 +70,17 @@ watch(selectedCustomer, async (newCustomer) => {
 
 const topUpAmount = computed(() => Number(data.value.amount) || 0);
 
-const afterBalance = computed(() => {
-  return (Number(beforeBalance.value) || 0) + (Number(topUpAmount.value) || 0);
+const isWithdraw = computed(() => data.value.type === 'withdraw');
+
+const signedAmount = computed(() => {
+  return isWithdraw.value ? -Number(topUpAmount.value || 0) : Number(topUpAmount.value || 0);
 });
+
+const afterBalance = computed(() => {
+  return (Number(beforeBalance.value) || 0) + signedAmount.value;
+});
+
+const transactionLabel = computed(() => isWithdraw.value ? 'Withdraw' : 'Deposit');
 
 
 async function formSubmit(isPrint = false) {
@@ -88,6 +98,13 @@ async function formSubmit(isPrint = false) {
       amount: "Amount must be greater than 0."
     }
     return
+  } else if (isWithdraw.value && Number(data.value.amount) > Number(beforeBalance.value || 0)) {
+    errorMsg.value = {
+      paymentMethod: "",
+      customer: "",
+      amount: "Withdraw amount cannot be greater than customer balance."
+    }
+    return
   } else if (!selectedPaymentMethod.value) {
     errorMsg.value = {
       paymentMethod: errMsgList.paymentMethod,
@@ -99,6 +116,7 @@ async function formSubmit(isPrint = false) {
 
   const payload = {
     customer_id: selectedCustomer.value.id,
+    type: data.value.type,
     amount: Number(data.value.amount),
     remark: data.value.remark,
     pay_date: data.value.pay_date,
@@ -121,7 +139,7 @@ async function formSubmit(isPrint = false) {
   }
 
   if (useWallet.walletList) {
-    toast.add({ severity: 'success', summary: 'Success Message', detail: 'Wallet top up successfully.', life: 3000 });
+    toast.add({ severity: 'success', summary: 'Success Message', detail: `Wallet ${transactionLabel.value.toLowerCase()} successfully.`, life: 3000 });
     if (isPrint) {
       printSlip();
     }
@@ -219,7 +237,7 @@ function onCustomerFilter(e) {
 <template>
   <div class="p-4">
     <div class="flex justify-between items-center pb-2 mb-4">
-      <h3 class="text-black text-xl font-bold">Top Up Wallet</h3>
+      <h3 class="text-black text-xl font-bold">Wallet Transaction</h3>
       <BaseButton icon="fa fa-chevron-left" label="Back" severity="secondary" @click="changeRoute('/wallet')" />
     </div>
     <div class="flex gap-4 items-start">
@@ -254,9 +272,16 @@ function onCustomerFilter(e) {
         </div>
         <!-- Pay date Input -->
         <BaseInput size="sm" v-model="data.pay_date" label="Pay Date" placeholder="Pay Date" height="h-[35px]" type="datetime-local" :disabled="!usePermission.can('Wallet', 'Update')" />
+        <div class="flex flex-col gap-y-1">
+          <BaseLabel label="Transaction Type" :isRequire="true" />
+          <select v-model="data.type" class="text-md border border-gray-500 rounded-sm p-2 text-black w-full h-[35px]">
+            <option value="deposit">Deposit</option>
+            <option value="withdraw">Withdraw</option>
+          </select>
+        </div>
         <!-- Amount -->
         <div class="flex flex-col">
-          <BaseLabel label="Top Up Amount :" />
+          <BaseLabel :label="`${transactionLabel} Amount :`" />
           <BaseInput 
             size="sm" 
             v-model="data.amount" 
@@ -323,8 +348,8 @@ function onCustomerFilter(e) {
           </div>
           <!-- top up -->
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-            <span>Top Up Amount ({{ selectedPaymentMethod?.name }}) :</span>
-            <span style="font-weight: bold;">{{ data.currency + Number(data.amount).toLocaleString() }}</span>
+            <span>{{ transactionLabel }} Amount ({{ selectedPaymentMethod?.name }}) :</span>
+            <span style="font-weight: bold;">{{ data.currency + signedAmount.toLocaleString() }}</span>
           </div>
           <!-- after -->
           <div style="
